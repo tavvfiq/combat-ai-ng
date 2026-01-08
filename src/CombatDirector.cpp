@@ -132,7 +132,24 @@ namespace CombatAI
             return false;
         }
 
-        // Only process NPCs (not player)
+        // Skip player
+        if (a_actor->IsPlayerRef()) {
+            return false;
+        }
+
+        // Only process NPCs, not creatures
+        // Check for ActorTypeNPC keyword (NPCs have this, creatures don't)
+        if (!a_actor->HasKeywordString("ActorTypeNPC")) {
+            return false;
+        }
+
+        // Double-check: explicitly exclude creatures
+        if (a_actor->HasKeywordString("ActorTypeCreature")) {
+            return false;
+        }
+
+        // Additional check: use CalculateCachedOwnerIsNPC as fallback
+        // This should match the keyword check, but provides extra safety
         if (!a_actor->CalculateCachedOwnerIsNPC()) {
             return false;
         }

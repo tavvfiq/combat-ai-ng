@@ -1,0 +1,212 @@
+# CombatAI-NG
+
+A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and tactical, moving beyond probability-based combat styles.
+
+## Features
+
+### Core Combat AI
+- **Tactical Decision Making**: NPCs evaluate combat situations and make intelligent decisions
+- **Priority-Based Rules**: Interrupt > Evasion > Survival
+- **Reactive Behavior**: NPCs respond to player actions (blocking, power attacks, etc.)
+- **Organic Feel**: Reaction latency, mistake probability, and cooldowns prevent robotic behavior
+
+### Combat Actions
+- **Bash Interrupts**: NPCs bash when target is power attacking within reach
+- **Evasion**: NPCs dodge/strafe when target is blocking
+- **Retreat**: NPCs retreat when low on stamina or health
+- **Combat Style Enhancement**: Each NPC type behaves uniquely based on their combat style
+
+### Mod Integrations
+- **Combat Pathing Revolution (CPR)**: Enhanced movement control via animation graph variables
+- **BFCO Attack Framework**: Enhanced attack animations and state management
+- **TK Dodge RE**: NPC dodging system for evasion
+- **Precision**: Accurate weapon reach calculations
+
+## Requirements
+
+### Required
+- Skyrim Special Edition (1.6.640+) or Anniversary Edition
+- SKSE64
+- [CommonLibSSE-NG](https://github.com/CharmedBaryon/CommonLibSSE-NG)
+
+### Optional (for enhanced features)
+- **Combat Pathing Revolution (CPR)**: For advanced movement control (circling, fallback, advance)
+- **BFCO Attack Framework**: For enhanced attack animations
+- **TK Dodge RE**: For NPC dodging/evasion
+- **Precision**: For accurate weapon reach calculations
+
+## Installation
+
+1. Download the latest release
+2. Extract to your Skyrim directory (where `SkyrimSE.exe` is located)
+3. Ensure SKSE64 is installed and working
+4. Copy `CombatAI-NG.ini` to `Data/SKSE/Plugins/` (or use the template)
+5. Launch Skyrim via SKSE64
+
+## Configuration
+
+The plugin uses `CombatAI-NG.ini` for configuration. A template is provided (`CombatAI-NG.ini.template`).
+
+### Key Settings
+
+#### General
+- `EnablePlugin` - Enable/disable the plugin
+- `EnableDebugLog` - Enable debug logging
+
+#### Humanizer
+- `ReactionDelayMin/Max` - Reaction latency range (milliseconds)
+- `MistakeChanceBase` - Base mistake probability
+- `MistakeChancePerLevel` - Mistake reduction per NPC level
+- `BashCooldown` - Bash action cooldown (seconds)
+- `DodgeCooldown` - Dodge action cooldown (seconds)
+
+#### Dodge System
+- `DodgeStaminaCost` - Stamina cost for dodging
+- `DodgeIFrameDuration` - Invincibility frame duration
+- `EnableStepDodge` - Enable step dodges
+- `EnableDodgeAttackCancel` - Allow dodging to cancel attacks
+
+#### Decision Matrix
+- `InterruptReachMultiplier` - Reach multiplier for interrupt decisions
+- `EvasionEnabled` - Enable evasion system
+- `SurvivalHealthThreshold` - Health threshold for survival mode (%)
+- `SurvivalStaminaThreshold` - Stamina threshold for survival mode (%)
+
+#### Performance
+- `ProcessInterval` - Processing interval (milliseconds)
+- `CleanupInterval` - Cleanup interval (milliseconds)
+
+See `CONFIGURATION.md` for full documentation.
+
+## How It Works
+
+### Architecture
+
+```
+Actor::Update Hook
+    ↓
+CombatDirector (Singleton)
+    ↓
+ActorStateObserver → Gathers combat state
+    ↓
+DecisionMatrix → Evaluates rules (Interrupt/Evasion/Survival)
+    ↓
+Humanizer → Applies latency/mistakes/cooldowns
+    ↓
+ActionExecutor → Executes actions (animations/movement)
+    ↓
+CPR/BFCO/TK Dodge → Mod integrations
+```
+
+### Decision Priority
+
+1. **Interrupt (Priority 1)**
+   - Trigger: Target power attacking + Distance < Weapon Reach
+   - Action: Bash
+
+2. **Evasion (Priority 2)**
+   - Trigger: Target blocking + Actor idle
+   - Action: Dodge/Strafe (via TK Dodge or CPR)
+
+3. **Survival (Priority 3)**
+   - Trigger: Low stamina (< threshold) or Low health (< threshold)
+   - Action: Retreat (via CPR fallback)
+
+### Combat Style Enhancement
+
+NPCs are enhanced based on their combat style:
+- **Dueling Style**: More bash, less retreat
+- **Flanking Style**: More movement, prefers strafe
+- **Aggressive Style**: Less defensive, more offensive
+- **Defensive Style**: More cautious, earlier retreat
+- **Magic Style**: Maintains distance
+- **Ranged Style**: Prefers optimal range
+
+## Mod Compatibility
+
+### Compatible Mods
+- **Combat Pathing Revolution (CPR)**: Fully integrated, auto-detected
+- **BFCO Attack Framework**: Fully integrated, auto-detected
+- **TK Dodge RE**: Fully integrated, auto-detected
+- **Precision**: Fully integrated, auto-detected
+- **Modern Combat Overhaul (MCO)**: Compatible via BFCO integration
+
+### How Integration Works
+- Mods are auto-detected at runtime
+- Plugin gracefully falls back if mods aren't installed
+- No conflicts - works with or without optional mods
+
+## Building
+
+### Prerequisites
+- C++20/23 compatible compiler (MSVC recommended)
+- xmake build system
+- CommonLibSSE-NG (included in `lib/` directory)
+
+### Build Commands
+```bash
+# Build the plugin
+xmake build
+
+# Clean build
+xmake clean
+xmake build
+
+# Build with debug symbols
+xmake build -m debug
+```
+
+## Development
+
+### Project Structure
+```
+src/
+├── main.cpp                 - Plugin entry point
+├── Hooks.h/cpp              - Actor::Update hook
+├── CombatDirector.h/cpp     - Singleton manager
+├── ActorStateObserver.h/cpp - State gathering
+├── DecisionMatrix.h/cpp     - Tactical logic
+├── ActionExecutor.h/cpp     - Action execution
+├── Humanizer.h/cpp          - Organic feel
+├── DodgeSystem.h/cpp         - TK Dodge integration
+├── CombatStyleEnhancer.h/cpp - Style enhancement
+├── PrecisionIntegration.h/cpp - Precision integration
+└── Config.h/cpp             - Configuration system
+```
+
+### Code Style
+- Follows CommonLibSSE-NG conventions
+- PascalCase for classes/structs
+- camelCase for variables/methods
+- `m_` prefix for member variables
+- See `role.md` for detailed guidelines
+
+## Documentation
+
+- `IMPLEMENTATION_NOTES.md` - Implementation details and notes
+- `PLAN.md` - Original implementation plan
+- `CPR_INTEGRATION.md` - CPR integration guide
+- `BFCO_INTEGRATION.md` - BFCO integration guide
+- `DODGE_INTEGRATION.md` - TK Dodge integration guide
+- `PRECISION_INTEGRATION.md` - Precision integration guide
+- `COMBAT_STYLE_ENHANCEMENT.md` - Combat style system
+- `CONFIGURATION.md` - Configuration documentation
+- `PROJECTGAPCLOSE_INSIGHTS.md` - Insights from ProjectGapClose
+
+## Credits
+
+- Inspired by ProjectGapClose's approach to combat AI
+- Uses CommonLibSSE-NG for Skyrim engine access
+- Integrates with Combat Pathing Revolution, BFCO, TK Dodge RE, and Precision
+
+## License
+
+[Add your license here]
+
+## Contributing
+
+[Add contribution guidelines here]
+
+## Support
+
+[Add support information here]

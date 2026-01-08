@@ -1,0 +1,21 @@
+# Credits
+
+## Inspiration
+- **ProjectGapClose** - For hook patterns, power attack detection, and combat AI insights
+- **Combat Pathing Revolution (CPR)** - For movement control via animation graph variables
+- **BFCO Attack Framework** - For attack animation patterns
+
+## Dependencies
+- **CommonLibSSE-NG** - SKSE plugin framework (MIT License)
+- **SimpleINI** - Configuration file parsing
+
+## Mod Integrations
+This plugin integrates with the following mods (all optional):
+- **Combat Pathing Revolution (CPR)** - Enhanced movement control (circling, fallback, advance)
+- **BFCO Attack Framework** - Enhanced attack animations and state management
+- **TK Dodge RE** - NPC dodging/evasion system
+- **Precision** - Accurate weapon reach calculations
+
+## Special Thanks
+- The Skyrim modding community for their excellent tools and frameworks
+- All contributors and testers

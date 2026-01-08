@@ -1,0 +1,122 @@
+# CombatAI-NG Configuration File
+# Copy this file to: Data/SKSE/Plugins/CombatAI-NG.ini
+# Remove the .template extension and edit as needed
+
+[General]
+# Enable or disable the plugin
+EnablePlugin = true
+
+# Enable debug logging
+EnableDebugLog = false
+
+# Processing interval in seconds (how often to process actors)
+# Lower values = more responsive but more CPU usage
+# Recommended: 0.1 (100ms)
+ProcessingInterval = 0.1
+
+[Humanizer]
+# Base reaction delay in milliseconds
+# NPCs will wait this long before reacting to threats
+BaseReactionDelayMs = 150.0
+
+# Random variance added to reaction delay (0-100ms)
+# Makes reactions feel more organic
+ReactionVarianceMs = 100.0
+
+# Mistake probability at level 1 (0.0 to 1.0)
+# Level 1 NPCs will fail this percentage of reactions
+Level1MistakeChance = 0.4
+
+# Mistake probability at level 50 (0.0 to 1.0)
+# High level NPCs will fail this percentage of reactions
+Level50MistakeChance = 0.0
+
+# Bash cooldown in seconds
+# Prevents bash spam
+BashCooldownSeconds = 3.0
+
+# Dodge cooldown in seconds
+# Prevents dodge spam
+DodgeCooldownSeconds = 2.0
+
+[DodgeSystem]
+# Stamina cost for dodging
+DodgeStaminaCost = 10.0
+
+# Invulnerability frame duration in seconds
+# How long NPCs are invulnerable during dodge
+IFrameDuration = 0.3
+
+# Enable step dodge variant
+# Uses iStep animation graph variable
+EnableStepDodge = false
+
+# Allow dodging during attacks (attack cancel)
+EnableDodgeAttackCancel = true
+
+[DecisionMatrix]
+# Priority 1: Interrupt (Counter-Play)
+# Maximum distance for bash interrupt (game units)
+# This is used as fallback if Precision mod is not installed
+# If Precision is installed, actual weapon reach is used instead
+InterruptMaxDistance = 150.0
+
+# Reach multiplier for interrupt decisions
+# Multiplies weapon reach when checking if target is in range
+# Higher values = more aggressive interrupts
+# Recommended: 1.0 to 1.5
+InterruptReachMultiplier = 1.2
+
+# Priority 2: Evasion (Tactical)
+# Enable evasion dodge when target is blocking
+EnableEvasionDodge = true
+
+# Priority 3: Survival (Fallback)
+# Stamina threshold percentage (0.0 to 1.0)
+# NPCs will retreat when stamina falls below this
+StaminaThreshold = 0.2
+
+# Health threshold percentage (0.0 to 1.0)
+# NPCs will retreat when health falls below this
+HealthThreshold = 0.3
+
+# Enable survival retreat
+EnableSurvivalRetreat = true
+
+[Performance]
+# Only process actors in combat
+# Set to false to process all actors (not recommended)
+OnlyProcessCombatActors = true
+
+# Cleanup interval in seconds
+# How often to clean up invalid actor references
+CleanupInterval = 5.0
+
+# Maximum actors to process per frame
+# 0 = unlimited (process all)
+# Recommended: 0 (let processing interval handle throttling)
+MaxActorsPerFrame = 0
+
+[ModIntegrations]
+# Note: Mod integrations are auto-detected at runtime
+# These settings allow you to disable specific integrations if needed
+
+# Enable Combat Pathing Revolution (CPR) integration
+# If false, CPR features will not be used even if CPR is installed
+# CPR provides enhanced movement control (circling, fallback, advance)
+EnableCPRIntegration = true
+
+# Enable BFCO Attack Framework integration
+# If false, BFCO features will not be used even if BFCO is installed
+# BFCO provides enhanced attack animations
+EnableBFCOIntegration = true
+
+# Enable Precision mod integration
+# If false, will use fallback weapon reach calculations
+# Precision provides accurate weapon reach measurements
+EnablePrecisionIntegration = true
+
+# Enable TK Dodge RE integration
+# If false, NPCs will not use TK Dodge for evasion
+# TK Dodge provides dodge/evasion animations
+EnableTKDodgeIntegration = true

@@ -30,6 +30,8 @@ namespace CombatAI
         float orientationDot = 0.0f; // Dot product: 1.0 = facing directly at me, -1.0 = facing away
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
+
+        RE::TESForm* equippedRightHand = nullptr;
     };
 
     // Combined state data for decision making

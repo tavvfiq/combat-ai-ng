@@ -3,8 +3,25 @@
 #include "PrecisionIntegration.h"
 #include "Config.h"
 
+// Undefine Windows macros that conflict with std functions
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#ifdef clamp
+#undef clamp
+#endif
+
 namespace CombatAI
 {
+    // Helper function to clamp values (avoids Windows macro issues)
+    template<typename T>
+    constexpr T ClampValue(const T& value, const T& minVal, const T& maxVal)
+    {
+        return (value < minVal) ? minVal : ((value > maxVal) ? maxVal : value);
+    }
     ActorStateData ActorStateObserver::GatherState(RE::Actor* a_actor, float a_deltaTime)
     {
         ActorStateData data;
@@ -26,7 +43,7 @@ namespace CombatAI
 
         if (combatController) {
             RE::ActorHandle targetHandle = combatController->targetHandle;
-            RE::NiPointer<RE::Actor> target = RE::Actor::LookupByHandle(targetHandle);
+            RE::NiPointer<RE::Actor> target = targetHandle.get();
 
             if (target && target.get()) {
                 data.target = GatherTargetState(a_actor, target.get());
@@ -111,6 +128,9 @@ namespace CombatAI
         state.orientationDot = StateHelpers::CalculateOrientationDot(
             selfPos, state.position, state.forwardVector);
 
+        // equipped weapons
+        state.equippedRightHand = a_target->GetEquippedObject(false);
+
         return state;
     }
 
@@ -120,14 +140,16 @@ namespace CombatAI
             return 0.0f;
         }
 
-        float current = a_actor->GetActorValue(a_value);
-        float max = a_actor->GetBaseActorValue(a_value);
+        auto actorValueOwner = a_actor->AsActorValueOwner();
+
+        float current = actorValueOwner->GetActorValue(a_value);
+        float max = actorValueOwner->GetBaseActorValue(a_value);
 
         if (max <= 0.0f) {
             return 0.0f;
         }
 
-        return std::clamp(current / max, 0.0f, 1.0f);
+        return ClampValue(current / max, 0.0f, 1.0f);
     }
 
     bool ActorStateObserver::IsPowerAttacking(RE::Actor* a_target)
@@ -170,7 +192,7 @@ namespace CombatAI
         if (weapon && weapon->IsWeapon()) {
             auto weaponForm = weapon->As<RE::TESObjectWEAP>();
             if (weaponForm) {
-                return weaponForm->reach * 100.0f; // Convert to game units
+                return weaponForm->GetReach() * 100.0f; // Convert to game units
             }
         }
         

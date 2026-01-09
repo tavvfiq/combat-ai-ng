@@ -18,7 +18,7 @@ namespace CombatAI
         }
 
         // Check config first
-        auto& config = Config::GetInstance();
+        auto& config = CombatAI::Config::GetInstance();
         if (!config.GetModIntegrations().enableTKDodgeIntegration) {
             return false;
         }
@@ -47,7 +47,7 @@ namespace CombatAI
         }
 
         // Check if swimming
-        if (a_actor->IsSwimming()) {
+        if (state && state->IsSwimming()) {
             return false;
         }
 
@@ -64,7 +64,8 @@ namespace CombatAI
         }
 
         // Check stamina
-        float currentStamina = a_actor->GetActorValue(RE::ActorValue::kStamina);
+        auto actorValueOwner = a_actor->AsActorValueOwner();
+        float currentStamina = actorValueOwner->GetActorValue(RE::ActorValue::kStamina);
         if (currentStamina < m_config.dodgeStaminaCost) {
             return false;
         }

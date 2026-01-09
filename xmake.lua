@@ -22,6 +22,7 @@ add_rules("plugin.vsxmake.autoupdate")
 
 -- require packages
 add_requires("simpleini")
+add_requires("spdlog")
 
 -- targets
 target("CombatAI-NG")
@@ -38,6 +39,6 @@ target("CombatAI-NG")
 
     -- add src files
     add_files("src/**.cpp")
-    add_headerfiles("src/**.h")
-    add_includedirs("src")
-    set_pcxxheader("src/pch.h")
+    add_headerfiles("include/**.h")
+    add_includedirs("include")
+    set_pcxxheader("include/pch.h")

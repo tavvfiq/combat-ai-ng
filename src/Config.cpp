@@ -3,8 +3,25 @@
 #include "Logger.h"
 #include <filesystem>
 
+// Undefine Windows macros that conflict with std functions
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+#ifdef clamp
+#undef clamp
+#endif
+
 namespace CombatAI
 {
+    // Helper function to clamp values (avoids Windows macro issues)
+    template<typename T>
+    constexpr T ClampValue(const T& value, const T& minVal, const T& maxVal)
+    {
+        return (value < minVal) ? minVal : ((value > maxVal) ? maxVal : value);
+    }
     bool Config::Load(const std::string& a_filePath)
     {
         CSimpleIniA ini;
@@ -38,7 +55,7 @@ namespace CombatAI
         m_general.processingInterval = static_cast<float>(a_ini.GetDoubleValue("General", "ProcessingInterval", m_general.processingInterval));
 
         // Clamp processing interval to reasonable values
-        m_general.processingInterval = std::clamp(m_general.processingInterval, 0.01f, 1.0f);
+        m_general.processingInterval = ClampValue(m_general.processingInterval, 0.01f, 1.0f);
     }
 
     void Config::ReadHumanizerSettings(CSimpleIniA& a_ini)
@@ -51,12 +68,12 @@ namespace CombatAI
         m_humanizer.dodgeCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "DodgeCooldownSeconds", m_humanizer.dodgeCooldownSeconds));
 
         // Clamp values to valid ranges
-        m_humanizer.baseReactionDelayMs = std::max(0.0f, m_humanizer.baseReactionDelayMs);
-        m_humanizer.reactionVarianceMs = std::max(0.0f, m_humanizer.reactionVarianceMs);
-        m_humanizer.level1MistakeChance = std::clamp(m_humanizer.level1MistakeChance, 0.0f, 1.0f);
-        m_humanizer.level50MistakeChance = std::clamp(m_humanizer.level50MistakeChance, 0.0f, 1.0f);
-        m_humanizer.bashCooldownSeconds = std::max(0.0f, m_humanizer.bashCooldownSeconds);
-        m_humanizer.dodgeCooldownSeconds = std::max(0.0f, m_humanizer.dodgeCooldownSeconds);
+        m_humanizer.baseReactionDelayMs = (std::max)(0.0f, m_humanizer.baseReactionDelayMs);
+        m_humanizer.reactionVarianceMs = (std::max)(0.0f, m_humanizer.reactionVarianceMs);
+        m_humanizer.level1MistakeChance = ClampValue(m_humanizer.level1MistakeChance, 0.0f, 1.0f);
+        m_humanizer.level50MistakeChance = ClampValue(m_humanizer.level50MistakeChance, 0.0f, 1.0f);
+        m_humanizer.bashCooldownSeconds = (std::max)(0.0f, m_humanizer.bashCooldownSeconds);
+        m_humanizer.dodgeCooldownSeconds = (std::max)(0.0f, m_humanizer.dodgeCooldownSeconds);
     }
 
     void Config::ReadDodgeSystemSettings(CSimpleIniA& a_ini)
@@ -67,8 +84,8 @@ namespace CombatAI
         m_dodgeSystem.enableDodgeAttackCancel = a_ini.GetBoolValue("DodgeSystem", "EnableDodgeAttackCancel", m_dodgeSystem.enableDodgeAttackCancel);
 
         // Clamp values
-        m_dodgeSystem.dodgeStaminaCost = std::max(0.0f, m_dodgeSystem.dodgeStaminaCost);
-        m_dodgeSystem.iFrameDuration = std::max(0.0f, m_dodgeSystem.iFrameDuration);
+        m_dodgeSystem.dodgeStaminaCost = (std::max)(0.0f, m_dodgeSystem.dodgeStaminaCost);
+        m_dodgeSystem.iFrameDuration = (std::max)(0.0f, m_dodgeSystem.iFrameDuration);
     }
 
     void Config::ReadDecisionMatrixSettings(CSimpleIniA& a_ini)
@@ -76,15 +93,36 @@ namespace CombatAI
         m_decisionMatrix.interruptMaxDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "InterruptMaxDistance", m_decisionMatrix.interruptMaxDistance));
         m_decisionMatrix.interruptReachMultiplier = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "InterruptReachMultiplier", m_decisionMatrix.interruptReachMultiplier));
         m_decisionMatrix.enableEvasionDodge = a_ini.GetBoolValue("DecisionMatrix", "EnableEvasionDodge", m_decisionMatrix.enableEvasionDodge);
+        m_decisionMatrix.evasionDodgeChance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "EvasionDodgeChance", m_decisionMatrix.evasionDodgeChance));
+        m_decisionMatrix.evasionMinDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "EvasionMinDistance", m_decisionMatrix.evasionMinDistance));
+        m_decisionMatrix.enableJumpEvasion = a_ini.GetBoolValue("DecisionMatrix", "EnableJumpEvasion", m_decisionMatrix.enableJumpEvasion);
+        m_decisionMatrix.jumpEvasionDistanceMin = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "JumpEvasionDistanceMin", m_decisionMatrix.jumpEvasionDistanceMin));
+        m_decisionMatrix.jumpEvasionDistanceMax = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "JumpEvasionDistanceMax", m_decisionMatrix.jumpEvasionDistanceMax));
+        m_decisionMatrix.evasionJumpChance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "EvasionJumpChance", m_decisionMatrix.evasionJumpChance));
         m_decisionMatrix.staminaThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "StaminaThreshold", m_decisionMatrix.staminaThreshold));
         m_decisionMatrix.healthThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "HealthThreshold", m_decisionMatrix.healthThreshold));
         m_decisionMatrix.enableSurvivalRetreat = a_ini.GetBoolValue("DecisionMatrix", "EnableSurvivalRetreat", m_decisionMatrix.enableSurvivalRetreat);
+        m_decisionMatrix.enableOffense = a_ini.GetBoolValue("DecisionMatrix", "EnableOffense", m_decisionMatrix.enableOffense);
+        m_decisionMatrix.offenseReachMultiplier = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "OffenseReachMultiplier", m_decisionMatrix.offenseReachMultiplier));
+        m_decisionMatrix.powerAttackStaminaThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "PowerAttackStaminaThreshold", m_decisionMatrix.powerAttackStaminaThreshold));
+        m_decisionMatrix.sprintAttackMinDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance));
+        m_decisionMatrix.sprintAttackMaxDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackMaxDistance", m_decisionMatrix.sprintAttackMaxDistance));
+        m_decisionMatrix.sprintAttackStaminaThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackStaminaThreshold", m_decisionMatrix.sprintAttackStaminaThreshold));
 
         // Clamp values
-        m_decisionMatrix.interruptMaxDistance = std::max(0.0f, m_decisionMatrix.interruptMaxDistance);
-        m_decisionMatrix.interruptReachMultiplier = std::clamp(m_decisionMatrix.interruptReachMultiplier, 0.1f, 5.0f);
-        m_decisionMatrix.staminaThreshold = std::clamp(m_decisionMatrix.staminaThreshold, 0.0f, 1.0f);
-        m_decisionMatrix.healthThreshold = std::clamp(m_decisionMatrix.healthThreshold, 0.0f, 1.0f);
+        m_decisionMatrix.evasionDodgeChance = ClampValue(m_decisionMatrix.evasionDodgeChance, 0.0f, 1.0f);
+        m_decisionMatrix.interruptMaxDistance = (std::max)(0.0f, m_decisionMatrix.interruptMaxDistance);
+        m_decisionMatrix.interruptReachMultiplier = ClampValue(m_decisionMatrix.interruptReachMultiplier, 0.1f, 5.0f);
+        m_decisionMatrix.jumpEvasionDistanceMin = (std::max)(0.0f, m_decisionMatrix.jumpEvasionDistanceMin);
+        m_decisionMatrix.jumpEvasionDistanceMax = (std::max)(0.0f, m_decisionMatrix.jumpEvasionDistanceMax);
+        m_decisionMatrix.evasionJumpChance = ClampValue(m_decisionMatrix.evasionJumpChance, 0.0f, 1.0f);
+        m_decisionMatrix.staminaThreshold = ClampValue(m_decisionMatrix.staminaThreshold, 0.0f, 1.0f);
+        m_decisionMatrix.healthThreshold = ClampValue(m_decisionMatrix.healthThreshold, 0.0f, 1.0f);
+        m_decisionMatrix.offenseReachMultiplier = ClampValue(m_decisionMatrix.offenseReachMultiplier, 0.1f, 5.0f);
+        m_decisionMatrix.powerAttackStaminaThreshold = ClampValue(m_decisionMatrix.powerAttackStaminaThreshold, 0.0f, 1.0f);
+        m_decisionMatrix.sprintAttackMinDistance = (std::max)(0.0f, m_decisionMatrix.sprintAttackMinDistance);
+        m_decisionMatrix.sprintAttackMaxDistance = (std::max)(0.0f, m_decisionMatrix.sprintAttackMaxDistance);
+        m_decisionMatrix.sprintAttackStaminaThreshold = ClampValue(m_decisionMatrix.sprintAttackStaminaThreshold, 0.0f, 1.0f);
     }
 
     void Config::ReadPerformanceSettings(CSimpleIniA& a_ini)
@@ -94,7 +132,7 @@ namespace CombatAI
         m_performance.maxActorsPerFrame = static_cast<std::uint32_t>(a_ini.GetLongValue("Performance", "MaxActorsPerFrame", m_performance.maxActorsPerFrame));
 
         // Clamp values
-        m_performance.cleanupInterval = std::max(0.1f, m_performance.cleanupInterval);
+        m_performance.cleanupInterval = (std::max)(0.1f, m_performance.cleanupInterval);
     }
 
     void Config::ReadModIntegrationSettings(CSimpleIniA& a_ini)

@@ -1,0 +1,29 @@
+{
+    "name": "Jump as dodge",
+    "priority": 410065417,
+    "conditions": [
+        {
+            "condition": "IsActorBase",
+            "requiredVersion": "1.0.0.0",
+            "negated": true,
+            "Actor base": {
+                "pluginName": "Skyrim.esm",
+                "formID": "7"
+            }
+        },
+        {
+            "condition": "MathStatement",
+            "requiredPlugin": "OpenAnimationReplacer-Math",
+            "requiredVersion": "1.0.0.0",
+            "Math Statement": {
+                "expression": "CombatAI_NG_Jump == 1",
+                "variables": {
+                    "combatai_ng_jump": {
+                        "graphVariable": "CombatAI_NG_Jump",
+                        "graphVariableType": "Bool"
+                    }
+                }
+            }
+        }
+    ]
+}

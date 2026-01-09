@@ -15,9 +15,6 @@ namespace CombatAI
             PrecisionIntegration::GetInstance().Initialize();
         }
         
-        // Load config values
-        auto& config = Config::GetInstance();
-        
         // Set processing interval
         m_processInterval = config.GetGeneral().processingInterval;
         
@@ -49,10 +46,7 @@ namespace CombatAI
         ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
 
         // Make decision
-        DecisionResult decision = m_decisionMatrix.Evaluate(state);
-
-        // Enhance decision based on combat style (instead of suppressing vanilla AI)
-        decision = m_styleEnhancer.EnhanceDecision(a_actor, decision, state);
+        DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
 
         // Check if should make mistake (humanizer)
         if (decision.action != ActionType::None && m_humanizer.ShouldMakeMistake(a_actor)) {
@@ -65,14 +59,28 @@ namespace CombatAI
             if (m_humanizer.IsOnCooldown(a_actor, "bash")) {
                 return; // On cooldown
             }
-        } else if (decision.action == ActionType::Strafe) {
+        } else if (decision.action == ActionType::Dodge) {
             if (m_humanizer.IsOnCooldown(a_actor, "dodge")) {
                 return; // Dodge on cooldown
             }
+        } else if (decision.action == ActionType::Jump) {
+            if (m_humanizer.IsOnCooldown(a_actor, "jump")) {
+                return; // Jump on cooldown
+            }
         }
 
+        auto& config = Config::GetInstance();
         // Execute decision
         if (decision.action != ActionType::None) {
+            if (config.GetGeneral().enableDebugLog) {
+                auto selectedRef = RE::Console::GetSelectedRef();
+                if (selectedRef && a_actor == selectedRef.get()) {
+                    std::ostringstream logs;
+                    logs << "Decision made: Action = " << static_cast<int>(decision.action);
+                    ConsolePrint(logs.str().c_str());
+                }
+            }
+            
             bool success = m_executor.Execute(a_actor, decision, state);
 
             if (success) {
@@ -82,6 +90,8 @@ namespace CombatAI
                 } else if (decision.action == ActionType::Strafe) {
                     // Dodge cooldown is handled by TK Dodge system
                     m_humanizer.MarkActionUsed(a_actor, "dodge");
+                } else if (decision.action == ActionType::Jump) {
+                    m_humanizer.MarkActionUsed(a_actor, "jump");
                 }
 
                 // Track actor

@@ -25,13 +25,22 @@ namespace CombatAI
         bool ExecuteDodge(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // Execute strafe movement (with CPR support)
-        bool ExecuteStrafe(RE::Actor* a_actor, const RE::NiPoint3& a_direction, float a_intensity);
+        bool ExecuteStrafe(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
 
         // Execute retreat movement (with CPR support)
-        bool ExecuteRetreat(RE::Actor* a_actor, const RE::NiPoint3& a_direction, float a_intensity);
+        bool ExecuteRetreat(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
+
+        // Execute attack
+        bool ExecuteAttack(RE::Actor* a_actor);
+
+        // Execute power attack
+        bool ExecutePowerAttack(RE::Actor* a_actor);
 
         // Execute sprint attack (BFCO support)
         bool ExecuteSprintAttack(RE::Actor* a_actor);
+
+        // Execute jump (actually executes dodge with CombatAI_NG_Jump=true for OAR animation replacement)
+        bool ExecuteJump(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // Helper: Trigger animation graph event
         bool NotifyAnimation(RE::Actor* a_actor, const char* a_eventName);
@@ -56,6 +65,9 @@ namespace CombatAI
 
         // Helper: Disable all CPR behaviors
         void DisableCPR(RE::Actor* a_actor);
+
+        // Helper: Reset jump variable (when actor lands or when executing other actions)
+        void ResetJumpVariable(RE::Actor* a_actor);
 
         // Dodge system
         DodgeSystem m_dodgeSystem;

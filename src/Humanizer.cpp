@@ -86,6 +86,9 @@ namespace CombatAI
         } else if (a_actionName == "dodge") {
             // Dodge cooldown (TK Dodge may have its own cooldown, but we add ours too)
             cooldownState.cooldowns["dodge"] = 2.0f; // 2 second cooldown for dodge
+        } else if (a_actionName == "jump") {
+            // Jump cooldown - prevent spam jumping
+            cooldownState.cooldowns["jump"] = 3.0f; // 3 second cooldown for jump
         }
         // Add more actions as needed
     }

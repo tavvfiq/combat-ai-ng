@@ -4,7 +4,6 @@
 #include "DecisionMatrix.h"
 #include "ActionExecutor.h"
 #include "Humanizer.h"
-#include "CombatStyleEnhancer.h"
 #include "RE/A/Actor.h"
 #include <unordered_set>
 
@@ -47,7 +46,6 @@ namespace CombatAI
         DecisionMatrix m_decisionMatrix;
         ActionExecutor m_executor;
         Humanizer m_humanizer;
-        CombatStyleEnhancer m_styleEnhancer;
 
         // Track processed actors (for cleanup)
         std::unordered_set<RE::Actor*> m_processedActors;

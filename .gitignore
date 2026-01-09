@@ -1,0 +1,5 @@
+.xmake
+build
+.vscode
+vsxmake2022
+dist

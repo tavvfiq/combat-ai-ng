@@ -1,0 +1,8 @@
+[   
+    {
+        "projectPath": "Actors",
+        "type": "kBool",
+        "name": "CombatAI_NG_Jump",
+        "value": false
+    }
+]

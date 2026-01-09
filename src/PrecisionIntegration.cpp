@@ -1,48 +1,8 @@
 #include "pch.h"
 #include "PrecisionIntegration.h"
 #include "Logger.h"
+#include "PrecisionAPI.h"
 #include <Windows.h>
-
-// Include Precision API header (copy from Precision project)
-// For now, we'll use the API directly
-namespace PRECISION_API
-{
-    constexpr const auto PrecisionPluginName = "Precision";
-    
-    enum class InterfaceVersion : uint8_t
-    {
-        V1, V2, V3, V4
-    };
-    
-    enum class RequestedAttackCollisionType : uint8_t
-    {
-        Default,
-        Current,
-        RightWeapon,
-        LeftWeapon
-    };
-    
-    class IVPrecision1
-    {
-    public:
-        virtual float GetAttackCollisionCapsuleLength(RE::ActorHandle a_actorHandle, RequestedAttackCollisionType a_collisionType = RequestedAttackCollisionType::Default) const noexcept = 0;
-    };
-    
-    typedef void* (*_RequestPluginAPI)(const InterfaceVersion interfaceVersion);
-    
-    [[nodiscard]] inline void* RequestPluginAPI(const InterfaceVersion a_interfaceVersion = InterfaceVersion::V4)
-    {
-        auto pluginHandle = GetModuleHandleA("Precision.dll");
-        if (!pluginHandle) {
-            return nullptr;
-        }
-        _RequestPluginAPI requestAPIFunction = (_RequestPluginAPI)GetProcAddress(pluginHandle, "RequestPluginAPI");
-        if (requestAPIFunction) {
-            return requestAPIFunction(a_interfaceVersion);
-        }
-        return nullptr;
-    }
-}
 
 namespace CombatAI
 {
@@ -62,13 +22,13 @@ namespace CombatAI
 
     float PrecisionIntegration::GetWeaponReach(RE::Actor* a_actor)
     {
-        if (!a_actor) {
+        if (!a_actor || !a_actor->Is3DLoaded()) {
             return 150.0f; // Default fallback
         }
 
         // Try Precision API first
         if (m_precisionAPI) {
-            auto* precision = static_cast<PRECISION_API::IVPrecision1*>(m_precisionAPI);
+            auto* precision = static_cast<PRECISION_API::IVPrecision4*>(m_precisionAPI);
             if (precision) {
                 RE::ActorHandle actorHandle = a_actor->GetHandle();
                 float reach = precision->GetAttackCollisionCapsuleLength(actorHandle, PRECISION_API::RequestedAttackCollisionType::Default);

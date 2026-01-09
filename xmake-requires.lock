@@ -1,0 +1,22 @@
+{
+    __meta__ = {
+        version = "1.0"
+    },
+    ["windows|x64"] = {
+        ["cmake#f56260b5"] = {
+            version = "3.30.3"
+        },
+        ["ninja#f56260b5"] = {
+            version = "1.12.1"
+        },
+        ["rapidcsv#f56260b5"] = {
+            version = "v8.90"
+        },
+        ["simpleini#f56260b5"] = {
+            version = "v4.25"
+        },
+        ["spdlog#09c8c173"] = {
+            version = "v1.16.0"
+        }
+    }
+}

@@ -39,9 +39,21 @@ namespace CombatAI
             float interruptMaxDistance = 150.0f;
             float interruptReachMultiplier = 1.2f;
             bool enableEvasionDodge = true;
+            float evasionDodgeChance = 0.5f;
+            float evasionMinDistance = 250.0f;
+            bool enableJumpEvasion = true;
+            float jumpEvasionDistanceMin = 500.0f;
+            float jumpEvasionDistanceMax = 1500.0f;
+            float evasionJumpChance = 0.5f;
             float staminaThreshold = 0.2f;
             float healthThreshold = 0.3f;
             bool enableSurvivalRetreat = true;
+            bool enableOffense = true;
+            float offenseReachMultiplier = 1.0f;
+            float powerAttackStaminaThreshold = 0.5f;
+            float sprintAttackMinDistance = 300.0f;
+            float sprintAttackMaxDistance = 800.0f;
+            float sprintAttackStaminaThreshold = 0.3f;
         };
 
         struct PerformanceSettings

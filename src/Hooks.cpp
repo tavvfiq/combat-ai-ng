@@ -18,7 +18,7 @@ namespace CombatAI
                 
                 // Then run our custom logic (post-hook)
                 if (a_actor) {
-                    CombatDirector::GetInstance().ProcessActor(a_actor, a_delta);
+                    CombatDirector::GetInstance().ProcessActor(a_actor, RE::GetSecondsSinceLastFrame());
                 }
             }
             
@@ -35,15 +35,11 @@ namespace CombatAI
 
             // Hook Character::Update at vtable index 0xAD (inspired by ProjectGapClose)
             // Using RE::Character instead of RE::Actor for more reliable hooking
-            REL::Relocation<std::uintptr_t> CharacterVTable{ RE::VTABLE_Character[0] };
+            REL::Relocation<std::uintptr_t> CharacterVTable{ RE::Character::VTABLE[0] };
             
             // Write our hook function to the vtable
             // write_vfunc returns the original function pointer
-            std::uintptr_t originalAddr = CharacterVTable.write_vfunc(0xAD, 
-                reinterpret_cast<std::uintptr_t>(Actor_Update::thunk));
-            
-            // Store original function pointer
-            Actor_Update::func = reinterpret_cast<decltype(Actor_Update::thunk)>(originalAddr);
+            Actor_Update::func = CharacterVTable.write_vfunc(0x0AD, Actor_Update::thunk);
 
             LOG_INFO("Hooks installed successfully");
         }

@@ -1,9 +1,13 @@
 # Enhancements Summary
 
 ## Overview
-This document summarizes the two major enhancements made to CombatAI-NG:
+This document summarizes the major enhancements made to CombatAI-NG:
 1. Precision Integration for weapon reach
 2. Combat Style Enhancement System
+3. Jump Evasion System
+4. Backoff and Advancing Actions
+5. Tie-Breaking System
+6. Performance Optimizations
 
 ## 1. Precision Integration
 
@@ -101,11 +105,124 @@ No additional configuration needed - both systems work automatically:
 - Precision integration is optional (falls back if not available)
 - Combat style enhancement uses existing combat styles
 
+## 3. Jump Evasion System
+
+### What It Does
+- NPCs can jump to evade ranged attacks (bows/crossbows)
+- Uses dodge system with `CombatAI_NG_Jump` flag for OAR animation replacement
+- Triggers when target is using ranged weapon and within evasion distance
+
+### Implementation
+- **ActionType::Jump** - New action type
+- Uses `DodgeSystem::ExecuteEvasionDodge` with `CombatAI_NG_Jump=true`
+- OAR can detect the flag and replace dodge animation with jump animation
+- Jump variable is reset when actor lands or when executing other actions
+
+### Benefits
+- NPCs can evade ranged attacks more effectively
+- Works with animation replacement mods (OAR)
+- Uses existing dodge system infrastructure
+
+### Files
+- `src/ActionExecutor.cpp` - ExecuteJump implementation
+- `package/SKSE/Plugins/BehaviorDataInjector/CombatAI-NG_BDI.json` - Graph variable registration
+
+## 4. Backoff Action
+
+### What It Does
+- NPCs back away when target is casting magic or drawing bow
+- Prevents NPCs from standing still while target prepares ranged/magic attack
+- Uses CPR backoff or direct movement control
+
+### Implementation
+- **ActionType::Backoff** - New action type
+- **EvaluateBackoff()** - Detects target casting (`isCasting`) or drawing bow (`isDrawingBow`)
+- **ExecuteBackoff()** - Uses CPR backoff or falls back to direct movement
+- Priority 2 (between Evasion and Survival)
+
+### Benefits
+- More reactive NPCs
+- Better survival against magic/ranged attacks
+- Works with CPR for smooth movement
+
+### Files
+- `src/DecisionMatrix.cpp` - EvaluateBackoff implementation
+- `src/ActionExecutor.cpp` - ExecuteBackoff implementation
+- `src/ActorStateObserver.cpp` - isDrawingBow detection
+
+## 5. Advancing Action
+
+### What It Does
+- NPCs close distance when too far from target
+- Uses CPR advancing feature for smooth gap closing
+- Triggers when distance exceeds sprint attack max distance
+
+### Implementation
+- **ActionType::Advancing** - New action type
+- **EvaluateOffense()** - Checks if distance > sprintAttackMaxDistance
+- **ExecuteAdvancing()** - Uses CPR advance radius override
+- Disables other CPR behaviors to avoid conflicts
+- Sets outer radius larger than current distance to trigger advancing
+
+### Benefits
+- NPCs maintain engagement range
+- Prevents NPCs from staying too far away
+- Smooth gap closing via CPR
+
+### Files
+- `src/DecisionMatrix.cpp` - Advancing logic in EvaluateOffense
+- `src/ActionExecutor.cpp` - ExecuteAdvancing and SetCPRAdvancing
+
+## 6. Tie-Breaking System
+
+### What It Does
+- When multiple decisions have the same priority, intelligently selects the best one
+- Uses multiple factors: intensity, health, distance, action type
+- Adds variety through random selection when scores are equal
+
+### Implementation
+- **SelectBestFromTie()** - Selects best decision from equal-priority candidates
+- **CalculateDecisionScore()** - Calculates score based on:
+  - Intensity (higher = better)
+  - Health status (offensive when healthy, defensive when low)
+  - Distance (optimal range for each action)
+  - Action type (for variety)
+- All decisions now have reasonable intensity values
+
+### Benefits
+- More intelligent decision making
+- Better context awareness
+- Prevents always picking first decision in list
+
+### Files
+- `src/DecisionMatrix.cpp` - Tie-breaking implementation
+- All evaluation functions now set intensity values
+
+## 7. Performance Optimizations
+
+### Per-Actor Processing Throttling
+- Each actor has its own processing timer
+- Actors processed at configured interval (default 100ms)
+- Reduces CPU usage while maintaining responsiveness
+
+### BFCO State Optimization
+- Removed redundant state resets
+- Only sets needed flags explicitly (e.g., IsNormalAttacking=1, IsPowerAttacking=0)
+- More efficient variable management
+
+### Files
+- `src/CombatDirector.cpp` - Per-actor throttling in ShouldProcessActor
+- `src/ActionExecutor.cpp` - Optimized BFCO state management
+
 ## Testing
 
 To test:
 1. **Precision Integration**: Install Precision mod and verify weapon reach is accurate
 2. **Combat Style Enhancement**: Test with different NPC types (bandits, guards, mages) and observe unique behaviors
+3. **Jump Evasion**: Test with ranged weapons and verify NPCs jump to evade
+4. **Backoff**: Test with magic casting and bow drawing to see NPCs back away
+5. **Advancing**: Test with NPCs far away to see them close distance
+6. **Tie-Breaking**: Observe intelligent selection when multiple actions are available
 
 ## Future Enhancements
 

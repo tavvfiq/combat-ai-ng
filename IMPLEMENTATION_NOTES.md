@@ -2,19 +2,20 @@
 
 ## Status
 ✅ **Core implementation complete!** All major components have been created and integrated.
+✅ **Advanced features implemented**: Jump evasion, Backoff, Advancing, Tie-breaking system, Per-actor throttling
 
 ## Architecture Overview
 
 The plugin follows a modular architecture with clear separation of concerns:
 
 1. **Hooks** - Intercepts `RE::Character::Update` at vtable index 0xAD (post-hook pattern)
-2. **CombatDirector** - Singleton manager that processes actors and coordinates components
-3. **ActorStateObserver** - Gathers comprehensive combat state data (self + target)
-4. **DecisionMatrix** - Evaluates state against prioritized rules (Interrupt > Evasion > Survival)
-5. **ActionExecutor** - Executes decisions via animations and movement control
+2. **CombatDirector** - Singleton manager that processes actors and coordinates components (with per-actor throttling)
+3. **ActorStateObserver** - Gathers comprehensive combat state data (self + target, including casting/bow drawing detection)
+4. **DecisionMatrix** - Evaluates state against prioritized rules (Interrupt > Evasion > Backoff > Survival > Offense) with tie-breaking
+5. **ActionExecutor** - Executes decisions via animations and movement control (CPR/BFCO/TK Dodge integration)
 6. **Humanizer** - Adds organic feel (reaction latency, mistake probability, cooldowns)
 7. **DodgeSystem** - Handles TK Dodge integration for evasion
-8. **CombatStyleEnhancer** - Enhances NPC behavior based on combat styles
+8. **CombatStyleEnhancer** - Enhances NPC behavior based on combat styles (supports all action types)
 9. **Config** - Configuration system using SimpleINI
 
 ## Important Notes
@@ -40,6 +41,33 @@ See `HOOK_PATTERN_EXPLANATION.md` for detailed comparison of pre-hook vs post-ho
 - Automatically detects CPR availability
 - Falls back gracefully if CPR is not installed
 - Supports: Circling, Fallback, Advance, Backoff
+
+### Action Types
+✅ **Implemented 10 action types**:
+- Bash (interrupt)
+- Strafe (evasion)
+- Retreat (survival)
+- PowerAttack, Attack, SprintAttack (offense)
+- Jump (evasion, uses dodge system with OAR animation replacement)
+- Dodge (evasion, TK Dodge integration)
+- Backoff (reactive, when target casting/drawing bow)
+- Advancing (offense, when too far from target)
+
+### Tie-Breaking System
+✅ **Implemented intelligent tie-breaking**:
+- When multiple decisions have the same priority, system uses:
+  1. Intensity (higher = more committed)
+  2. Health-based preferences (offensive when healthy, defensive when low)
+  3. Distance-based preferences (optimal range for each action)
+  4. Random selection for variety when scores are equal
+- All decisions now have reasonable intensity values
+
+### Performance Optimization
+✅ **Implemented per-actor processing throttling**:
+- Each actor has its own processing timer
+- Actors are processed at configured interval (default 100ms)
+- Reduces CPU usage while maintaining responsiveness
+- Timer cleanup integrated with actor cleanup system
 
 ### Power Attack Detection
 ✅ **Implemented using `HighProcessData->attackData->data.flags`**
@@ -74,6 +102,13 @@ See `HOOK_PATTERN_EXPLANATION.md` for detailed comparison of pre-hook vs post-ho
 ✅ **Hook Implementation** - Updated to use `stl::write_vfunc` for more reliable hooking
 ✅ **CPR Integration** - Support for Combat Pathing Revolution via animation graph variables
 ✅ **BFCO Integration** - Support for BFCO attack framework for attack animations
+✅ **Jump Evasion** - NPCs can jump to evade ranged attacks (OAR animation replacement)
+✅ **Backoff Action** - NPCs back away when target is casting or drawing bow
+✅ **Advancing Action** - NPCs close distance when too far (CPR advancing integration)
+✅ **Tie-Breaking System** - Intelligent selection when multiple decisions have same priority
+✅ **Per-Actor Throttling** - Performance optimization via configurable processing intervals
+✅ **Intensity Values** - All actions have intensity values for better decision making
+✅ **BFCO State Optimization** - Removed redundant state resets, only set needed flags
 
 ## Mod Integrations
 
@@ -128,10 +163,10 @@ The evasion system now uses TK Dodge for NPCs:
 1. **In-Game Testing** - Verify all functionality works correctly
 2. **Performance Optimization** - Profile and optimize if needed
 3. **Additional Features** (Optional):
-   - Sprint attack support (gap closing)
-   - Jump attack support
    - More sophisticated threat calculations
    - Per-NPC configuration overrides
+   - Animation graph variable cleanup automation
+   - Better vanilla AI suppression for certain actions (retreat, backoff)
 4. **Documentation** - Keep documentation updated as features are added
 
 ## Known Limitations
@@ -142,10 +177,12 @@ The evasion system now uses TK Dodge for NPCs:
 
 ## Performance Considerations
 
-- Processing is throttled via `ProcessInterval` config setting
-- Actors are cleaned up when not in combat
+- Processing is throttled via per-actor timers at `ProcessInterval` config setting (default 100ms)
+- Each actor has its own processing timer to avoid processing every frame
+- Actors are cleaned up when not in combat (including their timers)
 - State gathering is optimized to avoid heavy operations
 - Cooldowns prevent action spam
+- BFCO state management optimized to only set needed flags
 
 ## File Structure
 

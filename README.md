@@ -12,8 +12,11 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 
 ### Combat Actions
 - **Bash Interrupts**: NPCs bash when target is power attacking within reach
-- **Evasion**: NPCs dodge/strafe when target is blocking
+- **Evasion**: NPCs dodge/strafe/jump when target is blocking or attacking
 - **Retreat**: NPCs retreat when low on stamina or health
+- **Backoff**: NPCs back away when target is casting magic or drawing bow
+- **Advancing**: NPCs close distance when too far from target
+- **Offensive Actions**: Normal attacks, power attacks, and sprint attacks
 - **Combat Style Enhancement**: Each NPC type behaves uniquely based on their combat style
 
 ### Mod Integrations
@@ -104,13 +107,21 @@ CPR/BFCO/TK Dodge → Mod integrations
    - Trigger: Target power attacking + Distance < Weapon Reach
    - Action: Bash
 
-2. **Evasion (Priority 2)**
-   - Trigger: Target blocking + Actor idle
-   - Action: Dodge/Strafe (via TK Dodge or CPR)
+2. **Evasion (Priority 1-2)**
+   - Trigger: Target blocking/attacking + Actor idle
+   - Actions: Dodge/Strafe/Jump (via TK Dodge or CPR)
 
-3. **Survival (Priority 3)**
+3. **Backoff (Priority 2)**
+   - Trigger: Target casting magic OR drawing bow
+   - Action: Backoff (away from target)
+
+4. **Survival (Priority 2)**
    - Trigger: Low stamina (< threshold) or Low health (< threshold)
    - Action: Retreat (via CPR fallback)
+
+5. **Offense (Priority 1)**
+   - Trigger: Within attack range
+   - Actions: Attack, PowerAttack, SprintAttack, or Advancing (if too far)
 
 ### Combat Style Enhancement
 
@@ -121,6 +132,12 @@ NPCs are enhanced based on their combat style:
 - **Defensive Style**: More cautious, earlier retreat
 - **Magic Style**: Maintains distance
 - **Ranged Style**: Prefers optimal range
+
+### Advanced Features
+- **Tie-Breaking System**: When multiple decisions have the same priority, the system uses intensity, health status, and distance to select the best action
+- **Per-Actor Throttling**: Actors are processed at configurable intervals (default 100ms) to optimize performance
+- **Jump Evasion**: NPCs can jump to evade ranged attacks (uses dodge system with animation replacement via OAR)
+- **Intensity-Based Actions**: All actions have intensity values for more nuanced behavior
 
 ## Mod Compatibility
 
@@ -185,6 +202,7 @@ src/
 
 - `IMPLEMENTATION_NOTES.md` - Implementation details and notes
 - `PLAN.md` - Original implementation plan
+- `CHANGELOG.md` - Recent changes and updates
 - `CPR_INTEGRATION.md` - CPR integration guide
 - `BFCO_INTEGRATION.md` - BFCO integration guide
 - `DODGE_INTEGRATION.md` - TK Dodge integration guide

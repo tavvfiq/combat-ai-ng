@@ -23,7 +23,9 @@ The `CombatStyleEnhancer` class modifies decisions based on combat style:
 - **Behavior**: Focused 1v1 combat
 - **Enhancements**:
   - Higher priority for bash interrupts
+  - Prefers dodge and power attacks
   - Less likely to retreat (only at very low health)
+  - Cancels sprint attacks (prefers precision)
   - Prefers standing ground
 
 #### Flanking Style (`kFlankingStyle` flag)
@@ -39,11 +41,12 @@ The `CombatStyleEnhancer` class modifies decisions based on combat style:
   - Less defensive (retreats only at very low health)
   - Higher priority for bash/interrupt
   - More likely to press attacks
+  - Boosts Advancing action priority
 
 #### Defensive Style (High `defensiveMult`)
 - **Behavior**: Cautious and defensive
 - **Enhancements**:
-  - Higher priority for retreat
+  - Higher priority for retreat and backoff
   - Retreats earlier (at 30% stamina or 40% health)
   - Prefers evasion
   - Less likely to bash (only when very close)
@@ -81,6 +84,17 @@ The system applies multipliers from combat style data:
 - **Avoid Threat Chance** (`generalData.avoidThreatChance`):
   - > 0.5: Increases evasion priority
   - Affects how likely NPC is to dodge
+
+### Supported Action Types
+
+The enhancement system supports all action types:
+- **Bash** - Interrupt actions
+- **Dodge, Strafe, Jump** - Evasion actions
+- **Retreat, Backoff** - Defensive actions
+- **Attack, PowerAttack, SprintAttack** - Offensive actions
+- **Advancing** - Gap closing action
+
+Each style modifies priorities and can cancel certain actions based on style preferences.
 
 ## Integration
 

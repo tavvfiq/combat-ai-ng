@@ -11,8 +11,13 @@
 
 namespace CombatAI
 {
-    bool cpr_integrated_debug_shown = false;
-    bool bfco_integrated_debug_shown = false;
+    void ActionExecutor::EnableBFCO(bool isEnabled) {
+        if (isEnabled) {
+            LOG_INFO("enabling integration with BFCO");
+        } else {
+            LOG_INFO("integration with BFCO disabled");
+        }
+    }
 
     bool ActionExecutor::Execute(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
     {
@@ -94,7 +99,7 @@ namespace CombatAI
         }
 
         // Reset BFCO attack state if BFCO is installed
-        if (IsBFCOInstalled()) {
+        if (m_isBFCOEnabled) {
             ResetBFCOAttackState(a_actor);
         }
 
@@ -179,7 +184,7 @@ namespace CombatAI
         }
 
         // Reset BFCO attack state if BFCO is installed
-        if (IsBFCOInstalled()) {
+        if (m_isBFCOEnabled) {
             ResetBFCOAttackState(a_actor);
         }
 
@@ -240,34 +245,6 @@ namespace CombatAI
         return true;
     }
 
-    bool ActionExecutor::IsBFCOInstalled() const
-    {
-        // Check config first
-        auto& config = Config::GetInstance();
-        if (!config.GetModIntegrations().enableBFCOIntegration) {
-            return false;
-        }
-
-        // Check if BFCO plugin is loaded
-        auto dataHandler = RE::TESDataHandler::GetSingleton();
-        if (!dataHandler) {
-            return false;
-        }
-        
-        auto bfcoPlugin = dataHandler->LookupModByName("BFCO NG.esp");
-
-        if (!bfco_integrated_debug_shown) {
-            if (bfcoPlugin) {
-                LOG_INFO("BFCO plugin found");
-            } else {
-                LOG_INFO("BFCO plugin not found. will use vanilla combat");
-            }
-            bfco_integrated_debug_shown = true;
-        }
-
-        return bfcoPlugin != nullptr;
-    }
-
     bool ActionExecutor::IsCPRAvailable(RE::Actor* a_actor) const
     {
         if (!a_actor) {
@@ -285,21 +262,12 @@ namespace CombatAI
         bool enableCircling = false;
         bool hasVariable = a_actor->GetGraphVariableBool("CPR_EnableCircling", enableCircling);
         
-        // If we can read the variable, CPR is available
-        if (!cpr_integrated_debug_shown) {
-            if (hasVariable) {
-                LOG_DEBUG("CPR graph variables available");
-            } else {
-                LOG_DEBUG("CPR graph variables not available");
-            }
-            cpr_integrated_debug_shown = true;
-        }
         return hasVariable;
     }
 
     void ActionExecutor::ResetBFCOAttackState(RE::Actor* a_actor)
     {
-        if (!a_actor || !IsBFCOInstalled()) {
+        if (!a_actor || !m_isBFCOEnabled) {
             return;
         }
 
@@ -395,9 +363,9 @@ namespace CombatAI
             }
         }
 
-        if (IsBFCOInstalled()) {
-            ResetBFCOAttackState(a_actor);
+        if (m_isBFCOEnabled) {
             a_actor->SetGraphVariableInt("NEW_BFCO_IsNormalAttacking", 1);
+            a_actor->SetGraphVariableInt("NEW_BFCO_IsPowerAttacking", 0);
         }
 
         return NotifyAnimation(a_actor, "attackStart");
@@ -419,9 +387,9 @@ namespace CombatAI
             }
         }
 
-        if (IsBFCOInstalled()) {
-            ResetBFCOAttackState(a_actor);
+        if (m_isBFCOEnabled) {
             a_actor->SetGraphVariableInt("NEW_BFCO_IsPowerAttacking", 1);
+            a_actor->SetGraphVariableInt("NEW_BFCO_IsNormalAttacking", 0);
             return NotifyAnimation(a_actor, "attackStart");
         }
 

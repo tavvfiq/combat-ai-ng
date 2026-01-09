@@ -14,6 +14,10 @@ namespace CombatAI
         if (config.GetModIntegrations().enablePrecisionIntegration) {
             PrecisionIntegration::GetInstance().Initialize();
         }
+
+        if (config.GetModIntegrations().enableBFCOIntegration) {
+            m_executor.EnableBFCO(true);
+        }
         
         // Set processing interval
         m_processInterval = config.GetGeneral().processingInterval;
@@ -30,7 +34,7 @@ namespace CombatAI
 
     void CombatDirector::ProcessActor(RE::Actor* a_actor, float a_deltaTime)
     {
-        if (!ShouldProcessActor(a_actor)) {
+        if (!ShouldProcessActor(a_actor, a_deltaTime)) {
             return;
         }
 
@@ -93,15 +97,6 @@ namespace CombatAI
 
     void CombatDirector::Update(float a_deltaTime)
     {
-        // Update humanizer
-        m_humanizer.Update(a_deltaTime);
-
-        // Update processing timer
-        m_processTimer += a_deltaTime;
-        if (m_processTimer > m_processInterval) {
-            m_processTimer = 0.0f;
-        }
-
         // Periodic cleanup (from config)
         static float cleanupTimer = 0.0f;
         auto& config = Config::GetInstance();
@@ -125,9 +120,20 @@ namespace CombatAI
                 ++it;
             }
         }
+
+        // Also clean up orphaned timers (actors removed from processedActors but timer still exists)
+        auto timerIt = m_actorProcessTimers.begin();
+        while (timerIt != m_actorProcessTimers.end()) {
+            RE::Actor* actor = timerIt->first;
+            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+                timerIt = m_actorProcessTimers.erase(timerIt);
+            } else {
+                ++timerIt;
+            }
+        }
     }
 
-    bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor)
+    bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime)
     {
         if (!a_actor) {
             return false;
@@ -173,6 +179,24 @@ namespace CombatAI
         if (!a_actor->IsAIEnabled()) {
             return false;
         }
+
+        // Throttle processing: only process at configured interval
+        auto timerIt = m_actorProcessTimers.find(a_actor);
+        if (timerIt == m_actorProcessTimers.end()) {
+            // First time processing this actor, initialize timer
+            m_actorProcessTimers[a_actor] = 0.0f;
+            return true;
+        }
+        
+        m_actorProcessTimers[a_actor] += a_deltaTime;
+        
+        // Only process if interval has passed
+        if (m_actorProcessTimers[a_actor] < m_processInterval) {
+            return false; // Skip processing this frame
+        }
+        
+        // Reset timer for next interval
+        m_actorProcessTimers[a_actor] = 0.0f;
 
         return true;
     }

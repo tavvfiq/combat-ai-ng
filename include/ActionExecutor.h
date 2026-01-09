@@ -17,6 +17,8 @@ namespace CombatAI
         // Execute a decision result
         bool Execute(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
 
+        void EnableBFCO(bool isEnabled);
+
     private:
         // Execute bash action
         bool ExecuteBash(RE::Actor* a_actor);
@@ -54,9 +56,6 @@ namespace CombatAI
         // Helper: Set movement via animation graph (if possible)
         bool SetMovementDirection(RE::Actor* a_actor, const RE::NiPoint3& a_direction, float a_intensity);
 
-        // Helper: Check if BFCO is installed
-        bool IsBFCOInstalled() const;
-
         // Helper: Check if CPR is available (check for graph variable support)
         bool IsCPRAvailable(RE::Actor* a_actor) const;
 
@@ -83,5 +82,6 @@ namespace CombatAI
 
         // Dodge system
         DodgeSystem m_dodgeSystem;
+        bool m_isBFCOEnabled = false;
     };
 }

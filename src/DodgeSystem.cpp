@@ -93,10 +93,6 @@ namespace CombatAI
         // Trigger dodge animation
         bool success = a_actor->NotifyAnimationGraph(RE::BSFixedString(dodgeEvent.c_str()));
 
-        if (success) {
-            LOG_DEBUG("Dodge executed: {} for actor {:x}", dodgeEvent, a_actor->GetFormID());
-        }
-
         return success;
     }
 

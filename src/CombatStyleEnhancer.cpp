@@ -135,13 +135,13 @@ namespace CombatAI
         if (result.action == ActionType::Retreat) {
             float retreatThreshold = a_style ? a_style->closeRangeData.fallbackMult * 0.1f : 0.15f;
             if (a_state.self.healthPercent > retreatThreshold) {
-                result.priority -= 1;
+                result.priority = (std::max)(0, result.priority - 1);
             }
         }
 
         // Don't use sprint attacks (duelists prefer precision)
         if (result.action == ActionType::SprintAttack) {
-            result.priority -= 1;
+            result.priority = (std::max)(0, result.priority - 1);
         }
 
         return result;
@@ -193,14 +193,20 @@ namespace CombatAI
     {
         DecisionResult result = a_decision;
 
+        if (result.action == ActionType::Advancing) {
+            result.priority += 1;
+        }
+
         // Aggressive style: Less defensive, more offensive
         if (result.action == ActionType::Retreat) {
             // Use combat style fallback multiplier to determine retreat threshold
             float retreatThreshold = a_style ? a_style->closeRangeData.fallbackMult * 0.05f : 0.1f;
             if (a_state.self.healthPercent > retreatThreshold) {
-                result.priority -= 1;
+                result.priority = (std::max)(0, result.priority - 1);
             }
         }
+
+
 
         // Boost offensive actions
         if (result.action == ActionType::Bash || result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
@@ -225,7 +231,7 @@ namespace CombatAI
         DecisionResult result = a_decision;
 
         // Defensive style: More cautious, prefers evasion and retreat
-        if (result.action == ActionType::Retreat) {
+        if (result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
             result.priority += 1;
         }
 
@@ -252,7 +258,7 @@ namespace CombatAI
 
         // Magic style: Prefers distance, less melee
         if (result.action == ActionType::Bash) {
-            result.priority = (std::max)(0, result.priority - 2); // Strongly discourage bash
+            result.priority = (std::max)(0, result.priority - 1); // Strongly discourage bash
         }
 
         // Discourage melee attacks
@@ -279,7 +285,7 @@ namespace CombatAI
 
         // Ranged style: Similar to magic, prefers distance
         if (result.action == ActionType::Bash) {
-            result.priority = (std::max)(0, result.priority - 2); // Strongly discourage bash
+            result.priority = (std::max)(0, result.priority - 1); // Strongly discourage bash
         }
 
         // Discourage melee attacks

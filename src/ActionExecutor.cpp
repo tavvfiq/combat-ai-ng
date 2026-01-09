@@ -60,6 +60,14 @@ namespace CombatAI
         case ActionType::Dodge:
             success = ExecuteDodge(a_actor, a_state);
             break;
+        
+        case ActionType::Backoff:
+            success = ExecuteBackoff(a_actor, a_decision, a_state);
+            break;
+        
+        case ActionType::Advancing:
+            success = ExecuteAdvancing(a_actor, a_decision, a_state);
+            break;
 
         default:
             return false;
@@ -144,7 +152,7 @@ namespace CombatAI
         // Try CPR fallback if available
         if (IsCPRAvailable(a_actor)) {
             // Calculate fallback parameters
-            float retreatDistance = a_state.target.isValid ? a_state.target.distance : 500.0f; // Default if no valid target
+            float retreatDistance = a_state.target.isValid ? a_state.target.distance : 600.0f; // Default if no valid target
             float minDist = retreatDistance;
             float maxDist = retreatDistance * 1.5f;
             float minWait = 1.5f; // TODO: make configurable
@@ -308,6 +316,11 @@ namespace CombatAI
             return;
         }
 
+        // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
+        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
+        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
+        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
+
         // Enable CPR circling
         a_actor->SetGraphVariableBool("CPR_EnableCircling", true);
         a_actor->SetGraphVariableFloat("CPR_CirclingDistMin", a_minDist);
@@ -323,12 +336,34 @@ namespace CombatAI
             return;
         }
 
+        // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
+        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
+        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
+        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
+
         // Enable CPR fallback
         a_actor->SetGraphVariableBool("CPR_EnableFallback", true);
         a_actor->SetGraphVariableFloat("CPR_FallbackDistMin", a_minDist);
         a_actor->SetGraphVariableFloat("CPR_FallbackDistMax", a_maxDist);
         a_actor->SetGraphVariableFloat("CPR_FallbackWaitTimeMin", a_minWait);
         a_actor->SetGraphVariableFloat("CPR_FallbackWaitTimeMax", a_maxWait);
+    }
+
+    void ActionExecutor::SetCPRBackoff(RE::Actor* a_actor, float a_minDistMult)
+    {
+        if (!a_actor) {
+            return;
+        }
+
+        // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
+        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
+        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
+        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
+        
+        // Enable CPR backoff
+        a_actor->SetGraphVariableBool("CPR_EnableBackoff", true);
+        a_actor->SetGraphVariableFloat("CPR_BackoffMinDistMult", a_minDistMult);
+        a_actor->SetGraphVariableFloat("CPR_BackoffChance", 1.0f); // Always backoff when triggered
     }
 
     void ActionExecutor::DisableCPR(RE::Actor* a_actor)
@@ -422,5 +457,84 @@ namespace CombatAI
         }
         
         a_actor->SetGraphVariableBool("CombatAI_NG_Jump", false);
+    }
+
+    bool ActionExecutor::ExecuteBackoff(RE::Actor* a_actor, const DecisionResult& a_decision, [[maybe_unused]]const ActorStateData& a_state)
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Try CPR backoff if available
+        if (IsCPRAvailable(a_actor)) {
+            // Enable CPR backoff
+            SetCPRBackoff(a_actor, 1.5f);
+            return true;
+        }
+
+        // Fallback to direct movement control
+        return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+    }
+
+    void ActionExecutor::SetCPRAdvancing(RE::Actor* a_actor, float a_innerRadiusMin, float a_innerRadiusMid, float a_innerRadiusMax,
+        float a_outerRadiusMin, float a_outerRadiusMid, float a_outerRadiusMax)
+    {
+        if (!a_actor) {
+            return;
+        }
+
+        // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
+        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
+        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
+        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
+
+        // Enable CPR advance radius override
+        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", true);
+        a_actor->SetGraphVariableFloat("CPR_InnerRadiusMin", a_innerRadiusMin);
+        a_actor->SetGraphVariableFloat("CPR_InnerRadiusMid", a_innerRadiusMid);
+        a_actor->SetGraphVariableFloat("CPR_InnerRadiusMax", a_innerRadiusMax);
+        a_actor->SetGraphVariableFloat("CPR_OuterRadiusMin", a_outerRadiusMin);
+        a_actor->SetGraphVariableFloat("CPR_OuterRadiusMid", a_outerRadiusMid);
+        a_actor->SetGraphVariableFloat("CPR_OuterRadiusMax", a_outerRadiusMax);
+    }
+
+    bool ActionExecutor::ExecuteAdvancing(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Try CPR advancing if available
+        if (IsCPRAvailable(a_actor)) {
+            // Calculate advancing parameters based on current distance and weapon reach
+            float currentDistance = a_state.target.isValid ? a_state.target.distance : 1000.0f;
+            float weaponReach = a_state.weaponReach > 0.0f ? a_state.weaponReach : 150.0f;
+            
+            // Calculate desired engagement distance (sprint attack range)
+            auto& config = Config::GetInstance();
+            float desiredMinDist = config.GetDecisionMatrix().sprintAttackMinDistance;
+            float desiredMaxDist = config.GetDecisionMatrix().sprintAttackMaxDistance;
+            
+            // Set inner radius (minimum engagement distance)
+            float innerRadiusMin = desiredMinDist * 0.8f;
+            float innerRadiusMid = desiredMinDist;
+            float innerRadiusMax = desiredMinDist * 1.2f;
+            
+            // Set outer radius (maximum engagement distance - where we want to advance to)
+            float outerRadiusMin = desiredMaxDist * 0.9f;
+            float outerRadiusMid = desiredMaxDist;
+            // Set outer radius - must be larger than current distance to trigger advancing
+            float baseOuterRadiusMax = desiredMaxDist * 1.1f;
+            // If current distance is beyond the base outer radius, expand it
+            float outerRadiusMax = (std::max)(baseOuterRadiusMax, currentDistance * 0.95f);
+            
+            // Enable CPR advancing
+            SetCPRAdvancing(a_actor, innerRadiusMin, innerRadiusMid, innerRadiusMax,
+                        outerRadiusMin, outerRadiusMid, outerRadiusMax);
+            return true;
+        }
+
+        // Fallback to direct movement control (move towards target)
+        return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
     }
 }

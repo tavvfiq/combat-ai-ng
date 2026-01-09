@@ -72,15 +72,6 @@ namespace CombatAI
         auto& config = Config::GetInstance();
         // Execute decision
         if (decision.action != ActionType::None) {
-            if (config.GetGeneral().enableDebugLog) {
-                auto selectedRef = RE::Console::GetSelectedRef();
-                if (selectedRef && a_actor == selectedRef.get()) {
-                    std::ostringstream logs;
-                    logs << "Decision made: Action = " << static_cast<int>(decision.action);
-                    ConsolePrint(logs.str().c_str());
-                }
-            }
-            
             bool success = m_executor.Execute(a_actor, decision, state);
 
             if (success) {

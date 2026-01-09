@@ -17,20 +17,29 @@ namespace CombatAI
         DecisionResult Evaluate(RE::Actor* a_actor, const ActorStateData& a_state);
 
     private:
-        // Priority 1: Interrupt (Counter-Play)
+        // Interrupt (Counter-Play)
         DecisionResult EvaluateInterrupt(RE::Actor* a_actor, const ActorStateData& a_state);
 
-        // Priority 2: Evasion (Tactical)
+        // Evasion (Tactical)
         DecisionResult EvaluateEvasion(RE::Actor* a_actor, const ActorStateData& a_state);
 
-        // Priority 3: Survival (Fallback)
+        // Survival (Fallback)
         DecisionResult EvaluateSurvival(RE::Actor* a_actor, const ActorStateData& a_state);
 
-        // Priority 4: Offense
+        // Offense
         DecisionResult EvaluateOffense(RE::Actor* a_actor, const ActorStateData& a_state);
+
+        // Backoff (when target is casting/drawing bow)
+        DecisionResult EvaluateBackoff(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // Helper: Calculate strafe direction (perpendicular to target)
         RE::NiPoint3 CalculateStrafeDirection(const ActorStateData& a_state);
+
+        // Helper: Select best decision when multiple have same priority
+        DecisionResult SelectBestFromTie(const std::vector<DecisionResult>& a_decisions, const ActorStateData& a_state);
+
+        // Helper: Calculate score for tie-breaking
+        float CalculateDecisionScore(const DecisionResult& a_decision, const ActorStateData& a_state);
 
         // CombatStyleEnhancer
         CombatStyleEnhancer m_styleEnhancer;

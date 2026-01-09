@@ -25,6 +25,7 @@ namespace CombatAI
         bool isAttacking = false;
         bool isPowerAttacking = false;
         bool isCasting = false;
+        bool isDrawingBow = false;
         RE::KNOCK_STATE_ENUM knockState = RE::KNOCK_STATE_ENUM::kNormal;
         float distance = 0.0f;
         float orientationDot = 0.0f; // Dot product: 1.0 = facing directly at me, -1.0 = facing away

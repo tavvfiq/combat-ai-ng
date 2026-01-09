@@ -15,7 +15,9 @@ namespace CombatAI
         Attack, // 5
         SprintAttack, // 6
         Jump, // 7
-        Dodge // 8
+        Dodge, // 8
+        Backoff, //9
+        Advancing //10
     };
 
     // Decision result containing action to take

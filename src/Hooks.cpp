@@ -16,7 +16,17 @@ namespace CombatAI
                 // Call original function first
                 func(a_actor, a_delta);
                 
-                // Then run our custom logic (post-hook)
+                // Accumulate delta time and call Update when threshold is reached
+                static float accumulatedDelta = 0.0f;
+                accumulatedDelta += a_delta;
+                
+                // Call Update approximately once per frame (~60 FPS = 0.016s)
+                if (accumulatedDelta >= 0.016f) {
+                    CombatDirector::GetInstance().Update(accumulatedDelta);
+                    accumulatedDelta = 0.0f;
+                }
+                
+                // Then run our custom logic per-actor (post-hook)
                 if (a_actor) {
                     CombatDirector::GetInstance().ProcessActor(a_actor, RE::GetSecondsSinceLastFrame());
                 }

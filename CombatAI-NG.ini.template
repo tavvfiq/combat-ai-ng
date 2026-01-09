@@ -113,10 +113,10 @@ OffenseReachMultiplier = 1.0
 PowerAttackStaminaThreshold = 0.5
 
 # Minimum distance for sprint attack (game units)
-SprintAttackMinDistance = 300.0
+SprintAttackMinDistance = 200.0
 
 # Maximum distance for sprint attack (game units)
-SprintAttackMaxDistance = 800.0
+SprintAttackMaxDistance = 400.0
 
 # Stamina threshold for sprint attacks (0.0 to 1.0)
 # NPCs will only sprint attack if stamina is above this

@@ -42,6 +42,12 @@ namespace CombatAI
         // Execute jump (actually executes dodge with CombatAI_NG_Jump=true for OAR animation replacement)
         bool ExecuteJump(RE::Actor* a_actor, const ActorStateData& a_state);
 
+        // Execute backoff movement (away from target when they're casting/drawing)
+        bool ExecuteBackoff(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
+
+        // Execute advancing movement (closing distance when too far)
+        bool ExecuteAdvancing(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
+
         // Helper: Trigger animation graph event
         bool NotifyAnimation(RE::Actor* a_actor, const char* a_eventName);
 
@@ -62,6 +68,12 @@ namespace CombatAI
 
         // Helper: Set CPR fallback parameters
         void SetCPRFallback(RE::Actor* a_actor, float a_minDist, float a_maxDist, float a_minWait, float a_maxWait);
+
+        // Helper: Set CPR backoff parameters
+        void SetCPRBackoff(RE::Actor* a_actor, float a_minDistMult);
+
+        // Helper: Set CPR advancing parameters
+        void SetCPRAdvancing(RE::Actor* a_actor, float a_innerRadiusMin, float a_innerRadiusMid, float a_innerRadiusMax, float a_outerRadiusMin, float a_outerRadiusMid, float a_outerRadiusMax);
 
         // Helper: Disable all CPR behaviors
         void DisableCPR(RE::Actor* a_actor);

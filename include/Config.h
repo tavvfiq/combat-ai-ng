@@ -20,10 +20,24 @@ namespace CombatAI
         {
             float baseReactionDelayMs = 150.0f;
             float reactionVarianceMs = 100.0f;
+            float level1ReactionDelayMs = 200.0f;
+            float level50ReactionDelayMs = 100.0f;
             float level1MistakeChance = 0.4f;
             float level50MistakeChance = 0.0f;
             float bashCooldownSeconds = 3.0f;
             float dodgeCooldownSeconds = 2.0f;
+            float jumpCooldownSeconds = 3.0f;
+            // Action-specific mistake chance multipliers
+            float bashMistakeMultiplier = 0.5f;
+            float dodgeMistakeMultiplier = 1.5f;
+            float jumpMistakeMultiplier = 1.5f;
+            float strafeMistakeMultiplier = 1.2f;
+            float powerAttackMistakeMultiplier = 1.0f;
+            float attackMistakeMultiplier = 0.8f;
+            float sprintAttackMistakeMultiplier = 1.2f;
+            float retreatMistakeMultiplier = 0.3f;
+            float backoffMistakeMultiplier = 0.5f;
+            float advancingMistakeMultiplier = 0.7f;
         };
 
         struct DodgeSystemSettings

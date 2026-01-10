@@ -6,9 +6,9 @@ namespace CombatAI
 {
     namespace
     {
-        // Thread-safe random number generator
-        std::random_device g_rd;
-        std::mt19937 g_gen(g_rd());
+        // Thread-local random number generators (one per thread)
+        thread_local std::random_device g_rd;
+        thread_local std::mt19937 g_gen(g_rd());
     }
 
     bool Humanizer::CanReact(RE::Actor* a_actor, float a_deltaTime)
@@ -17,11 +17,26 @@ namespace CombatAI
             return false;
         }
 
+        // Only process actors in combat - clean up if not in combat
+        if (!a_actor->IsInCombat()) {
+            // Remove reaction state if actor left combat
+            auto it = m_reactionStates.find(a_actor);
+            if (it != m_reactionStates.end()) {
+                m_reactionStates.erase(it);
+            }
+            return false;
+        }
+
         auto& state = m_reactionStates[a_actor];
 
         // Initialize delay if not set
         if (state.reactionDelay == 0.0f) {
             InitializeReactionDelay(a_actor);
+        }
+
+        // If already can react, return true (don't reset here - reset after action is executed)
+        if (state.canReact) {
+            return true;
         }
 
         // Update timer
@@ -36,14 +51,29 @@ namespace CombatAI
         return false;
     }
 
-    bool Humanizer::ShouldMakeMistake(RE::Actor* a_actor)
+    void Humanizer::ResetReactionState(RE::Actor* a_actor)
+    {
+        if (!a_actor) {
+            return;
+        }
+
+        auto it = m_reactionStates.find(a_actor);
+        if (it != m_reactionStates.end()) {
+            // Reset timer and delay, will be re-initialized on next CanReact call
+            it->second.reactionTimer = 0.0f;
+            it->second.reactionDelay = 0.0f;
+            it->second.canReact = false;
+        }
+    }
+
+    bool Humanizer::ShouldMakeMistake(RE::Actor* a_actor, ActionType a_action)
     {
         if (!a_actor) {
             return false;
         }
 
         std::uint16_t level = a_actor->GetLevel();
-        float mistakeChance = CalculateMistakeChance(level);
+        float mistakeChance = CalculateMistakeChance(level, a_action);
 
         if (mistakeChance <= 0.0f) {
             return false;
@@ -53,7 +83,7 @@ namespace CombatAI
         return dist(g_gen) < mistakeChance;
     }
 
-    bool Humanizer::IsOnCooldown(RE::Actor* a_actor, const std::string& a_actionName)
+    bool Humanizer::IsOnCooldown(RE::Actor* a_actor, ActionType a_action)
     {
         if (!a_actor) {
             return true; // Safe default
@@ -65,7 +95,7 @@ namespace CombatAI
         }
 
         auto& cooldowns = it->second.cooldowns;
-        auto cooldownIt = cooldowns.find(a_actionName);
+        auto cooldownIt = cooldowns.find(a_action);
         if (cooldownIt == cooldowns.end()) {
             return false;
         }
@@ -73,53 +103,150 @@ namespace CombatAI
         return cooldownIt->second > 0.0f;
     }
 
-    void Humanizer::MarkActionUsed(RE::Actor* a_actor, const std::string& a_actionName)
+    float Humanizer::GetCooldownForAction(ActionType a_action) const
+    {
+        switch (a_action) {
+            case ActionType::Bash:
+                return m_config.bashCooldownSeconds;
+            case ActionType::Dodge:
+                // Strafe uses dodge cooldown (TK Dodge system)
+                return m_config.dodgeCooldownSeconds;
+            case ActionType::Jump:
+                return m_config.jumpCooldownSeconds;
+            default:
+                // Actions without cooldown return 0
+                return 0.0f;
+        }
+    }
+
+    void Humanizer::MarkActionUsed(RE::Actor* a_actor, ActionType a_action)
     {
         if (!a_actor) {
             return;
         }
 
+        float cooldown = GetCooldownForAction(a_action);
+        if (cooldown <= 0.0f) {
+            return; // No cooldown for this action
+        }
+
         auto& cooldownState = m_cooldownStates[a_actor];
         
-        if (a_actionName == "bash") {
-            cooldownState.cooldowns["bash"] = m_config.bashCooldownSeconds;
-        } else if (a_actionName == "dodge") {
-            // Dodge cooldown (TK Dodge may have its own cooldown, but we add ours too)
-            cooldownState.cooldowns["dodge"] = 2.0f; // 2 second cooldown for dodge
-        } else if (a_actionName == "jump") {
-            // Jump cooldown - prevent spam jumping
-            cooldownState.cooldowns["jump"] = 3.0f; // 3 second cooldown for jump
-        }
-        // Add more actions as needed
+        // Map Strafe to Dodge cooldown (they share the same cooldown)
+        ActionType cooldownKey = (a_action == ActionType::Strafe) ? ActionType::Dodge : a_action;
+        cooldownState.cooldowns[cooldownKey] = cooldown;
     }
 
     void Humanizer::Update(float a_deltaTime)
     {
-        // Update cooldowns
-        for (auto& [actor, cooldownState] : m_cooldownStates) {
-            for (auto& [action, time] : cooldownState.cooldowns) {
-                if (time > 0.0f) {
-                    time -= a_deltaTime;
-                    if (time < 0.0f) {
-                        time = 0.0f;
+        // Update cooldowns and clean up expired ones
+        auto actorIt = m_cooldownStates.begin();
+        while (actorIt != m_cooldownStates.end()) {
+            auto& cooldowns = actorIt->second.cooldowns;
+            auto it = cooldowns.begin();
+            while (it != cooldowns.end()) {
+                if (it->second > 0.0f) {
+                    it->second -= a_deltaTime;
+                    if (it->second <= 0.0f) {
+                        // Cooldown expired, remove from map to save memory
+                        it = cooldowns.erase(it);
+                    } else {
+                        ++it;
                     }
+                } else {
+                    // Already zero or negative, remove it
+                    it = cooldowns.erase(it);
                 }
+            }
+            
+            // If all cooldowns expired, remove the entire actor entry
+            if (cooldowns.empty()) {
+                actorIt = m_cooldownStates.erase(actorIt);
+            } else {
+                ++actorIt;
+            }
+        }
+    }
+
+    void Humanizer::Cleanup()
+    {
+        // Remove invalid actors from reaction states
+        auto reactionIt = m_reactionStates.begin();
+        while (reactionIt != m_reactionStates.end()) {
+            RE::Actor* actor = reactionIt->first;
+            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+                reactionIt = m_reactionStates.erase(reactionIt);
+            } else {
+                ++reactionIt;
             }
         }
 
-        // Clean up invalid actors (optional - can be expensive)
-        // For now, we'll let the map grow. Could add cleanup logic if needed.
+        // Remove invalid actors from cooldown states
+        auto cooldownIt = m_cooldownStates.begin();
+        while (cooldownIt != m_cooldownStates.end()) {
+            RE::Actor* actor = cooldownIt->first;
+            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+                cooldownIt = m_cooldownStates.erase(cooldownIt);
+            } else {
+                ++cooldownIt;
+            }
+        }
     }
 
-    float Humanizer::CalculateMistakeChance(std::uint16_t a_level) const
+    float Humanizer::GetMistakeMultiplierForAction(ActionType a_action) const
+    {
+        switch (a_action) {
+            case ActionType::Bash:
+                return m_config.bashMistakeMultiplier;
+            case ActionType::Dodge:
+                return m_config.dodgeMistakeMultiplier;
+            case ActionType::Jump:
+                return m_config.jumpMistakeMultiplier;
+            case ActionType::Strafe:
+                return m_config.strafeMistakeMultiplier;
+            case ActionType::PowerAttack:
+                return m_config.powerAttackMistakeMultiplier;
+            case ActionType::Attack:
+                return m_config.attackMistakeMultiplier;
+            case ActionType::SprintAttack:
+                return m_config.sprintAttackMistakeMultiplier;
+            case ActionType::Retreat:
+                return m_config.retreatMistakeMultiplier;
+            case ActionType::Backoff:
+                return m_config.backoffMistakeMultiplier;
+            case ActionType::Advancing:
+                return m_config.advancingMistakeMultiplier;
+            default:
+                return 1.0f; // Default multiplier for unknown actions
+        }
+    }
+
+    float Humanizer::CalculateMistakeChance(std::uint16_t a_level, ActionType a_action) const
+    {
+        // Calculate base mistake chance based on level
+        float baseMistakeChance;
+        if (a_level >= 50) {
+            baseMistakeChance = m_config.level50MistakeChance;
+        } else {
+            // Linear interpolation between level 1 and 50
+            float t = static_cast<float>(a_level - 1) / 49.0f;
+            baseMistakeChance = m_config.level1MistakeChance * (1.0f - t) + m_config.level50MistakeChance * t;
+        }
+
+        // Apply action-specific multiplier
+        float multiplier = GetMistakeMultiplierForAction(a_action);
+        return baseMistakeChance * multiplier;
+    }
+
+    float Humanizer::CalculateReactionDelay(std::uint16_t a_level) const
     {
         if (a_level >= 50) {
-            return m_config.level50MistakeChance;
+            return m_config.level50ReactionDelayMs;
         }
 
         // Linear interpolation between level 1 and 50
         float t = static_cast<float>(a_level - 1) / 49.0f;
-        return m_config.level1MistakeChance * (1.0f - t) + m_config.level50MistakeChance * t;
+        return m_config.level1ReactionDelayMs * (1.0f - t) + m_config.level50ReactionDelayMs * t;
     }
 
     void Humanizer::InitializeReactionDelay(RE::Actor* a_actor)
@@ -130,10 +257,14 @@ namespace CombatAI
 
         auto& state = m_reactionStates[a_actor];
 
-        // Random delay: base + variance
+        // Calculate base delay based on actor level
+        std::uint16_t level = a_actor->GetLevel();
+        float baseDelay = CalculateReactionDelay(level);
+
+        // Random variance: base + variance
         std::uniform_real_distribution<float> dist(0.0f, m_config.reactionVarianceMs);
         float variance = dist(g_gen);
-        state.reactionDelay = m_config.baseReactionDelayMs + variance;
+        state.reactionDelay = baseDelay + variance;
         state.reactionTimer = 0.0f;
         state.canReact = false;
     }

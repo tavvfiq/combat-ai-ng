@@ -26,9 +26,23 @@ namespace CombatAI
         Humanizer::Config humanizerConfig;
         humanizerConfig.baseReactionDelayMs = config.GetHumanizer().baseReactionDelayMs;
         humanizerConfig.reactionVarianceMs = config.GetHumanizer().reactionVarianceMs;
+        humanizerConfig.level1ReactionDelayMs = config.GetHumanizer().level1ReactionDelayMs;
+        humanizerConfig.level50ReactionDelayMs = config.GetHumanizer().level50ReactionDelayMs;
         humanizerConfig.level1MistakeChance = config.GetHumanizer().level1MistakeChance;
         humanizerConfig.level50MistakeChance = config.GetHumanizer().level50MistakeChance;
         humanizerConfig.bashCooldownSeconds = config.GetHumanizer().bashCooldownSeconds;
+        humanizerConfig.dodgeCooldownSeconds = config.GetHumanizer().dodgeCooldownSeconds;
+        humanizerConfig.jumpCooldownSeconds = config.GetHumanizer().jumpCooldownSeconds;
+        humanizerConfig.bashMistakeMultiplier = config.GetHumanizer().bashMistakeMultiplier;
+        humanizerConfig.dodgeMistakeMultiplier = config.GetHumanizer().dodgeMistakeMultiplier;
+        humanizerConfig.jumpMistakeMultiplier = config.GetHumanizer().jumpMistakeMultiplier;
+        humanizerConfig.strafeMistakeMultiplier = config.GetHumanizer().strafeMistakeMultiplier;
+        humanizerConfig.powerAttackMistakeMultiplier = config.GetHumanizer().powerAttackMistakeMultiplier;
+        humanizerConfig.attackMistakeMultiplier = config.GetHumanizer().attackMistakeMultiplier;
+        humanizerConfig.sprintAttackMistakeMultiplier = config.GetHumanizer().sprintAttackMistakeMultiplier;
+        humanizerConfig.retreatMistakeMultiplier = config.GetHumanizer().retreatMistakeMultiplier;
+        humanizerConfig.backoffMistakeMultiplier = config.GetHumanizer().backoffMistakeMultiplier;
+        humanizerConfig.advancingMistakeMultiplier = config.GetHumanizer().advancingMistakeMultiplier;
         m_humanizer.SetConfig(humanizerConfig);
     }
 
@@ -53,24 +67,14 @@ namespace CombatAI
         DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
 
         // Check if should make mistake (humanizer)
-        if (decision.action != ActionType::None && m_humanizer.ShouldMakeMistake(a_actor)) {
+        if (decision.action != ActionType::None && m_humanizer.ShouldMakeMistake(a_actor, decision.action)) {
             // Make a mistake - don't execute the action
             return;
         }
 
-        // Check cooldowns
-        if (decision.action == ActionType::Bash) {
-            if (m_humanizer.IsOnCooldown(a_actor, "bash")) {
-                return; // On cooldown
-            }
-        } else if (decision.action == ActionType::Dodge) {
-            if (m_humanizer.IsOnCooldown(a_actor, "dodge")) {
-                return; // Dodge on cooldown
-            }
-        } else if (decision.action == ActionType::Jump) {
-            if (m_humanizer.IsOnCooldown(a_actor, "jump")) {
-                return; // Jump on cooldown
-            }
+        // Check cooldowns (only actions with cooldowns will return true)
+        if (m_humanizer.IsOnCooldown(a_actor, decision.action)) {
+            return; // On cooldown
         }
 
         auto& config = Config::GetInstance();
@@ -80,14 +84,10 @@ namespace CombatAI
 
             if (success) {
                 // Mark action as used (start cooldown)
-                if (decision.action == ActionType::Bash) {
-                    m_humanizer.MarkActionUsed(a_actor, "bash");
-                } else if (decision.action == ActionType::Strafe) {
-                    // Dodge cooldown is handled by TK Dodge system
-                    m_humanizer.MarkActionUsed(a_actor, "dodge");
-                } else if (decision.action == ActionType::Jump) {
-                    m_humanizer.MarkActionUsed(a_actor, "jump");
-                }
+                m_humanizer.MarkActionUsed(a_actor, decision.action);
+
+                // Reset reaction state for next reaction
+                m_humanizer.ResetReactionState(a_actor);
 
                 // Track actor
                 m_processedActors.insert(a_actor);
@@ -131,6 +131,9 @@ namespace CombatAI
                 ++timerIt;
             }
         }
+
+        // Clean up Humanizer state for invalid actors
+        m_humanizer.Cleanup();
     }
 
     bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime)

@@ -62,18 +62,48 @@ namespace CombatAI
     {
         m_humanizer.baseReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BaseReactionDelayMs", m_humanizer.baseReactionDelayMs));
         m_humanizer.reactionVarianceMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "ReactionVarianceMs", m_humanizer.reactionVarianceMs));
+        m_humanizer.level1ReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level1ReactionDelayMs", m_humanizer.level1ReactionDelayMs));
+        m_humanizer.level50ReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level50ReactionDelayMs", m_humanizer.level50ReactionDelayMs));
         m_humanizer.level1MistakeChance = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level1MistakeChance", m_humanizer.level1MistakeChance));
         m_humanizer.level50MistakeChance = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level50MistakeChance", m_humanizer.level50MistakeChance));
         m_humanizer.bashCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BashCooldownSeconds", m_humanizer.bashCooldownSeconds));
         m_humanizer.dodgeCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "DodgeCooldownSeconds", m_humanizer.dodgeCooldownSeconds));
+        m_humanizer.jumpCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "JumpCooldownSeconds", m_humanizer.jumpCooldownSeconds));
+        
+        // Action-specific mistake chance multipliers
+        m_humanizer.bashMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BashMistakeMultiplier", m_humanizer.bashMistakeMultiplier));
+        m_humanizer.dodgeMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "DodgeMistakeMultiplier", m_humanizer.dodgeMistakeMultiplier));
+        m_humanizer.jumpMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "JumpMistakeMultiplier", m_humanizer.jumpMistakeMultiplier));
+        m_humanizer.strafeMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "StrafeMistakeMultiplier", m_humanizer.strafeMistakeMultiplier));
+        m_humanizer.powerAttackMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "PowerAttackMistakeMultiplier", m_humanizer.powerAttackMistakeMultiplier));
+        m_humanizer.attackMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "AttackMistakeMultiplier", m_humanizer.attackMistakeMultiplier));
+        m_humanizer.sprintAttackMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "SprintAttackMistakeMultiplier", m_humanizer.sprintAttackMistakeMultiplier));
+        m_humanizer.retreatMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "RetreatMistakeMultiplier", m_humanizer.retreatMistakeMultiplier));
+        m_humanizer.backoffMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BackoffMistakeMultiplier", m_humanizer.backoffMistakeMultiplier));
+        m_humanizer.advancingMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "AdvancingMistakeMultiplier", m_humanizer.advancingMistakeMultiplier));
 
         // Clamp values to valid ranges
         m_humanizer.baseReactionDelayMs = (std::max)(0.0f, m_humanizer.baseReactionDelayMs);
         m_humanizer.reactionVarianceMs = (std::max)(0.0f, m_humanizer.reactionVarianceMs);
+        m_humanizer.level1ReactionDelayMs = (std::max)(0.0f, m_humanizer.level1ReactionDelayMs);
+        m_humanizer.level50ReactionDelayMs = (std::max)(0.0f, m_humanizer.level50ReactionDelayMs);
         m_humanizer.level1MistakeChance = ClampValue(m_humanizer.level1MistakeChance, 0.0f, 1.0f);
         m_humanizer.level50MistakeChance = ClampValue(m_humanizer.level50MistakeChance, 0.0f, 1.0f);
         m_humanizer.bashCooldownSeconds = (std::max)(0.0f, m_humanizer.bashCooldownSeconds);
         m_humanizer.dodgeCooldownSeconds = (std::max)(0.0f, m_humanizer.dodgeCooldownSeconds);
+        m_humanizer.jumpCooldownSeconds = (std::max)(0.0f, m_humanizer.jumpCooldownSeconds);
+        
+        // Clamp mistake multipliers to reasonable range (0.0 to 3.0)
+        m_humanizer.bashMistakeMultiplier = ClampValue(m_humanizer.bashMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.dodgeMistakeMultiplier = ClampValue(m_humanizer.dodgeMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.jumpMistakeMultiplier = ClampValue(m_humanizer.jumpMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.strafeMistakeMultiplier = ClampValue(m_humanizer.strafeMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.powerAttackMistakeMultiplier = ClampValue(m_humanizer.powerAttackMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.attackMistakeMultiplier = ClampValue(m_humanizer.attackMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.sprintAttackMistakeMultiplier = ClampValue(m_humanizer.sprintAttackMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.retreatMistakeMultiplier = ClampValue(m_humanizer.retreatMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.backoffMistakeMultiplier = ClampValue(m_humanizer.backoffMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.advancingMistakeMultiplier = ClampValue(m_humanizer.advancingMistakeMultiplier, 0.0f, 3.0f);
     }
 
     void Config::ReadDodgeSystemSettings(CSimpleIniA& a_ini)

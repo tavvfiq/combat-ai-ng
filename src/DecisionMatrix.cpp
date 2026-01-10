@@ -434,8 +434,8 @@ namespace CombatAI
                 bestDecision = a_decisions[i];
             } else if (score == bestScore) {
                 // If scores are equal, add some randomness for variety
-                static std::random_device rd;
-                static std::mt19937 gen(rd());
+                thread_local static std::random_device rd;
+                thread_local static std::mt19937 gen(rd());
                 std::uniform_int_distribution<> dis(0, 1);
                 if (dis(gen) == 1) {
                     bestDecision = a_decisions[i];

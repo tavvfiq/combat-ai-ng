@@ -2,6 +2,9 @@
 #include "CombatDirector.h"
 #include "Config.h"
 #include "PrecisionIntegration.h"
+#include "ActorUtils.h"
+#include "Logger.h"
+#include <sstream>
 
 namespace CombatAI
 {
@@ -16,7 +19,16 @@ namespace CombatAI
         }
 
         if (config.GetModIntegrations().enableBFCOIntegration) {
-            m_executor.EnableBFCO(true);
+            // Check if BFCO plugin is loaded
+            auto dataHandler = RE::TESDataHandler::GetSingleton();
+            if (dataHandler) {
+                auto bfcoPlugin = dataHandler->LookupModByName("SCSI-ACTbfco-Main.esp");
+                if (bfcoPlugin) {
+                    m_executor.EnableBFCO(true);
+                }
+            } else {
+                m_executor.EnableBFCO(false);
+            }
         }
         
         // Set processing interval
@@ -56,15 +68,25 @@ namespace CombatAI
         m_humanizer.Update(a_deltaTime);
 
         // Check if actor can react (reaction delay)
-        if (!m_humanizer.CanReact(a_actor, a_deltaTime)) {
-            return;
+        // For movement actions, allow continuous execution even during reaction delay
+        // (we check this after getting the decision to see if it's a movement action)
+        bool canReact = m_humanizer.CanReact(a_actor, a_deltaTime);
+        
+        // Gather state first to check decision type
+        ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
+        DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
+        
+        // Allow movement actions to execute continuously (bypass reaction delay)
+        bool isMovementAction = (decision.action == ActionType::Strafe || 
+                                decision.action == ActionType::Retreat || 
+                                decision.action == ActionType::Advancing || 
+                                decision.action == ActionType::Backoff);
+        
+        if (!canReact && !isMovementAction) {
+            return; // Not a movement action and can't react yet
         }
 
-        // Gather state
-        ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
-
-        // Make decision
-        DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
+        // State and decision already gathered above for movement action check
 
         // Check if should make mistake (humanizer)
         if (decision.action != ActionType::None && m_humanizer.ShouldMakeMistake(a_actor, decision.action)) {
@@ -86,8 +108,14 @@ namespace CombatAI
                 // Mark action as used (start cooldown)
                 m_humanizer.MarkActionUsed(a_actor, decision.action);
 
-                // Reset reaction state for next reaction
-                m_humanizer.ResetReactionState(a_actor);
+                // For movement actions (Strafe, Retreat, Advancing, Backoff), don't reset reaction state
+                // They need to be continuously applied, not just once
+                // (isMovementAction already declared above)
+                if (!isMovementAction) {
+                    // Reset reaction state for next reaction (only for non-movement actions)
+                    m_humanizer.ResetReactionState(a_actor);
+                }
+                // For movement actions, keep reaction state active so we can continuously apply movement
 
                 // Track actor
                 m_processedActors.insert(a_actor);

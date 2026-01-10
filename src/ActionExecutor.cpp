@@ -14,7 +14,7 @@ namespace CombatAI
 {
     void ActionExecutor::EnableBFCO(bool isEnabled) {
         if (isEnabled) {
-            LOG_INFO("enabling integration with BFCO");
+            LOG_INFO("BFCO integration enabled");
         } else {
             LOG_INFO("integration with BFCO disabled");
         }
@@ -131,10 +131,14 @@ namespace CombatAI
         }
 
         // Try CPR circling if available
-        if (IsCPRAvailable(a_actor)) {
+        // NOTE: CPR only works for melee-only actors (no ranged weapons or magic)
+        // If actor has ranged/magic, CPR won't work, so we fall back to direct movement
+        bool isMeleeOnly = IsMeleeOnlyActor(a_actor);
+        if (IsCPRAvailable(a_actor) && isMeleeOnly) {
             // Calculate circling parameters based on distance and direction
-            float minDist = a_state.target.distance * 0.8f;
-            float maxDist = a_state.target.distance * 1.2f;
+            // Make ranges more aggressive to ensure circling triggers
+            float minDist = (std::max)(50.0f, a_state.target.distance * 0.7f); // More aggressive min distance
+            float maxDist = a_state.target.distance * 1.3f; // Wider max distance for better circling
             float minAngle = 45.0f;
             float maxAngle = 135.0f;
             
@@ -142,7 +146,7 @@ namespace CombatAI
             return true;
         }
 
-        // Fallback to direct movement control
+        // Fallback to direct movement control (for ranged/magic users or when CPR unavailable)
         return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
     }
 
@@ -153,6 +157,7 @@ namespace CombatAI
         }
 
         // Try CPR fallback if available
+        // NOTE: CPR fallback works for all actors (not just melee-only)
         if (IsCPRAvailable(a_actor)) {
             // Calculate fallback parameters
             float retreatDistance = a_state.target.isValid ? a_state.target.distance : 600.0f; // Default if no valid target
@@ -258,6 +263,51 @@ namespace CombatAI
         return ActorUtils::SafeGetGraphVariableBool(a_actor, "CPR_EnableCircling", enableCircling);
     }
 
+    bool ActionExecutor::IsMeleeOnlyActor(RE::Actor* a_actor) const
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Check if actor has ranged weapon or magic equipped
+        // CPR only works for melee-only actors
+        // Wrap all checks in try-catch to prevent crashes from stale form pointers
+        try {
+            auto rightHand = ActorUtils::SafeGetEquippedObject(a_actor, false);
+            
+            // Check right hand for ranged weapon
+            if (rightHand) {
+                try {
+                    if (rightHand->IsWeapon()) {
+                        auto weapon = rightHand->As<RE::TESObjectWEAP>();
+                        if (weapon) {
+                            try {
+                                if (weapon->IsBow() || weapon->IsCrossbow()) {
+                                    return false; // Has ranged weapon
+                                }
+                            } catch (...) {
+                                // Weapon access failed - assume melee to be safe
+                            }
+                        }
+                    }
+                } catch (...) {
+                    // Form access failed - assume melee to be safe
+                }
+            }
+            
+            // Check if actor is currently casting magic
+            // This is more reliable than checking left hand (which could be shield)
+            if (ActorUtils::SafeWhoIsCasting(a_actor) != 0) {
+                return false; // Actor is casting magic
+            }
+            
+            return true; // Melee-only actor
+        } catch (...) {
+            // Actor access failed - return false to be safe (skip CPR)
+            return false;
+        }
+    }
+
     void ActionExecutor::ResetBFCOAttackState(RE::Actor* a_actor)
     {
         if (!a_actor || !m_isBFCOEnabled) {
@@ -306,8 +356,9 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", true);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackDistMin", a_minDist);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackDistMax", a_maxDist);
-        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMin", a_minWait);
-        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMax", a_maxWait);
+        // Reduce wait times to make fallback more responsive (less waiting around)
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMin", a_minWait * 0.5f); // Faster recovery
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMax", a_maxWait * 0.5f); // Faster recovery
     }
 
     void ActionExecutor::SetCPRBackoff(RE::Actor* a_actor, float a_minDistMult)
@@ -424,6 +475,7 @@ namespace CombatAI
         }
 
         // Try CPR backoff if available
+        // NOTE: CPR backoff works for all actors (not just melee-only)
         if (IsCPRAvailable(a_actor)) {
             // Enable CPR backoff
             SetCPRBackoff(a_actor, 1.5f);
@@ -454,6 +506,10 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMin", a_outerRadiusMin);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMid", a_outerRadiusMid);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMax", a_outerRadiusMax);
+        
+        // NOTE: CPR_InterruptAction removed temporarily to avoid potential crashes
+        // CPR will handle advancing naturally through its behavior tree
+        // If needed, we can re-enable this later with proper throttling
     }
 
     bool ActionExecutor::ExecuteAdvancing(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
@@ -463,7 +519,9 @@ namespace CombatAI
         }
 
         // Try CPR advancing if available
-        if (IsCPRAvailable(a_actor)) {
+        // NOTE: CPR only works for melee-only actors
+        bool isMeleeOnly = IsMeleeOnlyActor(a_actor);
+        if (IsCPRAvailable(a_actor) && isMeleeOnly) {
             // Calculate advancing parameters based on current distance
             float currentDistance = a_state.target.isValid ? a_state.target.distance : 1000.0f;
             

@@ -51,6 +51,6 @@ namespace CombatAI
             float lastUpdateTime = 0.0f;
         };
         std::unordered_map<RE::Actor*, CachedCombatContext> m_combatContextCache;
-        static constexpr float COMBAT_CONTEXT_UPDATE_INTERVAL = 1.0f; // Update every 1 second
+        static constexpr float COMBAT_CONTEXT_UPDATE_INTERVAL = 5.0f; // Update every 1 second
     };
 }

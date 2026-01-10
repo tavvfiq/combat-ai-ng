@@ -81,7 +81,7 @@ namespace CombatAI
         if (debugEnabled && selectedRef && a_actor == selectedRef.get()) {
             std::ostringstream logs;
             if (auto formID = ActorUtils::SafeGetFormID(a_actor)) {
-                logs << "actor: " << *formID 
+                logs << "actor: " << std::hex << *formID << std::dec 
                     << " | action: " << static_cast<int>(bestDecision.action) 
                     << " | possible actions (a,p): " << actions;
                 ConsolePrint(logs.str().c_str());

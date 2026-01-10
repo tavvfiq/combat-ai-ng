@@ -59,6 +59,10 @@ namespace CombatAI
         // Helper: Check if CPR is available (check for graph variable support)
         bool IsCPRAvailable(RE::Actor* a_actor) const;
 
+        // Helper: Check if actor is melee-only (no ranged weapons or magic)
+        // CPR circling and advancing only work for melee-only actors
+        bool IsMeleeOnlyActor(RE::Actor* a_actor) const;
+
         // Helper: Reset BFCO attack state
         void ResetBFCOAttackState(RE::Actor* a_actor);
 

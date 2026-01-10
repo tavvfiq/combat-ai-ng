@@ -123,18 +123,18 @@ namespace CombatAI
     {
         DecisionResult result = a_decision;
 
-        // Dueling style: More focused on 1v1, prefers bash interrupts and precise attacks
+        // Dueling style: More focused on 1v1, prefers bash interrupts and precise attacks - subtle nudge
         if (result.action == ActionType::Bash) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         if (result.action == ActionType::Dodge) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         // Prefer power attacks when stamina allows (duelists are precise)
         if (result.action == ActionType::PowerAttack && HasMeleeWeapon(a_actor)) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         // Less likely to retreat, use combat style fallback threshold
@@ -162,15 +162,15 @@ namespace CombatAI
     {
         DecisionResult result = a_decision;
 
-        // Flanking style: Prefers movement and positioning
+        // Flanking style: Prefers movement and positioning - subtle nudge
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge) {
-            result.priority += 0.3f;
-            // Use circle multiplier for intensity if available
+            result.priority += 0.15f; // Subtle boost
+            // Use circle multiplier for intensity if available (more conservative)
             if (a_style) {
                 float circleMult = a_style->closeRangeData.circleMult;
-                result.intensity = (std::min)(1.0f, result.intensity * (1.0f + circleMult * 0.2f));
+                result.intensity = (std::min)(1.0f, result.intensity * (1.0f + circleMult * 0.1f)); // Reduced from 0.2f
             } else {
-                result.intensity = (std::min)(1.0f, result.intensity * 1.2f);
+                result.intensity = (std::min)(1.0f, result.intensity * 1.1f); // Reduced from 1.2f
             }
         }
 
@@ -181,7 +181,7 @@ namespace CombatAI
 
         // Prefer sprint attacks for flanking (closing distance quickly)
         if (result.action == ActionType::SprintAttack) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         // Less likely to use power attacks (flankers prefer mobility)
@@ -210,7 +210,7 @@ namespace CombatAI
         DecisionResult result = a_decision;
 
         if (result.action == ActionType::Advancing) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         // Aggressive style: Less defensive, more offensive
@@ -222,30 +222,30 @@ namespace CombatAI
             }
         }
 
-        // Aggressive style: Less likely to backoff (prefer pressing forward or strafing)
+        // Aggressive style: Less likely to backoff (prefer pressing forward or strafing) - subtle
         if (result.action == ActionType::Backoff) {
             // Only reduce priority if health is reasonable (aggressive NPCs don't backoff easily)
             if (a_state.self.healthPercent > 0.3f) {
-                result.priority = (std::max)(0.0f, result.priority - 0.4f); // Significant reduction for aggressive style
+                result.priority = (std::max)(0.0f, result.priority - 0.15f); // Reduced from 0.4f
             } else {
                 // Even aggressive NPCs backoff when very low on health
-                result.priority = (std::max)(0.0f, result.priority - 0.2f); // Smaller reduction when low health
+                result.priority = (std::max)(0.0f, result.priority - 0.08f); // Reduced from 0.2f
             }
         }
 
-        // Boost offensive actions - but only moderately (don't make them crazy aggressive)
+        // Boost offensive actions - subtle nudge only (vanilla AI already handles combat style)
         if (result.action == ActionType::Bash || result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority += 0.2f; // Moderate boost (reduced from 0.3f)
+            result.priority += 0.1f; // Subtle boost - vanilla AI already respects combat style
         }
 
-        // Prefer power attacks and sprint attacks - but only when appropriate
+        // Prefer power attacks and sprint attacks - subtle nudge
         if (result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority += 0.15f; // Moderate boost (reduced from 0.2f)
+            result.priority += 0.08f; // Subtle boost
         }
 
-        // Less likely to dodge/strafe (aggressive = press forward) - but don't eliminate them completely
+        // Less likely to dodge/strafe (aggressive = press forward) - subtle reduction
         if (result.action == ActionType::Dodge || result.action == ActionType::Strafe) {
-            result.priority = (std::max)(0.0f, result.priority - 0.2f); // Reduced penalty (from 0.3f)
+            result.priority = (std::max)(0.0f, result.priority - 0.1f); // Subtle penalty
         }
 
         return result;
@@ -255,13 +255,13 @@ namespace CombatAI
     {
         DecisionResult result = a_decision;
 
-        // Defensive style: More cautious, prefers evasion and retreat
+        // Defensive style: More cautious, prefers evasion and retreat - subtle nudge
         if (result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
-            result.priority += 0.4f; // Higher boost for defensive style (increased from 0.3f)
+            result.priority += 0.15f; // Subtle boost - vanilla AI already handles defensive style
         }
 
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump) {
-            result.priority += 0.3f;
+            result.priority += 0.1f; // Subtle boost
         }
 
         // Less likely to use power attacks (defensive = cautious)
@@ -291,9 +291,9 @@ namespace CombatAI
             result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
-        // Prefer strafe/dodge/backoff to maintain range
+        // Prefer strafe/dodge/backoff to maintain range - subtle nudge
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         return result;
@@ -318,9 +318,9 @@ namespace CombatAI
             result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
-        // Prefer strafe, dodge, jump, or backoff to maintain optimal range
+        // Prefer strafe, dodge, jump, or backoff to maintain optimal range - subtle nudge
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump || result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
-            result.priority += 0.3f;
+            result.priority += 0.15f; // Subtle boost
         }
 
         return result;
@@ -332,24 +332,23 @@ namespace CombatAI
             return;
         }
 
-        // Apply melee multipliers
+        // Apply melee multipliers - subtle adjustments (vanilla AI already uses these)
         if (a_decision.action == ActionType::Bash) {
             float bashMult = a_style->meleeData.bashMult;
             if (bashMult > 1.0f) {
-                a_decision.priority += 0.2f;
+                a_decision.priority += 0.1f; // Reduced from 0.2f
             } else if (bashMult < 0.5f) {
-                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f); // Reduced from 0.2f
             }
         }
 
-        // Apply power attack multipliers (affects PowerAttack action)
-        // Use powerAttackBlockingMult as indicator of power attack preference
+        // Apply power attack multipliers (affects PowerAttack action) - subtle adjustments
         if (a_decision.action == ActionType::PowerAttack) {
             float powerAttackBlockingMult = a_style->meleeData.powerAttackBlockingMult;
             if (powerAttackBlockingMult > 1.0f) {
-                a_decision.priority += 0.2f;
+                a_decision.priority += 0.1f; // Reduced from 0.2f
             } else if (powerAttackBlockingMult < 0.5f) {
-                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f); // Reduced from 0.2f
             }
         }
 
@@ -360,23 +359,23 @@ namespace CombatAI
             a_decision.intensity = ClampValue(a_decision.intensity, 0.0f, 1.0f);
         }
 
-        // Apply fallback multiplier (affects retreat)
+        // Apply fallback multiplier (affects retreat) - subtle adjustments
         if (a_decision.action == ActionType::Retreat) {
             float fallbackMult = a_style->closeRangeData.fallbackMult;
             if (fallbackMult > 1.0f) {
-                a_decision.priority += 0.2f;
+                a_decision.priority += 0.1f; // Reduced from 0.2f
             } else if (fallbackMult < 0.5f) {
-                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f); // Reduced from 0.2f
             }
         }
 
-        // Apply avoid threat chance (affects all evasion actions)
+        // Apply avoid threat chance (affects all evasion actions) - subtle adjustments
         if (a_decision.action == ActionType::Strafe || a_decision.action == ActionType::Dodge || a_decision.action == ActionType::Jump) {
             float avoidThreat = a_style->generalData.avoidThreatChance;
             if (avoidThreat > 0.5f) {
-                a_decision.priority += 0.2f;
+                a_decision.priority += 0.1f; // Reduced from 0.2f
             } else if (avoidThreat < 0.3f) {
-                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f); // Reduced from 0.2f
             }
         }
 

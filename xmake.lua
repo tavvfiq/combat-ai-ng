@@ -19,6 +19,7 @@ set_policy("package.requires_lock", true)
 -- add rules
 add_rules("mode.debug", "mode.releasedbg")
 add_rules("plugin.vsxmake.autoupdate")
+add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
 
 -- require packages
 add_requires("simpleini")

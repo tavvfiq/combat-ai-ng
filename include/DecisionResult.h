@@ -24,7 +24,7 @@ namespace CombatAI
     struct DecisionResult
     {
         ActionType action = ActionType::None;
-        int priority = 0; // Higher = more important
+        float priority = 0.0f; // Higher = more important (float for granular control)
         RE::NiPoint3 direction = RE::NiPoint3(0.0f, 0.0f, 0.0f); // For movement actions
         float intensity = 1.0f; // 0.0 to 1.0, for movement speed/intensity
     };

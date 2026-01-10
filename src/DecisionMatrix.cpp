@@ -51,7 +51,7 @@ namespace CombatAI
 
         // Enhance all decisions and find the one with the highest priority
         std::vector<DecisionResult> enhancedDecisions;
-        int highestPriority = -1;
+        float highestPriority = -1.0f;
         for (size_t i = 0; i < possibleDecisions.size(); ++i) {
             DecisionResult enhancedDecision = m_styleEnhancer.EnhanceDecision(a_actor, possibleDecisions[i], a_state);
             enhancedDecisions.push_back(enhancedDecision);
@@ -61,14 +61,15 @@ namespace CombatAI
             }
             
             if (debugEnabled && selectedRef && a_actor == selectedRef.get()) {
-                actions += std::format("({},{}),", static_cast<int>(enhancedDecision.action), enhancedDecision.priority);
+                actions += std::format("({},{:.2f}),", static_cast<int>(enhancedDecision.action), enhancedDecision.priority);
             }
         }
 
-        // Second pass: collect all decisions with highest priority
+        // Second pass: collect all decisions with highest priority (using epsilon for float comparison)
+        const float epsilon = 0.01f;
         std::vector<DecisionResult> topPriorityDecisions;
         for (const auto& decision : enhancedDecisions) {
-            if (decision.priority == highestPriority) {
+            if (std::abs(decision.priority - highestPriority) < epsilon) {
                 topPriorityDecisions.push_back(decision);
             }
         }
@@ -122,7 +123,7 @@ namespace CombatAI
         // Use threshold instead of exact equality (0.9 = roughly facing towards, accounting for floating point precision)
         if (a_state.target.isPowerAttacking && a_state.target.distance < reachDistance && a_state.target.orientationDot > 0.9f) {
             result.action = ActionType::Bash;
-            result.priority = 1;
+            result.priority = 1.2f; // Interrupt priority
             // Bash is a quick interrupt - high intensity for immediate response
             result.intensity = 1.0f; // Maximum intensity for urgent interrupt
         }
@@ -158,7 +159,7 @@ namespace CombatAI
                         std::uniform_real_distribution<> dis(0.0, 1.0);
                         if (dis(gen) < config.GetDecisionMatrix().evasionJumpChance) {
                             result.action = ActionType::Jump;
-                            result.priority = 1;
+                            result.priority = 1.5f; // Evasion priority
                             // Jump evasion - high intensity for urgent escape
                             result.intensity = 0.9f; // High intensity for jump evasion
                             return result;
@@ -212,11 +213,11 @@ namespace CombatAI
 
         if (shouldDodge) {
             result.action = ActionType::Dodge;
-            result.priority = 1;
+            result.priority = 1.5f; // Base evasion priority
             
             // Multiple enemies = higher priority for dodge
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 1;
+                result.priority += 0.5f; // More defensive when outnumbered
             }
             
             // Dodge intensity based on urgency (closer = more urgent)
@@ -230,11 +231,11 @@ namespace CombatAI
             }
         } else {
             result.action = ActionType::Strafe;
-            result.priority = 1;
+            result.priority = 1.5f; // Base evasion priority
             
             // Multiple enemies = higher priority for strafe too
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 1;
+                result.priority += 0.5f; // More defensive when outnumbered
             }
             
             result.direction = CalculateStrafeDirection(a_state);
@@ -260,11 +261,11 @@ namespace CombatAI
         // Trigger: Health < threshold
         if (a_state.self.healthPercent <= healthThreshold) {
             result.action = ActionType::Retreat;
-            result.priority = 2; // Survival is highest priority
+            result.priority = 2.0f; // Survival is highest priority
 
             // Multiple enemies = more urgent retreat
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 1; // Higher priority with multiple enemies
+                result.priority += 0.5f; // Higher priority with multiple enemies
                 result.intensity = 1.0f; // Faster retreat when outnumbered
             } else {
                 result.intensity = 0.8f; // Normal retreat speed
@@ -308,9 +309,9 @@ namespace CombatAI
             
             // Multiple enemies = less likely to advance (might want to stay defensive)
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                result.priority = 0; // Lower priority when outnumbered
+                result.priority = 0.8f; // Lower priority when outnumbered
             } else {
-                result.priority = 1;
+                result.priority = 1.0f; // Base offense priority
             }
             
             // Calculate advancing direction (towards target)
@@ -343,9 +344,9 @@ namespace CombatAI
             
             // Multiple enemies = less likely to sprint attack (risky when outnumbered)
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                result.priority = 0; // Lower priority when outnumbered
+                result.priority = 0.8f; // Lower priority when outnumbered
             } else {
-                result.priority = 1;
+                result.priority = 1.0f; // Base offense priority
             }
             
             // Sprint attack - high intensity for aggressive gap closing
@@ -362,23 +363,23 @@ namespace CombatAI
 
         if (a_state.target.distance <= reachDistance) {
             // Multiple enemies = less likely to commit to attacks (prefer defensive)
-            int priorityModifier = 0;
+            float priorityModifier = 0.0f;
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
                 // Outnumbered: reduce offensive action priority
-                priorityModifier = -1;
+                priorityModifier = -0.3f;
             } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
                 // More allies: can be more aggressive
-                priorityModifier = 1;
+                priorityModifier = 0.3f;
             }
             
             if (a_state.self.staminaPercent > config.GetDecisionMatrix().powerAttackStaminaThreshold) {
                 result.action = ActionType::PowerAttack;
-                result.priority = 1 + priorityModifier;
+                result.priority = 1.0f + priorityModifier; // Base offense priority
                 // Power attack - committed attack, high intensity
                 result.intensity = 0.8f; // High intensity for committed power attack
             } else {
                 result.action = ActionType::Attack;
-                result.priority = 1 + priorityModifier;
+                result.priority = 1.0f + priorityModifier; // Base offense priority
                 // Normal attack - moderate intensity
                 result.intensity = 0.6f; // Moderate intensity for normal attack
             }
@@ -413,11 +414,11 @@ namespace CombatAI
 
         if (shouldBackoff) {
             result.action = ActionType::Backoff;
-            result.priority = 2; // High priority (between Evasion and Survival)
+            result.priority = 1.8f; // High priority (between Evasion and Survival)
             
             // Multiple enemies = more urgent backoff
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 1; // Higher priority when outnumbered
+                result.priority += 0.5f; // Higher priority when outnumbered
             }
             
             // Calculate backoff direction (away from target)

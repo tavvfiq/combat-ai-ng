@@ -119,29 +119,29 @@ namespace CombatAI
 
         // Dueling style: More focused on 1v1, prefers bash interrupts and precise attacks
         if (result.action == ActionType::Bash) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         if (result.action == ActionType::Dodge) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         // Prefer power attacks when stamina allows (duelists are precise)
         if (result.action == ActionType::PowerAttack && HasMeleeWeapon(a_actor)) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         // Less likely to retreat, use combat style fallback threshold
         if (result.action == ActionType::Retreat) {
             float retreatThreshold = a_style ? a_style->closeRangeData.fallbackMult * 0.1f : 0.15f;
             if (a_state.self.healthPercent > retreatThreshold) {
-                result.priority = (std::max)(0, result.priority - 1);
+                result.priority = (std::max)(0.0f, result.priority - 0.3f);
             }
         }
 
         // Don't use sprint attacks (duelists prefer precision)
         if (result.action == ActionType::SprintAttack) {
-            result.priority = (std::max)(0, result.priority - 1);
+            result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         return result;
@@ -153,7 +153,7 @@ namespace CombatAI
 
         // Flanking style: Prefers movement and positioning
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge) {
-            result.priority += 1;
+            result.priority += 0.3f;
             // Use circle multiplier for intensity if available
             if (a_style) {
                 float circleMult = a_style->closeRangeData.circleMult;
@@ -165,12 +165,12 @@ namespace CombatAI
 
         // Prefer sprint attacks for flanking (closing distance quickly)
         if (result.action == ActionType::SprintAttack) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         // Less likely to use power attacks (flankers prefer mobility)
         if (result.action == ActionType::PowerAttack) {
-            result.priority = (std::max)(0, result.priority - 1);
+            result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         return result;
@@ -194,7 +194,7 @@ namespace CombatAI
         DecisionResult result = a_decision;
 
         if (result.action == ActionType::Advancing) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         // Aggressive style: Less defensive, more offensive
@@ -202,7 +202,7 @@ namespace CombatAI
             // Use combat style fallback multiplier to determine retreat threshold
             float retreatThreshold = a_style ? a_style->closeRangeData.fallbackMult * 0.05f : 0.1f;
             if (a_state.self.healthPercent > retreatThreshold) {
-                result.priority = (std::max)(0, result.priority - 1);
+                result.priority = (std::max)(0.0f, result.priority - 0.3f);
             }
         }
 
@@ -210,17 +210,17 @@ namespace CombatAI
 
         // Boost offensive actions
         if (result.action == ActionType::Bash || result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         // Prefer power attacks and sprint attacks
         if (result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority += 1;
+            result.priority += 0.2f; // Additional boost for committed attacks
         }
 
         // Less likely to dodge/strafe (aggressive = press forward)
         if (result.action == ActionType::Dodge || result.action == ActionType::Strafe) {
-            result.priority = (std::max)(0, result.priority - 1);
+            result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         return result;
@@ -232,16 +232,16 @@ namespace CombatAI
 
         // Defensive style: More cautious, prefers evasion and retreat
         if (result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         // Less likely to use power attacks (defensive = cautious)
         if (result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority = (std::max)(0, result.priority - 1);
+            result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         return result;
@@ -258,17 +258,17 @@ namespace CombatAI
 
         // Magic style: Prefers distance, less melee
         if (result.action == ActionType::Bash) {
-            result.priority = (std::max)(0, result.priority - 1); // Strongly discourage bash
+            result.priority = (std::max)(0.0f, result.priority - 0.4f); // Strongly discourage bash
         }
 
         // Discourage melee attacks
         if (result.action == ActionType::Attack || result.action == ActionType::PowerAttack) {
-            result.priority = (std::max)(0, result.priority - 1);
+            result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         // Prefer strafe/dodge to maintain range
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Retreat) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         return result;
@@ -285,17 +285,17 @@ namespace CombatAI
 
         // Ranged style: Similar to magic, prefers distance
         if (result.action == ActionType::Bash) {
-            result.priority = (std::max)(0, result.priority - 1); // Strongly discourage bash
+            result.priority = (std::max)(0.0f, result.priority - 0.4f); // Strongly discourage bash
         }
 
         // Discourage melee attacks
         if (result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority = (std::max)(0, result.priority - 1);
+            result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         // Prefer strafe, dodge, or jump to maintain optimal range
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump || result.action == ActionType::Retreat) {
-            result.priority += 1;
+            result.priority += 0.3f;
         }
 
         return result;
@@ -311,9 +311,9 @@ namespace CombatAI
         if (a_decision.action == ActionType::Bash) {
             float bashMult = a_style->meleeData.bashMult;
             if (bashMult > 1.0f) {
-                a_decision.priority += 1;
+                a_decision.priority += 0.2f;
             } else if (bashMult < 0.5f) {
-                a_decision.priority = (std::max)(0, a_decision.priority - 1);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
             }
         }
 
@@ -322,9 +322,9 @@ namespace CombatAI
         if (a_decision.action == ActionType::PowerAttack) {
             float powerAttackBlockingMult = a_style->meleeData.powerAttackBlockingMult;
             if (powerAttackBlockingMult > 1.0f) {
-                a_decision.priority += 1;
+                a_decision.priority += 0.2f;
             } else if (powerAttackBlockingMult < 0.5f) {
-                a_decision.priority = (std::max)(0, a_decision.priority - 1);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
             }
         }
 
@@ -339,9 +339,9 @@ namespace CombatAI
         if (a_decision.action == ActionType::Retreat) {
             float fallbackMult = a_style->closeRangeData.fallbackMult;
             if (fallbackMult > 1.0f) {
-                a_decision.priority += 1;
+                a_decision.priority += 0.2f;
             } else if (fallbackMult < 0.5f) {
-                a_decision.priority = (std::max)(0, a_decision.priority - 1);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
             }
         }
 
@@ -349,9 +349,9 @@ namespace CombatAI
         if (a_decision.action == ActionType::Strafe || a_decision.action == ActionType::Dodge || a_decision.action == ActionType::Jump) {
             float avoidThreat = a_style->generalData.avoidThreatChance;
             if (avoidThreat > 0.5f) {
-                a_decision.priority += 1;
+                a_decision.priority += 0.2f;
             } else if (avoidThreat < 0.3f) {
-                a_decision.priority = (std::max)(0, a_decision.priority - 1);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
             }
         }
 
@@ -360,15 +360,15 @@ namespace CombatAI
         if (a_decision.action == ActionType::Attack) {
             float meleeScoreMult = a_style->generalData.meleeScoreMult;
             if (meleeScoreMult > 1.0f) {
-                a_decision.priority += 1;
+                a_decision.priority += 0.2f;
             } else if (meleeScoreMult < 0.5f) {
-                a_decision.priority = (std::max)(0, a_decision.priority - 1);
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.2f);
             }
         } else if (a_decision.action == ActionType::PowerAttack) {
             // Power attacks also benefit from melee score
             float meleeScoreMult = a_style->generalData.meleeScoreMult;
             if (meleeScoreMult > 1.0f) {
-                a_decision.priority += 1;
+                a_decision.priority += 0.2f;
             }
         }
     }

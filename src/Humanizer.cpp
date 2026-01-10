@@ -142,6 +142,15 @@ namespace CombatAI
         // Update cooldowns and clean up expired ones
         auto actorIt = m_cooldownStates.begin();
         while (actorIt != m_cooldownStates.end()) {
+            RE::Actor* actor = actorIt->first;
+            
+            // Validate actor pointer before accessing its cooldown state
+            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+                // Actor is invalid, remove entire entry
+                actorIt = m_cooldownStates.erase(actorIt);
+                continue;
+            }
+            
             auto& cooldowns = actorIt->second.cooldowns;
             auto it = cooldowns.begin();
             while (it != cooldowns.end()) {

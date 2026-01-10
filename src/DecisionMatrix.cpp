@@ -429,6 +429,26 @@ namespace CombatAI
                 basePriority += 0.3f;
             }
             
+            // Stamina consideration: reduce priority if stamina is low (but still allow it)
+            // This encourages actors to conserve stamina for future actions
+            auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+            if (actorOwner) {
+                float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
+                float currentStamina = a_state.self.staminaPercent * maxStamina;
+                float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
+                
+                // Reduce priority if stamina is low relative to cost
+                // If stamina is less than cost, significantly reduce priority
+                if (currentStamina < sprintAttackCost) {
+                    float staminaRatio = currentStamina / sprintAttackCost; // 0.0 to 1.0
+                    basePriority *= staminaRatio * 0.5f; // Reduce priority by up to 50% when low stamina
+                } else if (currentStamina < sprintAttackCost * 1.5f) {
+                    // Stamina is enough but not much left - slight reduction
+                    float staminaRatio = (currentStamina - sprintAttackCost) / (sprintAttackCost * 0.5f); // 0.0 to 1.0
+                    basePriority *= (0.9f + staminaRatio * 0.1f); // Reduce by 0-10%
+                }
+            }
+            
             result.priority = basePriority;
             
             // Sprint attack - high intensity for aggressive gap closing
@@ -456,11 +476,6 @@ namespace CombatAI
                 return result; // Prefer strafe/repositioning after attack
             }
             
-            // Don't attack if stamina is critically low (conserve for emergencies)
-            if (a_state.self.staminaPercent < 0.15f) {
-                return result; // Too low stamina - prefer defensive actions
-            }
-            
             // Multiple enemies = less likely to commit to attacks (prefer defensive)
             float priorityModifier = 0.0f;
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
@@ -475,6 +490,34 @@ namespace CombatAI
             float healthModifier = 0.0f;
             if (a_state.self.healthPercent < 0.4f) {
                 healthModifier = -0.3f; // Low health - be more defensive
+            }
+            
+            // Stamina consideration: reduce priority if stamina is low (but still allow attacks)
+            // This encourages actors to conserve stamina for future actions
+            float staminaModifier = 0.0f;
+            auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+            if (actorOwner) {
+                float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
+                float currentStamina = a_state.self.staminaPercent * maxStamina;
+                float attackCost = config.GetDecisionMatrix().attackStaminaCost;
+                
+                // Reduce priority if stamina is low relative to cost
+                if (currentStamina < attackCost) {
+                    // Stamina is less than cost - significantly reduce priority
+                    float staminaRatio = currentStamina / attackCost; // 0.0 to 1.0
+                    staminaModifier = -0.4f * (1.0f - staminaRatio); // Reduce by up to 40% when very low stamina
+                } else if (currentStamina < attackCost * 2.0f) {
+                    // Stamina is enough for one attack but not much left - slight reduction
+                    float staminaRatio = (currentStamina - attackCost) / attackCost; // 0.0 to 1.0
+                    staminaModifier = -0.1f * (1.0f - staminaRatio); // Reduce by 0-10%
+                }
+            } else {
+                // Fallback: if we can't get actor owner, use percentage threshold
+                if (a_state.self.staminaPercent < 0.15f) {
+                    staminaModifier = -0.3f; // Reduce priority when very low stamina
+                } else if (a_state.self.staminaPercent < 0.3f) {
+                    staminaModifier = -0.1f; // Slight reduction when low stamina
+                }
             }
             
             // Target state modifiers - only attack when there's a good opening
@@ -509,7 +552,7 @@ namespace CombatAI
             }
             
             // Lower base priority to allow tactical actions (strafe) to compete
-            float basePriority = 0.7f + priorityModifier + healthModifier + targetStateModifier;
+            float basePriority = 0.7f + priorityModifier + healthModifier + staminaModifier + targetStateModifier;
             
             // Distance-based modifier: closer = slightly higher priority
             float distanceRatio = a_state.target.distance / reachDistance;

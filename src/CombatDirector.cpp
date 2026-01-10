@@ -167,37 +167,33 @@ namespace CombatAI
             return false;
         }
 
-        // Validate actor once at the start - actor is passed directly from hook, but could be in invalid state
-        // Use try-catch to protect against transitional states (knock-down, deletion, etc.)
-        try {
-            // Quick validation - if actor is dead or not in combat, skip early
-            if (a_actor->IsDead() || !a_actor->IsInCombat()) {
-                return false;
-            }
-        } catch (...) {
-            // Actor access failed - actor may be in transitional state
+        // Validate actor using safe wrappers - protects against transitional states
+        // Actor is passed directly from hook, but could become invalid at any time
+        
+        // Quick validation - if actor is dead or not in combat, skip early
+        if (ActorUtils::SafeIsDead(a_actor) || !ActorUtils::SafeIsInCombat(a_actor)) {
             return false;
         }
 
         // Skip player
-        if (a_actor->IsPlayerRef()) {
+        if (ActorUtils::SafeIsPlayerRef(a_actor)) {
             return false;
         }
 
         // Only process NPCs, not creatures
         // Check for ActorTypeNPC keyword (NPCs have this, creatures don't)
-        if (!a_actor->HasKeywordString("ActorTypeNPC")) {
+        if (!ActorUtils::SafeHasKeywordString(a_actor, "ActorTypeNPC")) {
             return false;
         }
 
         // Double-check: explicitly exclude creatures
-        if (a_actor->HasKeywordString("ActorTypeCreature")) {
+        if (ActorUtils::SafeHasKeywordString(a_actor, "ActorTypeCreature")) {
             return false;
         }
 
         // Additional check: use CalculateCachedOwnerIsNPC as fallback
         // This should match the keyword check, but provides extra safety
-        if (!a_actor->CalculateCachedOwnerIsNPC()) {
+        if (!ActorUtils::SafeCalculateCachedOwnerIsNPC(a_actor)) {
             return false;
         }
 
@@ -205,13 +201,13 @@ namespace CombatAI
         auto& config = Config::GetInstance();
         if (config.GetPerformance().onlyProcessCombatActors) {
             // Only process actors in combat (already checked above, but check again for consistency)
-            if (!a_actor->IsInCombat()) {
+            if (!ActorUtils::SafeIsInCombat(a_actor)) {
                 return false;
             }
         }
 
         // Check if AI is enabled
-        if (!a_actor->IsAIEnabled()) {
+        if (!ActorUtils::SafeIsAIEnabled(a_actor)) {
             return false;
         }
 

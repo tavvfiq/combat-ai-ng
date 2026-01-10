@@ -96,10 +96,11 @@ namespace CombatAI
             state.isBlocking = false;
         }
 
-        // Position
-        try {
-            state.position = a_actor->GetPosition();
-        } catch (...) {
+        // Position - use safe wrapper
+        auto posOpt = ActorUtils::SafeGetPosition(a_actor);
+        if (posOpt.has_value()) {
+            state.position = posOpt.value();
+        } else {
             state.position = RE::NiPoint3(0.0f, 0.0f, 0.0f);
         }
 
@@ -204,10 +205,11 @@ namespace CombatAI
             state.knockState = RE::KNOCK_STATE_ENUM::kNormal;
         }
 
-        // Position
-        try {
-            state.position = a_target->GetPosition();
-        } catch (...) {
+        // Position - use safe wrapper
+        auto posOpt = ActorUtils::SafeGetPosition(a_target);
+        if (posOpt.has_value()) {
+            state.position = posOpt.value();
+        } else {
             return state; // Can't get position, return incomplete state
         }
 
@@ -364,16 +366,17 @@ namespace CombatAI
             RE::ActorHandle primaryTarget = combatController->targetHandle;
             RE::NiPointer<RE::Actor> target = primaryTarget.get();
             if (target && target.get()) {
-                try {
+                // Use safe position access to prevent crashes
+                auto selfPosOpt = ActorUtils::SafeGetPosition(a_actor);
+                auto targetPosOpt = ActorUtils::SafeGetPosition(target.get());
+                if (selfPosOpt.has_value() && targetPosOpt.has_value()) {
                     context.enemyCount = 1;
                     // Don't store raw pointer - it becomes invalid
                     context.closestEnemy = nullptr;
                     context.closestEnemyDistance = StateHelpers::CalculateDistance(
-                        a_actor->GetPosition(),
-                        target->GetPosition()
+                        selfPosOpt.value(),
+                        targetPosOpt.value()
                     );
-                } catch (...) {
-                    // Position access failed, continue without primary target
                 }
             }
 

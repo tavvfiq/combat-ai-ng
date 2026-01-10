@@ -69,6 +69,8 @@ namespace CombatAI
             float sprintAttackMinDistance = 300.0f;
             float sprintAttackMaxDistance = 800.0f;
             float sprintAttackStaminaThreshold = 0.3f;
+            float attackStaminaCost = 15.0f; // Stamina cost for normal attacks
+            float sprintAttackStaminaCost = 25.0f; // Stamina cost for sprint attacks (higher due to sprinting + attack)
         };
 
         struct PerformanceSettings

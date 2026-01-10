@@ -45,21 +45,40 @@ namespace CombatAI
         auto& state = it->second;
 
         // Initialize delay if not set
+        // Re-validate actor before accessing it (could become invalid)
         if (state.reactionDelay == 0.0f) {
+            // Validate actor is still valid before initializing
+            if (!ActorUtils::SafeIsInCombat(a_actor)) {
+                // Actor left combat, clean up and exit
+                m_reactionStates.erase(formID);
+                return false;
+            }
             InitializeReactionDelay(a_actor);
+            // Re-find state after initialization (iterator might be invalidated)
+            it = m_reactionStates.find(formID);
+            if (it == m_reactionStates.end()) {
+                return false; // State was removed or not found
+            }
+        }
+
+        // Re-validate actor before accessing state (actor could become invalid)
+        if (!ActorUtils::SafeIsInCombat(a_actor)) {
+            // Actor left combat, clean up and exit
+            m_reactionStates.erase(formID);
+            return false;
         }
 
         // If already can react, return true (don't reset here - reset after action is executed)
-        if (state.canReact) {
+        if (it->second.canReact) {
             return true;
         }
 
         // Update timer
-        state.reactionTimer += a_deltaTime * 1000.0f; // Convert to milliseconds
+        it->second.reactionTimer += a_deltaTime * 1000.0f; // Convert to milliseconds
 
         // Check if delay has passed
-        if (state.reactionTimer >= state.reactionDelay) {
-            state.canReact = true;
+        if (it->second.reactionTimer >= it->second.reactionDelay) {
+            it->second.canReact = true;
             return true;
         }
 
@@ -307,6 +326,12 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
+        // Re-validate actor is still in combat before accessing
+        if (!ActorUtils::SafeIsInCombat(a_actor)) {
+            // Actor left combat, don't initialize
+            return;
+        }
+
         // Use FormID as key - much safer than raw pointer
         auto stateIt = m_reactionStates.find(formID);
         if (stateIt == m_reactionStates.end()) {
@@ -319,7 +344,13 @@ namespace CombatAI
         auto& state = stateIt->second;
 
         // Calculate base delay based on actor level
-        // Use wrapper to safely get level
+        // Use wrapper to safely get level - validate actor again before accessing
+        if (!ActorUtils::SafeIsInCombat(a_actor)) {
+            // Actor left combat during initialization, clean up
+            m_reactionStates.erase(formID);
+            return;
+        }
+        
         std::uint16_t level = ActorUtils::SafeGetLevel(a_actor);
         float baseDelay = CalculateReactionDelay(level);
 

@@ -23,6 +23,14 @@ BaseReactionDelayMs = 150.0
 # Makes reactions feel more organic
 ReactionVarianceMs = 100.0
 
+# Reaction delay at level 1 in milliseconds
+# Level 1 NPCs will wait this long before reacting
+Level1ReactionDelayMs = 200.0
+
+# Reaction delay at level 50 in milliseconds
+# Level 50 NPCs will wait this long before reacting (faster than level 1)
+Level50ReactionDelayMs = 100.0
+
 # Mistake probability at level 1 (0.0 to 1.0)
 # Level 1 NPCs will fail this percentage of reactions
 Level1MistakeChance = 0.4
@@ -38,6 +46,26 @@ BashCooldownSeconds = 3.0
 # Dodge cooldown in seconds
 # Prevents dodge spam
 DodgeCooldownSeconds = 2.0
+
+# Jump cooldown in seconds
+# Prevents jump spam
+JumpCooldownSeconds = 3.0
+
+# Action-specific mistake chance multipliers
+# These multiply the base mistake chance (from level) for each action type
+# Lower values = fewer mistakes for that action, higher values = more mistakes
+# Values typically range from 0.0 to 3.0
+BashMistakeMultiplier = 0.5
+DodgeMistakeMultiplier = 1.5
+JumpMistakeMultiplier = 1.5
+StrafeMistakeMultiplier = 1.2
+PowerAttackMistakeMultiplier = 1.0
+AttackMistakeMultiplier = 0.8
+SprintAttackMistakeMultiplier = 1.2
+RetreatMistakeMultiplier = 0.3
+BackoffMistakeMultiplier = 0.5
+AdvancingMistakeMultiplier = 0.7
+FlankingMistakeMultiplier = 1.0
 
 [DodgeSystem]
 # Stamina cost for dodging
@@ -113,14 +141,24 @@ OffenseReachMultiplier = 1.0
 PowerAttackStaminaThreshold = 0.5
 
 # Minimum distance for sprint attack (game units)
-SprintAttackMinDistance = 200.0
+SprintAttackMinDistance = 300.0
 
 # Maximum distance for sprint attack (game units)
-SprintAttackMaxDistance = 400.0
+SprintAttackMaxDistance = 800.0
 
 # Stamina threshold for sprint attacks (0.0 to 1.0)
 # NPCs will only sprint attack if stamina is above this
 SprintAttackStaminaThreshold = 0.3
+
+# Stamina cost for normal attacks
+# Used to calculate priority reduction when stamina is low
+# Actors will still attack but with lower priority if stamina < cost
+AttackStaminaCost = 15.0
+
+# Stamina cost for sprint attacks
+# Higher than normal attacks due to sprinting + attack consuming more stamina
+# Used to calculate priority reduction when stamina is low
+SprintAttackStaminaCost = 25.0
 
 [Performance]
 # Only process actors in combat

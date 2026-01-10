@@ -140,6 +140,8 @@ namespace CombatAI
         m_decisionMatrix.sprintAttackMinDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance));
         m_decisionMatrix.sprintAttackMaxDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackMaxDistance", m_decisionMatrix.sprintAttackMaxDistance));
         m_decisionMatrix.sprintAttackStaminaThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackStaminaThreshold", m_decisionMatrix.sprintAttackStaminaThreshold));
+        m_decisionMatrix.attackStaminaCost = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "AttackStaminaCost", m_decisionMatrix.attackStaminaCost));
+        m_decisionMatrix.sprintAttackStaminaCost = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackStaminaCost", m_decisionMatrix.sprintAttackStaminaCost));
 
         // Clamp values
         m_decisionMatrix.evasionDodgeChance = ClampValue(m_decisionMatrix.evasionDodgeChance, 0.0f, 1.0f);
@@ -155,6 +157,8 @@ namespace CombatAI
         m_decisionMatrix.sprintAttackMinDistance = (std::max)(0.0f, m_decisionMatrix.sprintAttackMinDistance);
         m_decisionMatrix.sprintAttackMaxDistance = (std::max)(0.0f, m_decisionMatrix.sprintAttackMaxDistance);
         m_decisionMatrix.sprintAttackStaminaThreshold = ClampValue(m_decisionMatrix.sprintAttackStaminaThreshold, 0.0f, 1.0f);
+        m_decisionMatrix.attackStaminaCost = (std::max)(0.0f, m_decisionMatrix.attackStaminaCost);
+        m_decisionMatrix.sprintAttackStaminaCost = (std::max)(0.0f, m_decisionMatrix.sprintAttackStaminaCost);
     }
 
     void Config::ReadPerformanceSettings(CSimpleIniA& a_ini)

@@ -296,5 +296,57 @@ namespace CombatAI
                 return 1; // Default level on error
             }
         }
+
+        // Safe IsPlayerRef
+        inline bool SafeIsPlayerRef(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->IsPlayerRef();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe HasKeywordString
+        inline bool SafeHasKeywordString(RE::Actor* a_actor, const char* a_keyword)
+        {
+            if (!a_actor || !a_keyword) {
+                return false;
+            }
+            try {
+                return a_actor->HasKeywordString(a_keyword);
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe CalculateCachedOwnerIsNPC
+        inline bool SafeCalculateCachedOwnerIsNPC(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->CalculateCachedOwnerIsNPC();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe IsAIEnabled
+        inline bool SafeIsAIEnabled(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->IsAIEnabled();
+            } catch (...) {
+                return false;
+            }
+        }
     }
 }

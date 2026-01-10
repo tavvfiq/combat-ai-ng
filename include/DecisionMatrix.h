@@ -32,8 +32,17 @@ namespace CombatAI
         // Backoff (when target is casting/drawing bow)
         DecisionResult EvaluateBackoff(RE::Actor* a_actor, const ActorStateData& a_state);
 
+        // Flanking & Positioning (tactical positioning with allies)
+        DecisionResult EvaluateFlanking(RE::Actor* a_actor, const ActorStateData& a_state);
+
+        // Feinting & Baiting (fake attacks to bait enemy response)
+        DecisionResult EvaluateFeinting(RE::Actor* a_actor, const ActorStateData& a_state);
+
         // Helper: Calculate strafe direction (perpendicular to target)
         RE::NiPoint3 CalculateStrafeDirection(const ActorStateData& a_state);
+
+        // Helper: Calculate optimal flanking direction based on ally positions
+        RE::NiPoint3 CalculateFlankingDirection(const ActorStateData& a_state);
 
         // Helper: Select best decision when multiple have same priority
         DecisionResult SelectBestFromTie(const std::vector<DecisionResult>& a_decisions, const ActorStateData& a_state);

@@ -47,11 +47,11 @@ namespace CombatAI
         ActionExecutor m_executor;
         Humanizer m_humanizer;
 
-        // Track processed actors (for cleanup)
-        std::unordered_set<RE::Actor*> m_processedActors;
+        // Track processed actors (for cleanup) - use FormID as key for safety
+        std::unordered_set<RE::FormID> m_processedActors;
 
-        // Track per-actor processing timers (for throttling)
-        std::unordered_map<RE::Actor*, float> m_actorProcessTimers;
+        // Track per-actor processing timers (for throttling) - use FormID as key for safety
+        std::unordered_map<RE::FormID, float> m_actorProcessTimers;
 
         // Processing throttle (don't process every frame)
         float m_processTimer = 0.0f;

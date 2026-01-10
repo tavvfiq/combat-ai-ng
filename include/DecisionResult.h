@@ -17,7 +17,9 @@ namespace CombatAI
         Jump, // 7
         Dodge, // 8
         Backoff, //9
-        Advancing //10
+        Advancing, //10
+        Feint, //11 - Fake attack to bait enemy response
+        Flanking //12 - Tactical positioning with allies (pincer movement)
     };
 
     // Decision result containing action to take

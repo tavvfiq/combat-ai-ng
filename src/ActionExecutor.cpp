@@ -55,6 +55,10 @@ namespace CombatAI
             success = ExecuteStrafe(a_actor, a_decision, a_state);
             break;
 
+        case ActionType::Flanking:
+            success = ExecuteFlanking(a_actor, a_decision, a_state);
+            break;
+
         case ActionType::Retreat:
             success = ExecuteRetreat(a_actor, a_decision, a_state);
             break;
@@ -73,6 +77,10 @@ namespace CombatAI
         
         case ActionType::Advancing:
             success = ExecuteAdvancing(a_actor, a_decision, a_state);
+            break;
+
+        case ActionType::Feint:
+            success = ExecuteFeint(a_actor, a_decision, a_state);
             break;
 
         default:
@@ -130,6 +138,17 @@ namespace CombatAI
             return false;
         }
 
+        // Validate target before accessing target state
+        if (!a_state.target.isValid) {
+            return false; // Can't strafe without a valid target
+        }
+
+        // Check if this is a flanking maneuver (has nearby ally and direction is set)
+        // Flanking strafe uses calculated flanking direction instead of default strafe
+        RE::NiPoint3 movementDir = a_decision.direction;
+        bool isFlanking = a_state.combatContext.hasNearbyAlly && 
+                         (movementDir.x != 0.0f || movementDir.y != 0.0f);
+
         // Try CPR circling if available
         // NOTE: CPR only works for melee-only actors (no ranged weapons or magic)
         // If actor has ranged/magic, CPR won't work, so we fall back to direct movement
@@ -143,11 +162,64 @@ namespace CombatAI
             float maxAngle = 135.0f;
             
             SetCPRCircling(a_actor, minDist, maxDist, minAngle, maxAngle);
+            
+            // For flanking, also set movement direction to guide CPR circling
+            if (isFlanking) {
+                SetMovementDirection(a_actor, movementDir, a_decision.intensity);
+            }
             return true;
         }
 
         // Fallback to direct movement control (for ranged/magic users or when CPR unavailable)
-        return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+        // Use flanking direction if available, otherwise use decision direction
+        return SetMovementDirection(a_actor, movementDir, a_decision.intensity);
+    }
+
+    bool ActionExecutor::ExecuteFlanking(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Validate target before accessing target state
+        if (!a_state.target.isValid) {
+            return false; // Can't flank without a valid target
+        }
+
+        // Flanking is similar to strafe but with tactical positioning
+        // Use the calculated flanking direction from decision (perpendicular to target, away from ally)
+        RE::NiPoint3 flankDir = a_decision.direction;
+        
+        // Try CPR circling if available and actor is melee-only
+        bool isMeleeOnly = IsMeleeOnlyActor(a_actor);
+        if (IsCPRAvailable(a_actor) && isMeleeOnly) {
+            // Calculate circling parameters for flanking movement
+            float minDist = (std::max)(50.0f, a_state.target.distance * 0.7f);
+            float maxDist = a_state.target.distance * 1.3f;
+            float minAngle = 45.0f;
+            float maxAngle = 135.0f;
+            
+            SetCPRCircling(a_actor, minDist, maxDist, minAngle, maxAngle);
+            
+            // Apply flanking direction to guide CPR circling (creates pincer movement)
+            if (flankDir.x != 0.0f || flankDir.y != 0.0f) {
+                SetMovementDirection(a_actor, flankDir, a_decision.intensity);
+            }
+            return true;
+        }
+
+        // Fallback to direct movement control (for ranged/magic users or when CPR unavailable)
+        // Use flanking direction if provided, otherwise calculate default
+        if (flankDir.x == 0.0f && flankDir.y == 0.0f) {
+            // No direction provided, calculate default flanking direction
+            RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
+            toTarget.z = 0.0f;
+            toTarget.Unitize();
+            flankDir = RE::NiPoint3(-toTarget.y, toTarget.x, 0.0f);
+            flankDir.Unitize();
+        }
+        
+        return SetMovementDirection(a_actor, flankDir, a_decision.intensity);
     }
 
     bool ActionExecutor::ExecuteRetreat(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
@@ -484,6 +556,65 @@ namespace CombatAI
 
         // Fallback to direct movement control
         return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+    }
+
+    bool ActionExecutor::ExecuteFeint(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Validate target before accessing target state
+        if (!a_state.target.isValid) {
+            return false; // Can't feint without a valid target
+        }
+
+        // Feinting strategy:
+        // 1. Quick forward movement (appear aggressive)
+        // 2. Then immediately strafe/dodge to bait enemy response
+        
+        // Check if we can attack (for the "fake" part)
+        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+        if (attackState == RE::ATTACK_STATE_ENUM::kNone || attackState == RE::ATTACK_STATE_ENUM::kDraw) {
+            // Start a quick bash as the "feint" (bash is faster than full attack)
+            // This makes it look like we're committing to an attack
+            bool bashSuccess = ExecuteBash(a_actor);
+            
+            // After bash, immediately prepare to strafe/dodge
+            // The movement direction from decision should guide the follow-up
+            if (bashSuccess) {
+                // Set movement direction for follow-up strafe (baiting movement)
+                // Use perpendicular direction to appear evasive
+                RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
+                toTarget.z = 0.0f;
+                toTarget.Unitize();
+                
+                // Perpendicular direction (strafe)
+                RE::NiPoint3 feintDir(-toTarget.y, toTarget.x, 0.0f);
+                feintDir.Unitize();
+                
+                // Apply movement with moderate intensity (not full commitment)
+                SetMovementDirection(a_actor, feintDir, a_decision.intensity);
+                return true;
+            }
+        }
+
+        // Alternative: If bash failed or not available, use aggressive forward movement then retreat
+        // This creates the "bait" effect
+        RE::NiPoint3 forwardDir = a_decision.direction;
+        if (forwardDir.x == 0.0f && forwardDir.y == 0.0f) {
+            // Calculate forward direction if not provided
+            forwardDir = a_state.target.position - a_state.self.position;
+            forwardDir.z = 0.0f;
+            forwardDir.Unitize();
+        }
+        
+        // Quick forward movement (appear aggressive)
+        SetMovementDirection(a_actor, forwardDir, a_decision.intensity * 0.7f);
+        
+        // Note: The actual "bait" follow-up (strafe/dodge) will happen in next frame
+        // when the decision matrix evaluates again and sees the target's response
+        return true;
     }
 
     void ActionExecutor::SetCPRAdvancing(RE::Actor* a_actor, float a_innerRadiusMin, float a_innerRadiusMid, float a_innerRadiusMax,

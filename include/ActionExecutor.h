@@ -29,6 +29,9 @@ namespace CombatAI
         // Execute strafe movement (with CPR support)
         bool ExecuteStrafe(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
 
+        // Execute flanking movement (tactical positioning with allies, uses CPR)
+        bool ExecuteFlanking(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
+
         // Execute retreat movement (with CPR support)
         bool ExecuteRetreat(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
 
@@ -49,6 +52,9 @@ namespace CombatAI
 
         // Execute advancing movement (closing distance when too far)
         bool ExecuteAdvancing(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
+
+        // Execute feint (fake attack to bait enemy response)
+        bool ExecuteFeint(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state);
 
         // Helper: Trigger animation graph event
         bool NotifyAnimation(RE::Actor* a_actor, const char* a_eventName);

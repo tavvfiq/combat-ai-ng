@@ -2,6 +2,7 @@
 #include "ActorStateObserver.h"
 #include "PrecisionIntegration.h"
 #include "Config.h"
+#include "ActorUtils.h"
 
 // Undefine Windows macros that conflict with std functions
 #ifdef min
@@ -324,21 +325,22 @@ namespace CombatAI
             return context;
         }
 
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return context; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+
         // Validate actor before accessing cache
-        try {
-            if (a_actor->IsDead() || !a_actor->IsInCombat()) {
-                // Actor is invalid, clean up cache and return empty context
-                m_combatContextCache.erase(a_actor);
-                return context;
-            }
-        } catch (...) {
-            // Actor access failed - clean up cache
-            m_combatContextCache.erase(a_actor);
+        if (ActorUtils::SafeIsDead(a_actor) || !ActorUtils::SafeIsInCombat(a_actor)) {
+            // Actor is invalid, clean up cache and return empty context
+            m_combatContextCache.erase(formID);
             return context;
         }
 
         // Check cache first
-        auto cacheIt = m_combatContextCache.find(a_actor);
+        auto cacheIt = m_combatContextCache.find(formID);
         if (cacheIt != m_combatContextCache.end()) {
             // Check if cache is still valid
             if (a_currentTime - cacheIt->second.lastUpdateTime < COMBAT_CONTEXT_UPDATE_INTERVAL) {
@@ -383,19 +385,14 @@ namespace CombatAI
             }
 
             // Update cache - only if actor is still valid
-            try {
-                if (!a_actor->IsDead() && a_actor->IsInCombat()) {
-                    // Clear raw pointer before caching
-                    context.closestEnemy = nullptr;
-                    m_combatContextCache[a_actor] = {context, a_currentTime};
-                }
-            } catch (...) {
-                // Cache update failed, clean up
-                m_combatContextCache.erase(a_actor);
+            if (!ActorUtils::SafeIsDead(a_actor) && ActorUtils::SafeIsInCombat(a_actor)) {
+                // Clear raw pointer before caching
+                context.closestEnemy = nullptr;
+                m_combatContextCache[formID] = {context, a_currentTime};
             }
         } catch (...) {
             // Actor access failed - return empty context
-            m_combatContextCache.erase(a_actor);
+            m_combatContextCache.erase(formID);
             return context;
         }
 
@@ -408,23 +405,18 @@ namespace CombatAI
             return;
         }
 
-        // Validate actor before expensive operations
-        try {
-            if (!a_actor->IsInCombat()) {
-                return;
-            }
-        } catch (...) {
-            return; // Actor access failed
+        // Validate actor before expensive operations - use wrapper
+        if (!ActorUtils::SafeIsInCombat(a_actor)) {
+            return;
         }
 
         // Scan range for nearby actors
         const float scanRange = 2000.0f; // Game units
-        RE::NiPoint3 selfPos;
-        try {
-            selfPos = a_actor->GetPosition();
-        } catch (...) {
+        auto selfPosOpt = ActorUtils::SafeGetPosition(a_actor);
+        if (!selfPosOpt.has_value()) {
             return; // Position access failed
         }
+        RE::NiPoint3 selfPos = selfPosOpt.value();
 
         int additionalEnemies = 0;
         int allies = 0;
@@ -487,51 +479,42 @@ namespace CombatAI
                 }
 
                 // Validate nearby actor before accessing properties
-                bool isValidActor = false;
-                try {
-                    isValidActor = !nearbyActor->IsDead() && nearbyActor->IsInCombat();
-                } catch (...) {
+                // Use wrapper for safe validation
+                if (ActorUtils::SafeIsDead(nearbyActor) || !ActorUtils::SafeIsInCombat(nearbyActor)) {
                     continue; // Actor validation failed
-                }
-                
-                if (!isValidActor) {
-                    continue;
                 }
 
                 // Re-validate self actor before distance calculation
-                try {
-                    if (a_actor->IsDead() || !a_actor->IsInCombat()) {
-                        return; // Self became invalid, abort scan
-                    }
-                } catch (...) {
-                    return; // Self actor access failed, abort scan
+                if (ActorUtils::SafeIsDead(a_actor) || !ActorUtils::SafeIsInCombat(a_actor)) {
+                    return; // Self became invalid, abort scan
                 }
 
-                // Check distance
-                RE::NiPoint3 actorPos;
-                try {
-                    actorPos = nearbyActor->GetPosition();
-                } catch (...) {
+                // Check distance - use wrapper for safe position access
+                auto actorPosOpt = ActorUtils::SafeGetPosition(nearbyActor);
+                if (!actorPosOpt.has_value()) {
                     continue; // Position access failed
                 }
+                RE::NiPoint3 actorPos = actorPosOpt.value();
                 
                 float distance = StateHelpers::CalculateDistance(selfPos, actorPos);
                 if (distance > scanRange) {
                     continue;
                 }
 
-                // Determine if enemy or ally - wrap in try-catch
-                bool isHostile = false;
-                try {
-                    // Re-validate both actors before hostility check
-                    if (!a_actor->IsDead() && !nearbyActor->IsDead() && 
-                        a_actor->IsInCombat() && nearbyActor->IsInCombat()) {
-                        isHostile = a_actor->IsHostileToActor(nearbyActor);
-                    } else {
-                        continue;
-                    }
-                } catch (...) {
-                    continue; // Hostility check failed, skip this actor
+                // Re-validate actors before hostility check (they might have become invalid)
+                // Use wrapper for safe access
+                if (ActorUtils::SafeIsDead(a_actor) || ActorUtils::SafeIsDead(nearbyActor) ||
+                    !ActorUtils::SafeIsInCombat(a_actor) || !ActorUtils::SafeIsInCombat(nearbyActor)) {
+                    continue; // Actor validation failed
+                }
+                
+                // Determine if enemy or ally - use wrapper for safe hostility check
+                bool isHostile = ActorUtils::SafeIsHostileToActor(a_actor, nearbyActor);
+                
+                // Re-validate actors one more time before using distance/position data
+                // Actors can become invalid during the loop
+                if (ActorUtils::SafeIsDead(nearbyActor) || !ActorUtils::SafeIsInCombat(nearbyActor)) {
+                    continue; // Actor became invalid, skip
                 }
                 
                 if (isHostile) {
@@ -541,21 +524,21 @@ namespace CombatAI
                     // Update closest enemy if this one is closer
                     // Don't store raw pointer - it becomes invalid
                     if (distance < closestDistance) {
-                        try {
-                            // Final validation before updating
-                            if (!nearbyActor->IsDead() && nearbyActor->IsInCombat()) {
-                                closestDistance = distance;
-                                a_context.closestEnemy = nullptr; // Don't store raw pointer
-                                a_context.closestEnemyDistance = distance;
-                            }
-                        } catch (...) {
-                            // Actor became invalid, skip storing
-                            continue;
-                        }
+                        closestDistance = distance;
+                        a_context.closestEnemy = nullptr; // Don't store raw pointer
+                        a_context.closestEnemyDistance = distance;
                     }
                 } else {
                     // Found an ally (non-hostile actor in combat)
                     allies++;
+                    
+                    // Track closest ally position for flanking calculations
+                    // Only update if this ally is closer than previous closest
+                    if (!a_context.hasNearbyAlly || distance < a_context.closestAllyDistance) {
+                        a_context.closestAllyPosition = actorPos;
+                        a_context.closestAllyDistance = distance;
+                        a_context.hasNearbyAlly = (distance <= 1500.0f); // Flanking range threshold
+                    }
                 }
             }
         } catch (...) {
@@ -571,8 +554,18 @@ namespace CombatAI
 
     void ActorStateObserver::Cleanup(RE::Actor* a_actor)
     {
-        if (a_actor) {
-            m_combatContextCache.erase(a_actor);
+        if (!a_actor) {
+            return;
         }
+
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+
+        // Remove cached combat context for this actor
+        m_combatContextCache.erase(formID);
     }
 }

@@ -33,6 +33,16 @@ namespace CombatAI
             possibleDecisions.push_back(backoffResult);
         }
 
+        DecisionResult flankingResult = EvaluateFlanking(a_actor, a_state);
+        if (flankingResult.action != ActionType::None) {
+            possibleDecisions.push_back(flankingResult);
+        }
+
+        DecisionResult feintingResult = EvaluateFeinting(a_actor, a_state);
+        if (feintingResult.action != ActionType::None) {
+            possibleDecisions.push_back(feintingResult);
+        }
+
         DecisionResult offenseResult = EvaluateOffense(a_actor, a_state);
         if (offenseResult.action != ActionType::None) {
             possibleDecisions.push_back(offenseResult);
@@ -626,6 +636,217 @@ namespace CombatAI
         strafeDir.Unitize();
 
         return strafeDir;
+    }
+
+    DecisionResult DecisionMatrix::EvaluateFlanking(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        DecisionResult result;
+
+        // Flanking only makes sense when:
+        // 1. We have allies nearby
+        // 2. Target is valid
+        // 3. We're in melee range or close to it
+        if (!a_state.target.isValid || !a_state.combatContext.hasNearbyAlly) {
+            return result;
+        }
+
+        // Only consider flanking if we have at least one ally
+        if (a_state.combatContext.allyCount < 1) {
+            return result;
+        }
+
+        // Flanking is most effective when:
+        // - Target is engaged with another actor (ally)
+        // - We can position ourselves to the side/back of target
+        // - We're in melee range or approaching it
+
+        // Validate closestAllyPosition is valid (not zero/uninitialized)
+        // Check if position is reasonable (not NaN, not zero, not extremely far)
+        RE::NiPoint3 allyPos = a_state.combatContext.closestAllyPosition;
+        float allyDistSq = allyPos.x * allyPos.x + allyPos.y * allyPos.y + allyPos.z * allyPos.z;
+        if (allyDistSq < 1.0f || allyDistSq > 10000000.0f) { // Very close to zero or extremely far = invalid
+            return result; // Invalid ally position
+        }
+
+        // Check if target is facing towards an ally (engaged with ally)
+        RE::NiPoint3 targetToAlly = allyPos - a_state.target.position;
+        float targetToAllyDistSq = targetToAlly.x * targetToAlly.x + targetToAlly.y * targetToAlly.y + targetToAlly.z * targetToAlly.z;
+        if (targetToAllyDistSq < 0.01f) { // Too close, avoid division by zero
+            return result;
+        }
+        float targetToAllyDist = std::sqrt(targetToAllyDistSq);
+        targetToAlly.x /= targetToAllyDist;
+        targetToAlly.y /= targetToAllyDist;
+        targetToAlly.z /= targetToAllyDist;
+        
+        // Calculate angle between target's forward vector and direction to ally
+        float targetAllyDot = a_state.target.forwardVector.Dot(targetToAlly);
+        
+        // If target is facing towards ally (dot > 0.5), we can flank from behind/side
+        bool targetEngagedWithAlly = (targetAllyDot > 0.5f && targetToAllyDist < 800.0f);
+
+        // Calculate our position relative to target
+        RE::NiPoint3 targetToSelf = a_state.self.position - a_state.target.position;
+        float targetToSelfDistSq = targetToSelf.x * targetToSelf.x + targetToSelf.y * targetToSelf.y + targetToSelf.z * targetToSelf.z;
+        if (targetToSelfDistSq < 0.01f) { // Too close, avoid division by zero
+            return result;
+        }
+        float targetToSelfDist = std::sqrt(targetToSelfDistSq);
+        targetToSelf.x /= targetToSelfDist;
+        targetToSelf.y /= targetToSelfDist;
+        targetToSelf.z /= targetToSelfDist;
+        float targetSelfDot = a_state.target.forwardVector.Dot(targetToSelf);
+
+        // Optimal flanking position: to the side or behind target (dot < 0.3)
+        // If we're already in good flanking position, we might want to attack instead
+        bool isInFlankingPosition = (targetSelfDot < 0.3f);
+
+        // Only suggest flanking if:
+        // 1. Target is engaged with ally AND we're not in optimal flanking position yet
+        // 2. OR we're close to melee range but not quite there
+        if (targetEngagedWithAlly && !isInFlankingPosition && targetToSelfDist < 1000.0f) {
+            result.action = ActionType::Flanking;
+            result.priority = 1.4f; // Higher priority than normal strafe when flanking
+            
+            // Calculate optimal flanking direction (perpendicular to target, away from ally)
+            // This creates a pincer movement
+            RE::NiPoint3 flankingDir = CalculateFlankingDirection(a_state);
+            result.direction = flankingDir;
+            result.intensity = 1.0f; // Full intensity for tactical positioning
+        }
+
+        return result;
+    }
+
+    DecisionResult DecisionMatrix::EvaluateFeinting(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        DecisionResult result;
+
+        // Feinting conditions:
+        // 1. Target is blocking or being defensive
+        // 2. We're in melee range
+        // 3. Target is not currently attacking (safe to feint)
+        // 4. We have stamina to perform feint + follow-up
+
+        if (!a_state.target.isValid) {
+            return result;
+        }
+
+        // Feinting is most effective when target is defensive
+        bool targetIsDefensive = a_state.target.isBlocking || 
+                                 (a_state.target.orientationDot > 0.7f && !a_state.target.isAttacking);
+
+        // Need to be in melee range for feinting to be effective
+        float reachDistance = a_state.weaponReach * 1.2f; // Slightly beyond reach
+        bool inMeleeRange = (a_state.target.distance <= reachDistance);
+
+        // Don't feint if target is actively attacking (too risky)
+        if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+            return result;
+        }
+
+        // Need sufficient stamina for feint + potential follow-up
+        if (a_state.self.staminaPercent < 0.4f) {
+            return result;
+        }
+
+        // Feinting is effective when:
+        // - Target is blocking/defensive
+        // - We're in melee range
+        // - We haven't attacked recently (to avoid spam)
+        if (targetIsDefensive && inMeleeRange && 
+            a_state.self.attackState == RE::ATTACK_STATE_ENUM::kNone) {
+            
+            result.action = ActionType::Feint;
+            result.priority = 1.2f; // Moderate priority - useful but not urgent
+            
+            // Feint direction: slight forward movement to appear aggressive
+            RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
+            toTarget.Unitize();
+            result.direction = toTarget;
+            result.intensity = 0.6f; // Moderate intensity - not full commitment
+        }
+
+        return result;
+    }
+
+    RE::NiPoint3 DecisionMatrix::CalculateFlankingDirection(const ActorStateData& a_state)
+    {
+        if (!a_state.target.isValid || !a_state.combatContext.hasNearbyAlly) {
+            // Fallback to normal strafe direction
+            return CalculateStrafeDirection(a_state);
+        }
+
+        // Validate closestAllyPosition is valid (not zero/uninitialized)
+        RE::NiPoint3 allyPos = a_state.combatContext.closestAllyPosition;
+        float allyDistSq = allyPos.x * allyPos.x + allyPos.y * allyPos.y + allyPos.z * allyPos.z;
+        if (allyDistSq < 1.0f || allyDistSq > 10000000.0f) { // Very close to zero or extremely far = invalid
+            // Fallback to normal strafe direction
+            return CalculateStrafeDirection(a_state);
+        }
+
+        // Calculate direction perpendicular to target's forward vector
+        // Prefer direction away from ally to create pincer movement
+        
+        // Get target's right vector (perpendicular to forward)
+        RE::NiPoint3 targetRight = RE::NiPoint3(
+            -a_state.target.forwardVector.y,
+            a_state.target.forwardVector.x,
+            0.0f
+        );
+        float targetRightLenSq = targetRight.x * targetRight.x + targetRight.y * targetRight.y;
+        if (targetRightLenSq < 0.01f) {
+            // Fallback to normal strafe direction
+            return CalculateStrafeDirection(a_state);
+        }
+        float targetRightLen = std::sqrt(targetRightLenSq);
+        targetRight.x /= targetRightLen;
+        targetRight.y /= targetRightLen;
+
+        // Calculate direction from target to ally
+        RE::NiPoint3 targetToAlly = allyPos - a_state.target.position;
+        float targetToAllyLenSq = targetToAlly.x * targetToAlly.x + targetToAlly.y * targetToAlly.y + targetToAlly.z * targetToAlly.z;
+        if (targetToAllyLenSq < 0.01f) {
+            // Fallback to normal strafe direction
+            return CalculateStrafeDirection(a_state);
+        }
+        float targetToAllyLen = std::sqrt(targetToAllyLenSq);
+        targetToAlly.x /= targetToAllyLen;
+        targetToAlly.y /= targetToAllyLen;
+        targetToAlly.z /= targetToAllyLen;
+
+        // Choose flanking direction opposite to ally (create pincer)
+        // Dot product tells us which side ally is on
+        float allySideDot = targetRight.Dot(targetToAlly);
+        
+        // If ally is on right side (positive dot), we go left (negative)
+        // If ally is on left side (negative dot), we go right (positive)
+        RE::NiPoint3 flankingDir = (allySideDot > 0.0f) ? -targetRight : targetRight;
+
+        // Also add slight forward component to maintain pressure
+        RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
+        float toTargetLenSq = toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z;
+        if (toTargetLenSq < 0.01f) {
+            // Too close, just return flanking direction
+            return flankingDir;
+        }
+        float toTargetLen = std::sqrt(toTargetLenSq);
+        toTarget.x /= toTargetLen;
+        toTarget.y /= toTargetLen;
+        toTarget.z /= toTargetLen;
+        
+        flankingDir = flankingDir * 0.7f + toTarget * 0.3f;
+        float flankingLenSq = flankingDir.x * flankingDir.x + flankingDir.y * flankingDir.y + flankingDir.z * flankingDir.z;
+        if (flankingLenSq < 0.01f) {
+            // Fallback to normal strafe direction
+            return CalculateStrafeDirection(a_state);
+        }
+        float flankingLen = std::sqrt(flankingLenSq);
+        flankingDir.x /= flankingLen;
+        flankingDir.y /= flankingLen;
+        flankingDir.z /= flankingLen;
+
+        return flankingDir;
     }
 
     DecisionResult DecisionMatrix::SelectBestFromTie(const std::vector<DecisionResult>& a_decisions, const ActorStateData& a_state)

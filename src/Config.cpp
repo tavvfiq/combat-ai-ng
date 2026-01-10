@@ -81,6 +81,7 @@ namespace CombatAI
         m_humanizer.retreatMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "RetreatMistakeMultiplier", m_humanizer.retreatMistakeMultiplier));
         m_humanizer.backoffMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BackoffMistakeMultiplier", m_humanizer.backoffMistakeMultiplier));
         m_humanizer.advancingMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "AdvancingMistakeMultiplier", m_humanizer.advancingMistakeMultiplier));
+        m_humanizer.flankingMistakeMultiplier = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "FlankingMistakeMultiplier", m_humanizer.flankingMistakeMultiplier));
 
         // Clamp values to valid ranges
         m_humanizer.baseReactionDelayMs = (std::max)(0.0f, m_humanizer.baseReactionDelayMs);
@@ -104,6 +105,7 @@ namespace CombatAI
         m_humanizer.retreatMistakeMultiplier = ClampValue(m_humanizer.retreatMistakeMultiplier, 0.0f, 3.0f);
         m_humanizer.backoffMistakeMultiplier = ClampValue(m_humanizer.backoffMistakeMultiplier, 0.0f, 3.0f);
         m_humanizer.advancingMistakeMultiplier = ClampValue(m_humanizer.advancingMistakeMultiplier, 0.0f, 3.0f);
+        m_humanizer.flankingMistakeMultiplier = ClampValue(m_humanizer.flankingMistakeMultiplier, 0.0f, 3.0f);
     }
 
     void Config::ReadDodgeSystemSettings(CSimpleIniA& a_ini)

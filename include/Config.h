@@ -38,6 +38,7 @@ namespace CombatAI
             float retreatMistakeMultiplier = 0.3f;
             float backoffMistakeMultiplier = 0.5f;
             float advancingMistakeMultiplier = 0.7f;
+            float flankingMistakeMultiplier = 1.0f;
         };
 
         struct DodgeSystemSettings

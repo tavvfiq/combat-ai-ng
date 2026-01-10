@@ -33,6 +33,7 @@ namespace CombatAI
             float retreatMistakeMultiplier = 0.3f; // Retreat is easy, very low mistake chance
             float backoffMistakeMultiplier = 0.5f; // Backoff is relatively easy
             float advancingMistakeMultiplier = 0.7f; // Advancing is moderately easy
+            float flankingMistakeMultiplier = 1.0f; // Flanking is tactical but requires coordination
         };
 
         Humanizer() = default;
@@ -78,11 +79,11 @@ namespace CombatAI
 
         Config m_config;
 
-        // Per-actor reaction states
-        std::unordered_map<RE::Actor*, ActorReactionState> m_reactionStates;
+        // Per-actor reaction states (keyed by FormID for safety - FormIDs don't become invalid like pointers)
+        std::unordered_map<RE::FormID, ActorReactionState> m_reactionStates;
 
-        // Per-actor cooldowns
-        std::unordered_map<RE::Actor*, ActorCooldownState> m_cooldownStates;
+        // Per-actor cooldowns (keyed by FormID for safety)
+        std::unordered_map<RE::FormID, ActorCooldownState> m_cooldownStates;
 
         // Calculate mistake probability based on level and action type
         float CalculateMistakeChance(std::uint16_t a_level, ActionType a_action) const;

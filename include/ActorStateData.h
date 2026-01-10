@@ -42,6 +42,11 @@ namespace CombatAI
         int allyCount = 0; // Number of allies in combat (friendly actors)
         RE::Actor* closestEnemy = nullptr; // Closest enemy (might not be primary target)
         float closestEnemyDistance = 0.0f;
+        
+        // Flanking support: track closest ally position relative to target
+        RE::NiPoint3 closestAllyPosition = RE::NiPoint3(0.0f, 0.0f, 0.0f);
+        float closestAllyDistance = 0.0f;
+        bool hasNearbyAlly = false; // True if ally is within flanking range
     };
 
     // Combined state data for decision making

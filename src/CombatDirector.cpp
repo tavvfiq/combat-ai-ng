@@ -55,6 +55,7 @@ namespace CombatAI
         humanizerConfig.retreatMistakeMultiplier = config.GetHumanizer().retreatMistakeMultiplier;
         humanizerConfig.backoffMistakeMultiplier = config.GetHumanizer().backoffMistakeMultiplier;
         humanizerConfig.advancingMistakeMultiplier = config.GetHumanizer().advancingMistakeMultiplier;
+        humanizerConfig.flankingMistakeMultiplier = config.GetHumanizer().flankingMistakeMultiplier;
         m_humanizer.SetConfig(humanizerConfig);
     }
 
@@ -80,7 +81,8 @@ namespace CombatAI
         bool isMovementAction = (decision.action == ActionType::Strafe || 
                                 decision.action == ActionType::Retreat || 
                                 decision.action == ActionType::Advancing || 
-                                decision.action == ActionType::Backoff);
+                                decision.action == ActionType::Backoff ||
+                                decision.action == ActionType::Flanking);
         
         if (!canReact && !isMovementAction) {
             return; // Not a movement action and can't react yet
@@ -117,8 +119,11 @@ namespace CombatAI
                 }
                 // For movement actions, keep reaction state active so we can continuously apply movement
 
-                // Track actor
-                m_processedActors.insert(a_actor);
+                // Track actor by FormID
+                auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+                if (formIDOpt.has_value()) {
+                    m_processedActors.insert(formIDOpt.value());
+                }
             }
         }
     }
@@ -138,51 +143,22 @@ namespace CombatAI
 
     void CombatDirector::Cleanup()
     {
-        // Remove invalid actors from tracking
-        // CRITICAL: Use try-catch because stored pointers can become dangling
-        auto it = m_processedActors.begin();
-        while (it != m_processedActors.end()) {
-            RE::Actor* actor = *it;
-            bool isValid = false;
-            try {
-                isValid = actor && !actor->IsDead() && actor->IsInCombat();
-            } catch (...) {
-                isValid = false; // Actor access failed - pointer was dangling
-            }
-            
-            if (!isValid) {
-                // Clean up observer cache before removing
-                try {
-                    m_observer.Cleanup(actor);
-                } catch (...) {
-                    // Cleanup failed, continue anyway
-                }
-                it = m_processedActors.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        // Also clean up orphaned timers (actors removed from processedActors but timer still exists)
-        auto timerIt = m_actorProcessTimers.begin();
-        while (timerIt != m_actorProcessTimers.end()) {
-            RE::Actor* actor = timerIt->first;
-            bool isValid = false;
-            try {
-                isValid = actor && !actor->IsDead() && actor->IsInCombat();
-            } catch (...) {
-                isValid = false; // Actor access failed - pointer was dangling
-            }
-            
-            if (!isValid) {
-                timerIt = m_actorProcessTimers.erase(timerIt);
-            } else {
-                ++timerIt;
-            }
-        }
-
-        // Clean up Humanizer state for invalid actors
+        // With FormID keys, cleanup is much simpler
+        // FormIDs are stable identifiers - they don't become invalid
+        // We rely on lazy cleanup: entries are removed when actors leave combat
+        // (checked in ProcessActor when actor is not in combat)
+        // This avoids expensive LookupByID() calls that could crash
+        
+        // Note: We don't need to do aggressive cleanup here since:
+        // 1. FormIDs don't become invalid (unlike pointers)
+        // 2. Entries are cleaned up lazily when actors leave combat
+        // 3. Avoiding LookupByID() prevents crashes from invalid FormIDs or deleted forms
+        
+        // Clean up Humanizer state (it also uses lazy cleanup)
         m_humanizer.Cleanup();
+        
+        // If we want to be more aggressive, we could add a size limit and remove oldest entries
+        // But for now, lazy cleanup is safer and more efficient
     }
 
     bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime)
@@ -240,22 +216,29 @@ namespace CombatAI
         }
 
         // Throttle processing: only process at configured interval
-        auto timerIt = m_actorProcessTimers.find(a_actor);
+        // Use FormID as key for safety
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return false; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+        
+        auto timerIt = m_actorProcessTimers.find(formID);
         if (timerIt == m_actorProcessTimers.end()) {
             // First time processing this actor, initialize timer
-            m_actorProcessTimers[a_actor] = 0.0f;
+            m_actorProcessTimers[formID] = 0.0f;
             return true;
         }
         
-        m_actorProcessTimers[a_actor] += a_deltaTime;
+        timerIt->second += a_deltaTime;
         
         // Only process if interval has passed
-        if (m_actorProcessTimers[a_actor] < m_processInterval) {
+        if (timerIt->second < m_processInterval) {
             return false; // Skip processing this frame
         }
         
         // Reset timer for next interval
-        m_actorProcessTimers[a_actor] = 0.0f;
+        timerIt->second = 0.0f;
 
         return true;
     }

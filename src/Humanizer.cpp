@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Humanizer.h"
+#include "ActorUtils.h"
 #include <random>
 
 namespace CombatAI
@@ -17,24 +18,31 @@ namespace CombatAI
             return false;
         }
 
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return false; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+
         // Only process actors in combat - clean up if not in combat
-        // Use try-catch to protect against dangling pointers
-        try {
-            if (!a_actor->IsInCombat()) {
-                // Remove reaction state if actor left combat
-                auto it = m_reactionStates.find(a_actor);
-                if (it != m_reactionStates.end()) {
-                    m_reactionStates.erase(it);
-                }
-                return false;
-            }
-        } catch (...) {
-            // Actor access failed - pointer was dangling
-            m_reactionStates.erase(a_actor);
+        if (!ActorUtils::SafeIsInCombat(a_actor)) {
+            // Remove reaction state if actor left combat
+            m_reactionStates.erase(formID);
             return false;
         }
 
-        auto& state = m_reactionStates[a_actor];
+        // Use FormID as key - much safer than raw pointer
+        auto it = m_reactionStates.find(formID);
+        if (it == m_reactionStates.end()) {
+            // Actor not in map, insert it
+            auto [newIt, inserted] = m_reactionStates.emplace(formID, ActorReactionState{});
+            if (!inserted) {
+                return false; // Failed to insert
+            }
+            it = newIt;
+        }
+        auto& state = it->second;
 
         // Initialize delay if not set
         if (state.reactionDelay == 0.0f) {
@@ -64,7 +72,15 @@ namespace CombatAI
             return;
         }
 
-        auto it = m_reactionStates.find(a_actor);
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+
+        // Use FormID as key - much safer than raw pointer
+        auto it = m_reactionStates.find(formID);
         if (it != m_reactionStates.end()) {
             // Reset timer and delay, will be re-initialized on next CanReact call
             it->second.reactionTimer = 0.0f;
@@ -79,14 +95,8 @@ namespace CombatAI
             return false;
         }
 
-        // Get level - use try-catch to protect against invalid actor access
-        std::uint16_t level = 1;
-        try {
-            level = a_actor->GetLevel();
-        } catch (...) {
-            // Level access failed - actor may be invalid, use default
-            level = 1;
-        }
+        // Get level safely using wrapper
+        std::uint16_t level = ActorUtils::SafeGetLevel(a_actor);
         float mistakeChance = CalculateMistakeChance(level, a_action);
 
         if (mistakeChance <= 0.0f) {
@@ -103,7 +113,15 @@ namespace CombatAI
             return true; // Safe default
         }
 
-        auto it = m_cooldownStates.find(a_actor);
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return true; // Can't get FormID, actor is invalid - safe default
+        }
+        RE::FormID formID = formIDOpt.value();
+
+        // Use FormID as key - much safer than raw pointer
+        auto it = m_cooldownStates.find(formID);
         if (it == m_cooldownStates.end()) {
             return false;
         }
@@ -139,12 +157,28 @@ namespace CombatAI
             return;
         }
 
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+
         float cooldown = GetCooldownForAction(a_action);
         if (cooldown <= 0.0f) {
             return; // No cooldown for this action
         }
 
-        auto& cooldownState = m_cooldownStates[a_actor];
+        // Use FormID as key - much safer than raw pointer
+        auto cooldownIt = m_cooldownStates.find(formID);
+        if (cooldownIt == m_cooldownStates.end()) {
+            auto [newIt, inserted] = m_cooldownStates.emplace(formID, ActorCooldownState{});
+            if (!inserted) {
+                return; // Failed to insert, exit early
+            }
+            cooldownIt = newIt;
+        }
+        auto& cooldownState = cooldownIt->second;
         
         // Map Strafe to Dodge cooldown (they share the same cooldown)
         ActionType cooldownKey = (a_action == ActionType::Strafe) ? ActionType::Dodge : a_action;
@@ -154,25 +188,10 @@ namespace CombatAI
     void Humanizer::Update(float a_deltaTime)
     {
         // Update cooldowns and clean up expired ones
+        // Note: With FormID keys, we don't need to validate actors during iteration
+        // FormIDs are stable identifiers that don't become invalid
         auto actorIt = m_cooldownStates.begin();
         while (actorIt != m_cooldownStates.end()) {
-            RE::Actor* actor = actorIt->first;
-            
-            // Validate actor pointer before accessing its cooldown state
-            // CRITICAL: Use try-catch because stored pointers can become dangling
-            bool isValid = false;
-            try {
-                isValid = actor && !actor->IsDead() && actor->IsInCombat();
-            } catch (...) {
-                isValid = false; // Actor access failed - pointer was dangling
-            }
-            
-            if (!isValid) {
-                // Actor is invalid, remove entire entry
-                actorIt = m_cooldownStates.erase(actorIt);
-                continue;
-            }
-            
             auto& cooldowns = actorIt->second.cooldowns;
             auto it = cooldowns.begin();
             while (it != cooldowns.end()) {
@@ -201,42 +220,20 @@ namespace CombatAI
 
     void Humanizer::Cleanup()
     {
-        // Remove invalid actors from reaction states
-        // CRITICAL: Use try-catch because stored pointers can become dangling
-        auto reactionIt = m_reactionStates.begin();
-        while (reactionIt != m_reactionStates.end()) {
-            RE::Actor* actor = reactionIt->first;
-            bool isValid = false;
-            try {
-                isValid = actor && !actor->IsDead() && actor->IsInCombat();
-            } catch (...) {
-                isValid = false; // Actor access failed - pointer was dangling
-            }
-            
-            if (!isValid) {
-                reactionIt = m_reactionStates.erase(reactionIt);
-            } else {
-                ++reactionIt;
-            }
-        }
-
-        // Remove invalid actors from cooldown states
-        auto cooldownIt = m_cooldownStates.begin();
-        while (cooldownIt != m_cooldownStates.end()) {
-            RE::Actor* actor = cooldownIt->first;
-            bool isValid = false;
-            try {
-                isValid = actor && !actor->IsDead() && actor->IsInCombat();
-            } catch (...) {
-                isValid = false; // Actor access failed - pointer was dangling
-            }
-            
-            if (!isValid) {
-                cooldownIt = m_cooldownStates.erase(cooldownIt);
-            } else {
-                ++cooldownIt;
-            }
-        }
+        // With FormID keys, cleanup is much simpler
+        // FormIDs are stable identifiers - they don't become invalid
+        // We rely on lazy cleanup: entries are removed when actors leave combat
+        // (checked in CanReact() when actor is not in combat)
+        // This avoids expensive LookupByID() calls that could crash
+        
+        // Note: We don't need to do anything here since:
+        // 1. FormIDs don't become invalid (unlike pointers)
+        // 2. Entries are cleaned up lazily in CanReact() when actors leave combat
+        // 3. Expired cooldowns are cleaned up in Update()
+        // 4. Avoiding LookupByID() prevents crashes from invalid FormIDs or deleted forms
+        
+        // If we want to be more aggressive, we could add a size limit and remove oldest entries
+        // But for now, lazy cleanup is safer and more efficient
     }
 
     float Humanizer::GetMistakeMultiplierForAction(ActionType a_action) const
@@ -262,6 +259,8 @@ namespace CombatAI
                 return m_config.backoffMistakeMultiplier;
             case ActionType::Advancing:
                 return m_config.advancingMistakeMultiplier;
+            case ActionType::Flanking:
+                return m_config.flankingMistakeMultiplier;
             default:
                 return 1.0f; // Default multiplier for unknown actions
         }
@@ -301,17 +300,27 @@ namespace CombatAI
             return;
         }
 
-        auto& state = m_reactionStates[a_actor];
+        // Get FormID safely - use FormID as key instead of raw pointer
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return; // Can't get FormID, actor is invalid
+        }
+        RE::FormID formID = formIDOpt.value();
+
+        // Use FormID as key - much safer than raw pointer
+        auto stateIt = m_reactionStates.find(formID);
+        if (stateIt == m_reactionStates.end()) {
+            auto [newIt, inserted] = m_reactionStates.emplace(formID, ActorReactionState{});
+            if (!inserted) {
+                return; // Failed to insert
+            }
+            stateIt = newIt;
+        }
+        auto& state = stateIt->second;
 
         // Calculate base delay based on actor level
-        // Use try-catch to protect against invalid actor access
-        std::uint16_t level = 1;
-        try {
-            level = a_actor->GetLevel();
-        } catch (...) {
-            // Level access failed - actor may be invalid, use default
-            level = 1;
-        }
+        // Use wrapper to safely get level
+        std::uint16_t level = ActorUtils::SafeGetLevel(a_actor);
         float baseDelay = CalculateReactionDelay(level);
 
         // Random variance: base + variance

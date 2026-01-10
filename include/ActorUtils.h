@@ -231,5 +231,70 @@ namespace CombatAI
                 // Actor access failed
             }
         }
+
+        // Safe GetPosition
+        inline std::optional<RE::NiPoint3> SafeGetPosition(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return std::nullopt;
+            }
+            try {
+                return a_actor->GetPosition();
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+
+        // Safe IsDead
+        inline bool SafeIsDead(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return true; // Consider null as dead
+            }
+            try {
+                return a_actor->IsDead();
+            } catch (...) {
+                return true; // On error, assume dead to be safe
+            }
+        }
+
+        // Safe IsInCombat
+        inline bool SafeIsInCombat(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->IsInCombat();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe IsHostileToActor
+        inline bool SafeIsHostileToActor(RE::Actor* a_actor, RE::Actor* a_target)
+        {
+            if (!a_actor || !a_target) {
+                return false;
+            }
+            try {
+                return a_actor->IsHostileToActor(a_target);
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe GetLevel
+        inline std::uint16_t SafeGetLevel(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return 1; // Default level
+            }
+            try {
+                return a_actor->GetLevel();
+            } catch (...) {
+                return 1; // Default level on error
+            }
+        }
     }
 }

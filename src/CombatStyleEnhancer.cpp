@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CombatStyleEnhancer.h"
+#include "ActorUtils.h"
 
 // Undefine Windows macros that conflict with std functions
 #ifdef min
@@ -27,14 +28,18 @@ namespace CombatAI
         }
 
         // Get from combat controller first (runtime)
-        auto& runtimeData = a_actor->GetActorRuntimeData();
-        RE::CombatController* controller = runtimeData.combatController;
-        if (controller && controller->combatStyle) {
-            return controller->combatStyle;
+        try {
+            auto& runtimeData = a_actor->GetActorRuntimeData();
+            RE::CombatController* controller = runtimeData.combatController;
+            if (controller && controller->combatStyle) {
+                return controller->combatStyle;
+            }
+        } catch (...) {
+            // Actor access failed - try fallback
         }
 
         // Fallback to actor base
-        RE::TESNPC* base = a_actor->GetActorBase();
+        RE::TESNPC* base = ActorUtils::SafeGetActorBase(a_actor);
         if (base) {
             return base->GetCombatStyle();
         }
@@ -87,7 +92,7 @@ namespace CombatAI
     bool CombatStyleEnhancer::HasMeleeWeapon(RE::Actor* a_actor) const
     {
         if (!a_actor) return false;
-        auto weapon = a_actor->GetEquippedObject(false);
+        auto weapon = ActorUtils::SafeGetEquippedObject(a_actor, false);
         if (weapon && weapon->IsWeapon()) {
             auto weap = weapon->As<RE::TESObjectWEAP>();
             return weap && !weap->IsBow() && !weap->IsCrossbow();
@@ -98,7 +103,7 @@ namespace CombatAI
     bool CombatStyleEnhancer::HasRangedWeapon(RE::Actor* a_actor) const
     {
         if (!a_actor) return false;
-        auto weapon = a_actor->GetEquippedObject(false);
+        auto weapon = ActorUtils::SafeGetEquippedObject(a_actor, false);
         if (weapon && weapon->IsWeapon()) {
             auto weap = weapon->As<RE::TESObjectWEAP>();
             return weap && (weap->IsBow() || weap->IsCrossbow());
@@ -110,7 +115,8 @@ namespace CombatAI
     {
         if (!a_actor) return false;
         // Check if casting or has spell equipped
-        return a_actor->WhoIsCasting() != 0 || a_actor->GetEquippedObject(true) != nullptr;
+        return ActorUtils::SafeWhoIsCasting(a_actor) != 0 || 
+               ActorUtils::SafeGetEquippedObject(a_actor, true) != nullptr;
     }
 
     DecisionResult CombatStyleEnhancer::EnhanceForDuelingStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state, RE::TESCombatStyle* a_style)
@@ -139,6 +145,11 @@ namespace CombatAI
             }
         }
 
+        // Dueling style: Less likely to backoff (prefer dodging/strafe for positioning)
+        if (result.action == ActionType::Backoff) {
+            result.priority = (std::max)(0.0f, result.priority - 0.2f); // Prefer dodging over backing off
+        }
+
         // Don't use sprint attacks (duelists prefer precision)
         if (result.action == ActionType::SprintAttack) {
             result.priority = (std::max)(0.0f, result.priority - 0.3f);
@@ -161,6 +172,11 @@ namespace CombatAI
             } else {
                 result.intensity = (std::min)(1.0f, result.intensity * 1.2f);
             }
+        }
+
+        // Flanking style: Less likely to backoff (prefer strafe/circling instead)
+        if (result.action == ActionType::Backoff) {
+            result.priority = (std::max)(0.0f, result.priority - 0.3f); // Prefer tactical positioning over backing off
         }
 
         // Prefer sprint attacks for flanking (closing distance quickly)
@@ -206,21 +222,30 @@ namespace CombatAI
             }
         }
 
+        // Aggressive style: Less likely to backoff (prefer pressing forward or strafing)
+        if (result.action == ActionType::Backoff) {
+            // Only reduce priority if health is reasonable (aggressive NPCs don't backoff easily)
+            if (a_state.self.healthPercent > 0.3f) {
+                result.priority = (std::max)(0.0f, result.priority - 0.4f); // Significant reduction for aggressive style
+            } else {
+                // Even aggressive NPCs backoff when very low on health
+                result.priority = (std::max)(0.0f, result.priority - 0.2f); // Smaller reduction when low health
+            }
+        }
 
-
-        // Boost offensive actions
+        // Boost offensive actions - but only moderately (don't make them crazy aggressive)
         if (result.action == ActionType::Bash || result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority += 0.3f;
+            result.priority += 0.2f; // Moderate boost (reduced from 0.3f)
         }
 
-        // Prefer power attacks and sprint attacks
+        // Prefer power attacks and sprint attacks - but only when appropriate
         if (result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
-            result.priority += 0.2f; // Additional boost for committed attacks
+            result.priority += 0.15f; // Moderate boost (reduced from 0.2f)
         }
 
-        // Less likely to dodge/strafe (aggressive = press forward)
+        // Less likely to dodge/strafe (aggressive = press forward) - but don't eliminate them completely
         if (result.action == ActionType::Dodge || result.action == ActionType::Strafe) {
-            result.priority = (std::max)(0.0f, result.priority - 0.3f);
+            result.priority = (std::max)(0.0f, result.priority - 0.2f); // Reduced penalty (from 0.3f)
         }
 
         return result;
@@ -232,7 +257,7 @@ namespace CombatAI
 
         // Defensive style: More cautious, prefers evasion and retreat
         if (result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
-            result.priority += 0.3f;
+            result.priority += 0.4f; // Higher boost for defensive style (increased from 0.3f)
         }
 
         if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump) {
@@ -266,8 +291,8 @@ namespace CombatAI
             result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
-        // Prefer strafe/dodge to maintain range
-        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Retreat) {
+        // Prefer strafe/dodge/backoff to maintain range
+        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
             result.priority += 0.3f;
         }
 
@@ -293,8 +318,8 @@ namespace CombatAI
             result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
-        // Prefer strafe, dodge, or jump to maintain optimal range
-        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump || result.action == ActionType::Retreat) {
+        // Prefer strafe, dodge, jump, or backoff to maintain optimal range
+        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump || result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
             result.priority += 0.3f;
         }
 

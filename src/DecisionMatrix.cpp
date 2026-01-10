@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "DecisionMatrix.h"
 #include "Config.h"
+#include "ActorUtils.h"
 #include <cmath>
 #include <string>
 #include <format>
@@ -79,10 +80,12 @@ namespace CombatAI
 
         if (debugEnabled && selectedRef && a_actor == selectedRef.get()) {
             std::ostringstream logs;
-            logs << "actor: " << a_actor->GetFormID() 
-                << " | action: " << static_cast<int>(bestDecision.action) 
-                << " | possible actions (a,p): " << actions;
-            ConsolePrint(logs.str().c_str());
+            if (auto formID = ActorUtils::SafeGetFormID(a_actor)) {
+                logs << "actor: " << *formID 
+                    << " | action: " << static_cast<int>(bestDecision.action) 
+                    << " | possible actions (a,p): " << actions;
+                ConsolePrint(logs.str().c_str());
+            }
         }
 
         return bestDecision;
@@ -99,7 +102,7 @@ namespace CombatAI
 
         // Can't bash with a bow or crossbow
         if (a_actor) {
-            auto equippedWield = a_actor->GetEquippedObject(false);
+            auto equippedWield = ActorUtils::SafeGetEquippedObject(a_actor, false);
             if (equippedWield && equippedWield->IsWeapon()) {
                 auto weapon = equippedWield->As<RE::TESObjectWEAP>();
                 if (weapon && (weapon->IsBow() || weapon->IsCrossbow())) {
@@ -183,11 +186,13 @@ namespace CombatAI
             }
 
             // Check stamina
-            auto actorOwner = a_actor->AsActorValueOwner();
-            float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
-            float currentStamina = a_state.self.staminaPercent * maxStamina;
-            if (currentStamina < config.GetDodgeSystem().dodgeStaminaCost) {
-                conditionsMet = false;
+            auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+            if (actorOwner) {
+                float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
+                float currentStamina = a_state.self.staminaPercent * maxStamina;
+                if (currentStamina < config.GetDodgeSystem().dodgeStaminaCost) {
+                    conditionsMet = false;
+                }
             }
 
             if (conditionsMet) {
@@ -231,13 +236,40 @@ namespace CombatAI
             }
         } else {
             result.action = ActionType::Strafe;
-            result.priority = 1.5f; // Base evasion priority
+            
+            // Base tactical priority - higher than base offense to encourage positioning
+            float strafePriority = 1.3f;
+            
+            // Boost priority when target is attacking (evasion + tactical)
+            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                strafePriority = 1.6f; // Higher than base offense when target is attacking
+            }
+            
+            // Boost priority when target is blocking (good time to reposition for better angle)
+            if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                strafePriority += 0.2f;
+            }
+            
+            // Boost priority when in melee range (tactical positioning is important)
+            float reachDistance = a_state.weaponReach;
+            if (reachDistance <= 0.0f) {
+                reachDistance = 150.0f;
+            }
+            if (a_state.target.distance <= reachDistance * 1.5f) {
+                strafePriority += 0.2f; // Higher priority in melee range for positioning
+            }
+            
+            // Boost priority if we just attacked (time to reposition)
+            if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
+                strafePriority += 0.3f; // Just finished attack, reposition
+            }
             
             // Multiple enemies = higher priority for strafe too
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 0.5f; // More defensive when outnumbered
+                strafePriority += 0.3f; // More defensive when outnumbered
             }
             
+            result.priority = strafePriority;
             result.direction = CalculateStrafeDirection(a_state);
             result.intensity = 0.7f; // Moderate strafe speed
         }
@@ -305,14 +337,28 @@ namespace CombatAI
         const float sprintAttackMinDist = config.GetDecisionMatrix().sprintAttackMinDistance;
 
         if (a_state.target.distance > sprintAttackMaxDist) {
+            // Don't advance if target is actively attacking (stay defensive)
+            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                return result; // Prefer strafe/evasion instead
+            }
+            
             result.action = ActionType::Advancing;
             
             // Multiple enemies = less likely to advance (might want to stay defensive)
+            float basePriority = 0.7f;
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                result.priority = 0.8f; // Lower priority when outnumbered
-            } else {
-                result.priority = 1.0f; // Base offense priority
+                basePriority = 0.5f; // Lower priority when outnumbered
             }
+            
+            // Boost if target is vulnerable (good time to close distance)
+            if (a_state.target.isCasting || a_state.target.isDrawingBow) {
+                basePriority += 0.2f;
+            }
+            if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
+                basePriority += 0.3f;
+            }
+            
+            result.priority = basePriority;
             
             // Calculate advancing direction (towards target)
             if (a_state.target.isValid) {
@@ -340,14 +386,40 @@ namespace CombatAI
         }
 
         if (a_state.target.distance > sprintAttackMinDist && a_state.target.distance < sprintAttackMaxDist && a_state.self.staminaPercent > config.GetDecisionMatrix().sprintAttackStaminaThreshold) {
+            // Don't sprint attack if target is actively attacking (too risky)
+            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                return result; // Prefer advancing or strafe instead
+            }
+            
+            // Only sprint attack when target is vulnerable
+            bool hasGoodOpening = false;
+            if (a_state.target.isCasting || a_state.target.isDrawingBow || 
+                a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal ||
+                (a_state.target.isBlocking && !a_state.target.isAttacking)) {
+                hasGoodOpening = true;
+            }
+            
+            if (!hasGoodOpening) {
+                return result; // No good opening - prefer advancing/strafe
+            }
+            
             result.action = ActionType::SprintAttack;
             
             // Multiple enemies = less likely to sprint attack (risky when outnumbered)
+            float basePriority = 0.8f;
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                result.priority = 0.8f; // Lower priority when outnumbered
-            } else {
-                result.priority = 1.0f; // Base offense priority
+                basePriority = 0.6f; // Lower priority when outnumbered
             }
+            
+            // Boost if target is vulnerable
+            if (a_state.target.isCasting || a_state.target.isDrawingBow) {
+                basePriority += 0.2f;
+            }
+            if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
+                basePriority += 0.3f;
+            }
+            
+            result.priority = basePriority;
             
             // Sprint attack - high intensity for aggressive gap closing
             result.intensity = 0.9f; // High intensity for sprint attack
@@ -362,24 +434,85 @@ namespace CombatAI
         reachDistance *= config.GetDecisionMatrix().offenseReachMultiplier;
 
         if (a_state.target.distance <= reachDistance) {
+            // TACTICAL CONSIDERATIONS: Don't attack blindly - need good opening
+            
+            // Don't attack if target is actively attacking (too risky - prefer evasion/strafe)
+            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                return result; // Let evasion handle this - strafe/dodge instead
+            }
+            
+            // Don't attack if we just finished an attack (should reposition first)
+            if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
+                return result; // Prefer strafe/repositioning after attack
+            }
+            
+            // Don't attack if stamina is critically low (conserve for emergencies)
+            if (a_state.self.staminaPercent < 0.15f) {
+                return result; // Too low stamina - prefer defensive actions
+            }
+            
             // Multiple enemies = less likely to commit to attacks (prefer defensive)
             float priorityModifier = 0.0f;
             if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                // Outnumbered: reduce offensive action priority
-                priorityModifier = -0.3f;
+                // Outnumbered: reduce offensive action priority significantly
+                priorityModifier = -0.5f;
             } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
                 // More allies: can be more aggressive
-                priorityModifier = 0.3f;
+                priorityModifier = 0.2f;
             }
+            
+            // Health-based modifier: Lower health = more cautious
+            float healthModifier = 0.0f;
+            if (a_state.self.healthPercent < 0.4f) {
+                healthModifier = -0.3f; // Low health - be more defensive
+            }
+            
+            // Target state modifiers - only attack when there's a good opening
+            float targetStateModifier = 0.0f;
+            bool hasGoodOpening = false;
+            
+            // Excellent opportunities
+            if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
+                targetStateModifier += 0.4f; // Target staggered - perfect opportunity
+                hasGoodOpening = true;
+            }
+            if (a_state.target.isCasting || a_state.target.isDrawingBow) {
+                targetStateModifier += 0.3f; // Target casting/drawing - very vulnerable
+                hasGoodOpening = true;
+            }
+            
+            // Good opportunities
+            if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                targetStateModifier += 0.2f; // Target blocking (not attacking) - good opportunity
+                hasGoodOpening = true;
+            }
+            
+            // Orientation bonus: Higher priority if target is not facing us directly
+            if (a_state.target.orientationDot < 0.5f) {
+                targetStateModifier += 0.15f; // Target not facing us - good opportunity
+                hasGoodOpening = true;
+            }
+            
+            // If no good opening, significantly reduce priority (prefer strafe/repositioning)
+            if (!hasGoodOpening) {
+                priorityModifier -= 0.4f; // No clear opening - prefer tactical positioning
+            }
+            
+            // Lower base priority to allow tactical actions (strafe) to compete
+            float basePriority = 0.7f + priorityModifier + healthModifier + targetStateModifier;
+            
+            // Distance-based modifier: closer = slightly higher priority
+            float distanceRatio = a_state.target.distance / reachDistance;
+            float distanceModifier = (1.0f - distanceRatio) * 0.1f; // Up to +0.1f when closer
             
             if (a_state.self.staminaPercent > config.GetDecisionMatrix().powerAttackStaminaThreshold) {
                 result.action = ActionType::PowerAttack;
-                result.priority = 1.0f + priorityModifier; // Base offense priority
+                result.priority = basePriority + distanceModifier;
                 // Power attack - committed attack, high intensity
                 result.intensity = 0.8f; // High intensity for committed power attack
             } else {
                 result.action = ActionType::Attack;
-                result.priority = 1.0f + priorityModifier; // Base offense priority
+                result.priority = basePriority + distanceModifier;
                 // Normal attack - moderate intensity
                 result.intensity = 0.6f; // Moderate intensity for normal attack
             }
@@ -406,20 +539,52 @@ namespace CombatAI
             return result;
         }
 
-        // Check if target is casting magic OR drawing bow
+        // Check if target is casting magic OR drawing bow OR attacking aggressively
         bool shouldBackoff = false;
+        float urgencyModifier = 0.0f;
+        
+        // Primary triggers: Target casting or drawing bow (vulnerable to ranged attacks)
         if (a_state.target.isCasting || a_state.target.isDrawingBow) {
             shouldBackoff = true;
+            urgencyModifier = 0.3f; // High urgency for ranged threats
+        }
+        
+        // Secondary trigger: Target attacking aggressively (power attack or rapid attacks)
+        // Only backoff if we're in close range and target is being very aggressive
+        if (a_state.target.isPowerAttacking) {
+            shouldBackoff = true;
+            urgencyModifier = (std::max)(urgencyModifier, 0.4f); // Very high urgency for power attacks
+        } else if (a_state.target.isAttacking && a_state.target.distance <= sprintAttackMinDist) {
+            // Target is attacking and we're very close - backoff to create space
+            shouldBackoff = true;
+            urgencyModifier = (std::max)(urgencyModifier, 0.2f); // Moderate urgency for normal attacks in close range
+        }
+        
+        // Additional consideration: Low health = more urgent backoff
+        if (a_state.self.healthPercent < 0.4f) {
+            urgencyModifier += 0.2f; // More urgent when low on health
         }
 
         if (shouldBackoff) {
             result.action = ActionType::Backoff;
-            result.priority = 1.8f; // High priority (between Evasion and Survival)
+            
+            // Base priority (between Evasion and Survival)
+            float basePriority = 1.8f;
+            
+            // Apply urgency modifier
+            basePriority += urgencyModifier;
             
             // Multiple enemies = more urgent backoff
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 0.5f; // Higher priority when outnumbered
+                basePriority += 0.4f; // Higher priority when outnumbered
             }
+            
+            // Low stamina = more urgent backoff (conserve stamina)
+            if (a_state.self.staminaPercent < 0.3f) {
+                basePriority += 0.2f;
+            }
+            
+            result.priority = basePriority;
             
             // Calculate backoff direction (away from target)
             RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
@@ -427,15 +592,17 @@ namespace CombatAI
             toTarget.Unitize();
             result.direction = RE::NiPoint3(-toTarget.x, -toTarget.y, 0.0f); // Opposite direction
             
-            // Set intensity based on distance - closer = faster backoff
+            // Set intensity based on distance and urgency - closer = faster backoff
             float distance = a_state.target.distance;
+            float baseIntensity = 0.5f;
             if (distance <= sprintAttackMinDist) {
-                result.intensity = 1.0f; // Fast backoff if very close
+                baseIntensity = 1.0f; // Fast backoff if very close
             } else if (distance >= sprintAttackMinDist && distance <= sprintAttackMaxDist) {
-                result.intensity = 0.7f; // Medium backoff
-            } else {
-                result.intensity = 0.5f; // Slower backoff if far
+                baseIntensity = 0.7f; // Medium backoff
             }
+            
+            // Increase intensity based on urgency
+            result.intensity = (std::min)(1.0f, baseIntensity + urgencyModifier * 0.3f);
         }
 
         return result;

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ActionExecutor.h"
 #include "Config.h"
+#include "ActorUtils.h"
 
 #ifdef min
 #undef min
@@ -88,14 +89,11 @@ namespace CombatAI
         }
 
         // Check if already bashing/attacking (don't interrupt)
-        RE::ActorState* state = a_actor->AsActorState();
-        if (state) {
-            RE::ATTACK_STATE_ENUM attackState = state->GetAttackState();
-            if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-                attackState != RE::ATTACK_STATE_ENUM::kDraw) {
-                // Already in an attack, don't interrupt
-                return false;
-            }
+        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            // Already in an attack, don't interrupt
+            return false;
         }
 
         // Reset BFCO attack state if BFCO is installed
@@ -178,9 +176,9 @@ namespace CombatAI
         }
 
         // Start sprinting if not already
-        if (!a_actor->AsActorState()->IsSprinting()) {
+        if (!ActorUtils::SafeIsSprinting(a_actor)) {
             NotifyAnimation(a_actor, "SprintStart");
-            a_actor->AsActorState()->actorState1.sprinting = 1;
+            ActorUtils::SafeSetSprinting(a_actor, true);
         }
 
         // Reset BFCO attack state if BFCO is installed
@@ -202,25 +200,22 @@ namespace CombatAI
         if (!a_actor) {
             return false;
         }
-
-        // Actor implements IAnimationGraphManagerHolder
-        RE::BSFixedString eventName(a_eventName);
-        return a_actor->NotifyAnimationGraph(eventName);
+        return ActorUtils::SafeNotifyAnimationGraph(a_actor, a_eventName);
     }
 
     bool ActionExecutor::SetMovementDirection(RE::Actor* a_actor, const RE::NiPoint3& a_direction, float a_intensity)
     {
-        if (!a_actor || !a_actor->Get3D()) {
+        if (!a_actor) {
+            return false;
+        }
+
+        RE::NiAVObject* actor3d = ActorUtils::SafeGet3D(a_actor);
+        if (!actor3d) {
             return false;
         }
 
         RE::NiPoint3 worldDir = a_direction;
         worldDir.Unitize();
-
-        RE::NiAVObject* actor3d = a_actor->Get3D();
-        if (!actor3d) {
-            return false;
-        }
 
         // Get actor's rotation matrix (transpose is the inverse for rotation matrices)
         RE::NiMatrix3 invActorRot = actor3d->world.rotate.Transpose();
@@ -235,12 +230,12 @@ namespace CombatAI
 
         // Set standard movement graph variables.
         // The animation graph must support these for the movement to work.
-        a_actor->SetGraphVariableFloat("movementDirection", angle);
-        a_actor->SetGraphVariableFloat("movementSpeed", speed);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementDirection", angle);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementSpeed", speed);
         
         // Also set InputDirection and InputMagnitude for compatibility with other animation setups (e.g. DAR)
-        a_actor->SetGraphVariableFloat("InputDirection", angle);
-        a_actor->SetGraphVariableFloat("InputMagnitude", speed);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputDirection", angle);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputMagnitude", speed);
 
         return true;
     }
@@ -260,9 +255,7 @@ namespace CombatAI
         // Check if CPR graph variables are available by trying to read one
         // If the variable exists, CPR is likely available
         bool enableCircling = false;
-        bool hasVariable = a_actor->GetGraphVariableBool("CPR_EnableCircling", enableCircling);
-        
-        return hasVariable;
+        return ActorUtils::SafeGetGraphVariableBool(a_actor, "CPR_EnableCircling", enableCircling);
     }
 
     void ActionExecutor::ResetBFCOAttackState(RE::Actor* a_actor)
@@ -272,10 +265,10 @@ namespace CombatAI
         }
 
         // Reset BFCO attack state variables
-        a_actor->SetGraphVariableInt("NEW_BFCO_IsNormalAttacking", 0);
-        a_actor->SetGraphVariableInt("NEW_BFCO_IsPowerAttacking", 0);
-        a_actor->SetGraphVariableInt("BFCONG_PARMB", 0);
-        a_actor->SetGraphVariableInt("NEW_BFCO_DisablePALMB", 0);
+        ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_IsNormalAttacking", 0);
+        ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_IsPowerAttacking", 0);
+        ActorUtils::SafeSetGraphVariableInt(a_actor, "BFCONG_PARMB", 0);
+        ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_DisablePALMB", 0);
     }
 
     void ActionExecutor::SetCPRCircling(RE::Actor* a_actor, float a_minDist, float a_maxDist, float a_minAngle, float a_maxAngle)
@@ -285,17 +278,17 @@ namespace CombatAI
         }
 
         // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
-        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
-        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
-        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableAdvanceRadius", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableBackoff", false);
 
         // Enable CPR circling
-        a_actor->SetGraphVariableBool("CPR_EnableCircling", true);
-        a_actor->SetGraphVariableFloat("CPR_CirclingDistMin", a_minDist);
-        a_actor->SetGraphVariableFloat("CPR_CirclingDistMax", a_maxDist);
-        a_actor->SetGraphVariableFloat("CPR_CirclingAngleMin", a_minAngle);
-        a_actor->SetGraphVariableFloat("CPR_CirclingAngleMax", a_maxAngle);
-        a_actor->SetGraphVariableFloat("CPR_CirclingViewConeAngle", 360.0f); // Full view cone
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableCircling", true);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_CirclingDistMin", a_minDist);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_CirclingDistMax", a_maxDist);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_CirclingAngleMin", a_minAngle);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_CirclingAngleMax", a_maxAngle);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_CirclingViewConeAngle", 360.0f); // Full view cone
     }
 
     void ActionExecutor::SetCPRFallback(RE::Actor* a_actor, float a_minDist, float a_maxDist, float a_minWait, float a_maxWait)
@@ -305,16 +298,16 @@ namespace CombatAI
         }
 
         // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
-        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
-        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
-        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableCircling", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableAdvanceRadius", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableBackoff", false);
 
         // Enable CPR fallback
-        a_actor->SetGraphVariableBool("CPR_EnableFallback", true);
-        a_actor->SetGraphVariableFloat("CPR_FallbackDistMin", a_minDist);
-        a_actor->SetGraphVariableFloat("CPR_FallbackDistMax", a_maxDist);
-        a_actor->SetGraphVariableFloat("CPR_FallbackWaitTimeMin", a_minWait);
-        a_actor->SetGraphVariableFloat("CPR_FallbackWaitTimeMax", a_maxWait);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", true);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackDistMin", a_minDist);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackDistMax", a_maxDist);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMin", a_minWait);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMax", a_maxWait);
     }
 
     void ActionExecutor::SetCPRBackoff(RE::Actor* a_actor, float a_minDistMult)
@@ -324,14 +317,14 @@ namespace CombatAI
         }
 
         // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
-        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
-        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
-        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableCircling", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableAdvanceRadius", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", false);
         
         // Enable CPR backoff
-        a_actor->SetGraphVariableBool("CPR_EnableBackoff", true);
-        a_actor->SetGraphVariableFloat("CPR_BackoffMinDistMult", a_minDistMult);
-        a_actor->SetGraphVariableFloat("CPR_BackoffChance", 1.0f); // Always backoff when triggered
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableBackoff", true);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_BackoffMinDistMult", a_minDistMult);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_BackoffChance", 1.0f); // Always backoff when triggered
     }
 
     void ActionExecutor::DisableCPR(RE::Actor* a_actor)
@@ -341,10 +334,10 @@ namespace CombatAI
         }
 
         // Disable all CPR behaviors
-        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
-        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", false);
-        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
-        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableCircling", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableAdvanceRadius", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableBackoff", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", false);
     }
 
     bool ActionExecutor::ExecuteAttack(RE::Actor* a_actor)
@@ -354,18 +347,15 @@ namespace CombatAI
         }
 
         // Check if already attacking
-        RE::ActorState* state = a_actor->AsActorState();
-        if (state) {
-            RE::ATTACK_STATE_ENUM attackState = state->GetAttackState();
-            if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-                attackState != RE::ATTACK_STATE_ENUM::kDraw) {
-                return false;
-            }
+        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            return false;
         }
 
         if (m_isBFCOEnabled) {
-            a_actor->SetGraphVariableInt("NEW_BFCO_IsNormalAttacking", 1);
-            a_actor->SetGraphVariableInt("NEW_BFCO_IsPowerAttacking", 0);
+            ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_IsNormalAttacking", 1);
+            ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_IsPowerAttacking", 0);
         }
 
         return NotifyAnimation(a_actor, "attackStart");
@@ -378,18 +368,15 @@ namespace CombatAI
         }
 
         // Check if already attacking
-        RE::ActorState* state = a_actor->AsActorState();
-        if (state) {
-            RE::ATTACK_STATE_ENUM attackState = state->GetAttackState();
-            if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-                attackState != RE::ATTACK_STATE_ENUM::kDraw) {
-                return false;
-            }
+        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            return false;
         }
 
         if (m_isBFCOEnabled) {
-            a_actor->SetGraphVariableInt("NEW_BFCO_IsPowerAttacking", 1);
-            a_actor->SetGraphVariableInt("NEW_BFCO_IsNormalAttacking", 0);
+            ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_IsPowerAttacking", 1);
+            ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_IsNormalAttacking", 0);
             return NotifyAnimation(a_actor, "attackStart");
         }
 
@@ -404,16 +391,14 @@ namespace CombatAI
         }
         
         // Check if already dodging/jumping - don't trigger another dodge
-        // We check bInJumpState to prevent spam, but we also check if already dodging
         bool isJumping = false;
-        a_actor->GetGraphVariableBool("CombatAI_NG_Jump", isJumping);
-        if (isJumping) {
+        if (ActorUtils::SafeGetGraphVariableBool(a_actor, "CombatAI_NG_Jump", isJumping) && isJumping) {
             return false; // Already in jump state, don't trigger again
         }
         
         // Set CombatAI_NG_Jump to true BEFORE executing dodge
         // This allows OAR to detect it and replace the dodge animation with a jump animation
-        a_actor->SetGraphVariableBool("CombatAI_NG_Jump", true);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CombatAI_NG_Jump", true);
         
         return ExecuteDodge(a_actor, a_state);
     }
@@ -424,7 +409,12 @@ namespace CombatAI
             return;
         }
         
-        a_actor->SetGraphVariableBool("CombatAI_NG_Jump", false);
+        // Wrap in try-catch to protect against stale actors
+        try {
+            a_actor->SetGraphVariableBool("CombatAI_NG_Jump", false);
+        } catch (...) {
+            // Actor access failed - animation graph may be invalid
+        }
     }
 
     bool ActionExecutor::ExecuteBackoff(RE::Actor* a_actor, const DecisionResult& a_decision, [[maybe_unused]]const ActorStateData& a_state)
@@ -452,18 +442,18 @@ namespace CombatAI
         }
 
         // IMPORTANT: Disable other CPR behaviors first to avoid conflicts
-        a_actor->SetGraphVariableBool("CPR_EnableCircling", false);
-        a_actor->SetGraphVariableBool("CPR_EnableBackoff", false);
-        a_actor->SetGraphVariableBool("CPR_EnableFallback", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableCircling", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableBackoff", false);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", false);
 
         // Enable CPR advance radius override
-        a_actor->SetGraphVariableBool("CPR_EnableAdvanceRadius", true);
-        a_actor->SetGraphVariableFloat("CPR_InnerRadiusMin", a_innerRadiusMin);
-        a_actor->SetGraphVariableFloat("CPR_InnerRadiusMid", a_innerRadiusMid);
-        a_actor->SetGraphVariableFloat("CPR_InnerRadiusMax", a_innerRadiusMax);
-        a_actor->SetGraphVariableFloat("CPR_OuterRadiusMin", a_outerRadiusMin);
-        a_actor->SetGraphVariableFloat("CPR_OuterRadiusMid", a_outerRadiusMid);
-        a_actor->SetGraphVariableFloat("CPR_OuterRadiusMax", a_outerRadiusMax);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableAdvanceRadius", true);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_InnerRadiusMin", a_innerRadiusMin);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_InnerRadiusMid", a_innerRadiusMid);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_InnerRadiusMax", a_innerRadiusMax);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMin", a_outerRadiusMin);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMid", a_outerRadiusMid);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMax", a_outerRadiusMax);
     }
 
     bool ActionExecutor::ExecuteAdvancing(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)

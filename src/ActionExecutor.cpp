@@ -474,9 +474,8 @@ namespace CombatAI
 
         // Try CPR advancing if available
         if (IsCPRAvailable(a_actor)) {
-            // Calculate advancing parameters based on current distance and weapon reach
+            // Calculate advancing parameters based on current distance
             float currentDistance = a_state.target.isValid ? a_state.target.distance : 1000.0f;
-            float weaponReach = a_state.weaponReach > 0.0f ? a_state.weaponReach : 150.0f;
             
             // Calculate desired engagement distance (sprint attack range)
             auto& config = Config::GetInstance();

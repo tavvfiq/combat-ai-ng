@@ -108,6 +108,23 @@ namespace CombatAI
         // Casting
         state.isCasting = (a_target->WhoIsCasting() != 0);
 
+        // Drawing bow - check if target has bow/crossbow and is in draw state
+        state.isDrawingBow = false;
+        if (a_target) {
+            auto equippedWeapon = a_target->GetEquippedObject(false);
+            if (equippedWeapon && equippedWeapon->IsWeapon()) {
+                auto weapon = equippedWeapon->As<RE::TESObjectWEAP>();
+                if (weapon && (weapon->IsBow() || weapon->IsCrossbow())) {
+                    RE::ActorState* targetState = a_target->AsActorState();
+                    if (targetState) {
+                        RE::ATTACK_STATE_ENUM attackState = targetState->GetAttackState();
+                        // kDraw means they're drawing the bow
+                        state.isDrawingBow = (attackState == RE::ATTACK_STATE_ENUM::kDraw);
+                    }
+                }
+            }
+        }
+
         // Knock state (stagger/recoil)
         RE::ActorState* targetState = a_target->AsActorState();
         if (targetState) {

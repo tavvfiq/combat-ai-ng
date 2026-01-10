@@ -111,12 +111,24 @@ namespace CombatAI
     void CombatDirector::Cleanup()
     {
         // Remove invalid actors from tracking
+        // CRITICAL: Use try-catch because stored pointers can become dangling
         auto it = m_processedActors.begin();
         while (it != m_processedActors.end()) {
             RE::Actor* actor = *it;
-            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+            bool isValid = false;
+            try {
+                isValid = actor && !actor->IsDead() && actor->IsInCombat();
+            } catch (...) {
+                isValid = false; // Actor access failed - pointer was dangling
+            }
+            
+            if (!isValid) {
                 // Clean up observer cache before removing
-                m_observer.Cleanup(actor);
+                try {
+                    m_observer.Cleanup(actor);
+                } catch (...) {
+                    // Cleanup failed, continue anyway
+                }
                 it = m_processedActors.erase(it);
             } else {
                 ++it;
@@ -127,7 +139,14 @@ namespace CombatAI
         auto timerIt = m_actorProcessTimers.begin();
         while (timerIt != m_actorProcessTimers.end()) {
             RE::Actor* actor = timerIt->first;
-            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+            bool isValid = false;
+            try {
+                isValid = actor && !actor->IsDead() && actor->IsInCombat();
+            } catch (...) {
+                isValid = false; // Actor access failed - pointer was dangling
+            }
+            
+            if (!isValid) {
                 timerIt = m_actorProcessTimers.erase(timerIt);
             } else {
                 ++timerIt;
@@ -141,6 +160,18 @@ namespace CombatAI
     bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime)
     {
         if (!a_actor) {
+            return false;
+        }
+
+        // Validate actor once at the start - actor is passed directly from hook, but could be in invalid state
+        // Use try-catch to protect against transitional states (knock-down, deletion, etc.)
+        try {
+            // Quick validation - if actor is dead or not in combat, skip early
+            if (a_actor->IsDead() || !a_actor->IsInCombat()) {
+                return false;
+            }
+        } catch (...) {
+            // Actor access failed - actor may be in transitional state
             return false;
         }
 
@@ -169,15 +200,10 @@ namespace CombatAI
         // Check if we should only process combat actors
         auto& config = Config::GetInstance();
         if (config.GetPerformance().onlyProcessCombatActors) {
-            // Only process actors in combat
+            // Only process actors in combat (already checked above, but check again for consistency)
             if (!a_actor->IsInCombat()) {
                 return false;
             }
-        }
-
-        // Only process alive actors
-        if (a_actor->IsDead()) {
-            return false;
         }
 
         // Check if AI is enabled

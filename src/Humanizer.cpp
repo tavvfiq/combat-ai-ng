@@ -18,12 +18,19 @@ namespace CombatAI
         }
 
         // Only process actors in combat - clean up if not in combat
-        if (!a_actor->IsInCombat()) {
-            // Remove reaction state if actor left combat
-            auto it = m_reactionStates.find(a_actor);
-            if (it != m_reactionStates.end()) {
-                m_reactionStates.erase(it);
+        // Use try-catch to protect against dangling pointers
+        try {
+            if (!a_actor->IsInCombat()) {
+                // Remove reaction state if actor left combat
+                auto it = m_reactionStates.find(a_actor);
+                if (it != m_reactionStates.end()) {
+                    m_reactionStates.erase(it);
+                }
+                return false;
             }
+        } catch (...) {
+            // Actor access failed - pointer was dangling
+            m_reactionStates.erase(a_actor);
             return false;
         }
 
@@ -72,7 +79,14 @@ namespace CombatAI
             return false;
         }
 
-        std::uint16_t level = a_actor->GetLevel();
+        // Get level - use try-catch to protect against invalid actor access
+        std::uint16_t level = 1;
+        try {
+            level = a_actor->GetLevel();
+        } catch (...) {
+            // Level access failed - actor may be invalid, use default
+            level = 1;
+        }
         float mistakeChance = CalculateMistakeChance(level, a_action);
 
         if (mistakeChance <= 0.0f) {
@@ -145,7 +159,15 @@ namespace CombatAI
             RE::Actor* actor = actorIt->first;
             
             // Validate actor pointer before accessing its cooldown state
-            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+            // CRITICAL: Use try-catch because stored pointers can become dangling
+            bool isValid = false;
+            try {
+                isValid = actor && !actor->IsDead() && actor->IsInCombat();
+            } catch (...) {
+                isValid = false; // Actor access failed - pointer was dangling
+            }
+            
+            if (!isValid) {
                 // Actor is invalid, remove entire entry
                 actorIt = m_cooldownStates.erase(actorIt);
                 continue;
@@ -180,10 +202,18 @@ namespace CombatAI
     void Humanizer::Cleanup()
     {
         // Remove invalid actors from reaction states
+        // CRITICAL: Use try-catch because stored pointers can become dangling
         auto reactionIt = m_reactionStates.begin();
         while (reactionIt != m_reactionStates.end()) {
             RE::Actor* actor = reactionIt->first;
-            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+            bool isValid = false;
+            try {
+                isValid = actor && !actor->IsDead() && actor->IsInCombat();
+            } catch (...) {
+                isValid = false; // Actor access failed - pointer was dangling
+            }
+            
+            if (!isValid) {
                 reactionIt = m_reactionStates.erase(reactionIt);
             } else {
                 ++reactionIt;
@@ -194,7 +224,14 @@ namespace CombatAI
         auto cooldownIt = m_cooldownStates.begin();
         while (cooldownIt != m_cooldownStates.end()) {
             RE::Actor* actor = cooldownIt->first;
-            if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+            bool isValid = false;
+            try {
+                isValid = actor && !actor->IsDead() && actor->IsInCombat();
+            } catch (...) {
+                isValid = false; // Actor access failed - pointer was dangling
+            }
+            
+            if (!isValid) {
                 cooldownIt = m_cooldownStates.erase(cooldownIt);
             } else {
                 ++cooldownIt;
@@ -267,7 +304,14 @@ namespace CombatAI
         auto& state = m_reactionStates[a_actor];
 
         // Calculate base delay based on actor level
-        std::uint16_t level = a_actor->GetLevel();
+        // Use try-catch to protect against invalid actor access
+        std::uint16_t level = 1;
+        try {
+            level = a_actor->GetLevel();
+        } catch (...) {
+            // Level access failed - actor may be invalid, use default
+            level = 1;
+        }
         float baseDelay = CalculateReactionDelay(level);
 
         // Random variance: base + variance

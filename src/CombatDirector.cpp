@@ -115,6 +115,8 @@ namespace CombatAI
         while (it != m_processedActors.end()) {
             RE::Actor* actor = *it;
             if (!actor || actor->IsDead() || !actor->IsInCombat()) {
+                // Clean up observer cache before removing
+                m_observer.Cleanup(actor);
                 it = m_processedActors.erase(it);
             } else {
                 ++it;

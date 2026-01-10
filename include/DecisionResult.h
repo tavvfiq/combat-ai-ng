@@ -8,12 +8,12 @@ namespace CombatAI
     enum class ActionType : std::uint8_t
     {
         None = 0,
-        Bash, // 1
+        Retreat, // 1
         Strafe, // 2
-        Retreat, // 3
+        Bash, // 3
         PowerAttack, // 4
-        Attack, // 5
-        SprintAttack, // 6
+        SprintAttack, // 5
+        Attack, // 6
         Jump, // 7
         Dodge, // 8
         Backoff, //9

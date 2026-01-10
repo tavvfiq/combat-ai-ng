@@ -195,7 +195,14 @@ namespace CombatAI
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_real_distribution<> dis(0.0, 1.0);
-                if (dis(gen) < config.GetDecisionMatrix().evasionDodgeChance) {
+                
+                // Multiple enemies = prefer dodge over strafe (more defensive)
+                float dodgeChance = config.GetDecisionMatrix().evasionDodgeChance;
+                if (a_state.combatContext.enemyCount > 1) {
+                    dodgeChance = (std::min)(1.0f, dodgeChance * 1.5f); // Increase dodge chance when outnumbered
+                }
+                
+                if (dis(gen) < dodgeChance) {
                     shouldDodge = true; // Dodge
                 } else {
                     shouldDodge = false; // Strafe instead
@@ -206,6 +213,12 @@ namespace CombatAI
         if (shouldDodge) {
             result.action = ActionType::Dodge;
             result.priority = 1;
+            
+            // Multiple enemies = higher priority for dodge
+            if (a_state.combatContext.enemyCount > 1) {
+                result.priority += 1;
+            }
+            
             // Dodge intensity based on urgency (closer = more urgent)
             float distance = a_state.target.distance;
             if (distance < config.GetDecisionMatrix().evasionMinDistance) {
@@ -218,6 +231,12 @@ namespace CombatAI
         } else {
             result.action = ActionType::Strafe;
             result.priority = 1;
+            
+            // Multiple enemies = higher priority for strafe too
+            if (a_state.combatContext.enemyCount > 1) {
+                result.priority += 1;
+            }
+            
             result.direction = CalculateStrafeDirection(a_state);
             result.intensity = 0.7f; // Moderate strafe speed
         }
@@ -243,6 +262,14 @@ namespace CombatAI
             result.action = ActionType::Retreat;
             result.priority = 2; // Survival is highest priority
 
+            // Multiple enemies = more urgent retreat
+            if (a_state.combatContext.enemyCount > 1) {
+                result.priority += 1; // Higher priority with multiple enemies
+                result.intensity = 1.0f; // Faster retreat when outnumbered
+            } else {
+                result.intensity = 0.8f; // Normal retreat speed
+            }
+
             // Calculate retreat direction (away from target)
             if (a_state.target.isValid) {
                 RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
@@ -254,7 +281,6 @@ namespace CombatAI
                                                  -a_state.self.forwardVector.y, 
                                                  0.0f);
             }
-            result.intensity = 0.8f; // Fast retreat
         }
 
         return result;
@@ -279,7 +305,13 @@ namespace CombatAI
 
         if (a_state.target.distance > sprintAttackMaxDist) {
             result.action = ActionType::Advancing;
-            result.priority = 1;
+            
+            // Multiple enemies = less likely to advance (might want to stay defensive)
+            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                result.priority = 0; // Lower priority when outnumbered
+            } else {
+                result.priority = 1;
+            }
             
             // Calculate advancing direction (towards target)
             if (a_state.target.isValid) {
@@ -308,10 +340,16 @@ namespace CombatAI
 
         if (a_state.target.distance > sprintAttackMinDist && a_state.target.distance < sprintAttackMaxDist && a_state.self.staminaPercent > config.GetDecisionMatrix().sprintAttackStaminaThreshold) {
             result.action = ActionType::SprintAttack;
-            result.priority = 1;
+            
+            // Multiple enemies = less likely to sprint attack (risky when outnumbered)
+            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                result.priority = 0; // Lower priority when outnumbered
+            } else {
+                result.priority = 1;
+            }
+            
             // Sprint attack - high intensity for aggressive gap closing
             result.intensity = 0.9f; // High intensity for sprint attack
-            return result;
             return result;
         }
 
@@ -323,14 +361,24 @@ namespace CombatAI
         reachDistance *= config.GetDecisionMatrix().offenseReachMultiplier;
 
         if (a_state.target.distance <= reachDistance) {
+            // Multiple enemies = less likely to commit to attacks (prefer defensive)
+            int priorityModifier = 0;
+            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                // Outnumbered: reduce offensive action priority
+                priorityModifier = -1;
+            } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
+                // More allies: can be more aggressive
+                priorityModifier = 1;
+            }
+            
             if (a_state.self.staminaPercent > config.GetDecisionMatrix().powerAttackStaminaThreshold) {
                 result.action = ActionType::PowerAttack;
-                result.priority = 1;
+                result.priority = 1 + priorityModifier;
                 // Power attack - committed attack, high intensity
                 result.intensity = 0.8f; // High intensity for committed power attack
             } else {
                 result.action = ActionType::Attack;
-                result.priority = 1;
+                result.priority = 1 + priorityModifier;
                 // Normal attack - moderate intensity
                 result.intensity = 0.6f; // Moderate intensity for normal attack
             }
@@ -366,6 +414,11 @@ namespace CombatAI
         if (shouldBackoff) {
             result.action = ActionType::Backoff;
             result.priority = 2; // High priority (between Evasion and Survival)
+            
+            // Multiple enemies = more urgent backoff
+            if (a_state.combatContext.enemyCount > 1) {
+                result.priority += 1; // Higher priority when outnumbered
+            }
             
             // Calculate backoff direction (away from target)
             RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
@@ -483,7 +536,36 @@ namespace CombatAI
             score += 2.0f; // Prefer attacks at optimal range
         }
         
-        // Factor 4: Action type priority (implicit ordering)
+        // Factor 4: Combat context (enemy/ally ratio)
+        int enemyCount = a_state.combatContext.enemyCount;
+        int allyCount = a_state.combatContext.allyCount;
+        
+        if (enemyCount > allyCount + 1) {
+            // Outnumbered: prefer defensive actions
+            if (a_decision.action == ActionType::Retreat || 
+                a_decision.action == ActionType::Backoff || 
+                a_decision.action == ActionType::Dodge ||
+                a_decision.action == ActionType::Strafe ||
+                a_decision.action == ActionType::Jump) {
+                score += 3.0f;
+            }
+            // Outnumbered: reduce offensive action score
+            if (a_decision.action == ActionType::Attack || 
+                a_decision.action == ActionType::PowerAttack || 
+                a_decision.action == ActionType::SprintAttack) {
+                score -= 2.0f;
+            }
+        } else if (allyCount > enemyCount) {
+            // More allies: prefer offensive actions
+            if (a_decision.action == ActionType::Attack || 
+                a_decision.action == ActionType::PowerAttack || 
+                a_decision.action == ActionType::SprintAttack ||
+                a_decision.action == ActionType::Bash) {
+                score += 2.0f;
+            }
+        }
+        
+        // Factor 5: Action type priority (implicit ordering)
         // Higher enum values get slight preference (for variety)
         score += static_cast<float>(static_cast<int>(a_decision.action)) * 0.1f;
         

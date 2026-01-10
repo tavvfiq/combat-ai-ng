@@ -50,6 +50,11 @@ namespace CombatAI
             }
         }
 
+        // Gather combat context (multiple enemies, etc.) - cached for performance
+        static float currentTime = 0.0f;
+        currentTime += a_deltaTime;
+        data.combatContext = GatherCombatContext(a_actor, currentTime);
+
         return data;
     }
 
@@ -214,5 +219,136 @@ namespace CombatAI
         }
         
         return 150.0f; // Default fallback
+    }
+
+    CombatContext ActorStateObserver::GatherCombatContext(RE::Actor* a_actor, float a_currentTime)
+    {
+        CombatContext context;
+
+        if (!a_actor) {
+            return context;
+        }
+
+        // Check cache first
+        auto cacheIt = m_combatContextCache.find(a_actor);
+        if (cacheIt != m_combatContextCache.end()) {
+            // Check if cache is still valid
+            if (a_currentTime - cacheIt->second.lastUpdateTime < COMBAT_CONTEXT_UPDATE_INTERVAL) {
+                return cacheIt->second.context;
+            }
+        }
+
+        // Not in cache or expired, gather fresh data
+        auto& runtimeData = a_actor->GetActorRuntimeData();
+        RE::CombatController* combatController = runtimeData.combatController;
+
+        if (!combatController) {
+            return context;
+        }
+
+        // Get primary target
+        RE::ActorHandle primaryTarget = combatController->targetHandle;
+        RE::NiPointer<RE::Actor> target = primaryTarget.get();
+        if (target && target.get()) {
+            context.enemyCount = 1;
+            context.closestEnemy = target.get();
+            context.closestEnemyDistance = StateHelpers::CalculateDistance(
+                a_actor->GetPosition(),
+                target->GetPosition()
+            );
+        }
+
+        // Scan for nearby actors (enemies and allies) - expensive operation, done in one pass
+        ScanForNearbyActors(a_actor, context);
+
+        // Update cache
+        m_combatContextCache[a_actor] = {context, a_currentTime};
+
+        return context;
+    }
+
+    void ActorStateObserver::ScanForNearbyActors(RE::Actor* a_actor, CombatContext& a_context)
+    {
+        if (!a_actor || !a_actor->IsInCombat()) {
+            return;
+        }
+
+        // Scan range for nearby actors
+        const float scanRange = 2000.0f; // Game units
+        RE::NiPoint3 selfPos = a_actor->GetPosition();
+        int additionalEnemies = 0;
+        int allies = 0;
+        float closestDistance = a_context.closestEnemyDistance > 0.0f ? a_context.closestEnemyDistance : scanRange;
+
+        // Get current cell to scan actors in loaded area
+        RE::TESObjectCELL* currentCell = a_actor->GetParentCell();
+        if (!currentCell || !currentCell->IsAttached()) {
+            return;
+        }
+
+        // Scan actors in the current cell - single pass for both enemies and allies
+        auto& runtimeData = currentCell->GetRuntimeData();
+        for (auto& ref : runtimeData.references) {
+            RE::TESObjectREFR* refr = ref.get();
+            if (!refr) {
+                continue;
+            }
+
+            RE::Actor* nearbyActor = refr->As<RE::Actor>();
+            if (!nearbyActor) {
+                continue;
+            }
+
+            // Skip self
+            if (nearbyActor == a_actor) {
+                continue;
+            }
+
+            // Skip invalid actors
+            if (nearbyActor->IsDead()) {
+                continue;
+            }
+
+            // Check if in combat
+            if (!nearbyActor->IsInCombat()) {
+                continue;
+            }
+
+            // Check distance
+            RE::NiPoint3 actorPos = nearbyActor->GetPosition();
+            float distance = StateHelpers::CalculateDistance(selfPos, actorPos);
+            if (distance > scanRange) {
+                continue;
+            }
+
+            // Determine if enemy or ally
+            bool isHostile = a_actor->IsHostileToActor(nearbyActor);
+            
+            if (isHostile) {
+                // Found an additional enemy
+                additionalEnemies++;
+
+                // Update closest enemy if this one is closer
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    a_context.closestEnemy = nearbyActor;
+                    a_context.closestEnemyDistance = distance;
+                }
+            } else {
+                // Found an ally (non-hostile actor in combat)
+                allies++;
+            }
+        }
+
+        // Update counts
+        a_context.enemyCount += additionalEnemies;
+        a_context.allyCount = allies;
+    }
+
+    void ActorStateObserver::Cleanup(RE::Actor* a_actor)
+    {
+        if (a_actor) {
+            m_combatContextCache.erase(a_actor);
+        }
     }
 }

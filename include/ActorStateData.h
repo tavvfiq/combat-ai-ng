@@ -35,11 +35,21 @@ namespace CombatAI
         RE::TESForm* equippedRightHand = nullptr;
     };
 
+    // Combat context information (multiple enemies, allies, threat assessment)
+    struct CombatContext
+    {
+        int enemyCount = 0; // Number of enemies in combat
+        int allyCount = 0; // Number of allies in combat (friendly actors)
+        RE::Actor* closestEnemy = nullptr; // Closest enemy (might not be primary target)
+        float closestEnemyDistance = 0.0f;
+    };
+
     // Combined state data for decision making
     struct ActorStateData
     {
         SelfState self;
         TargetState target;
+        CombatContext combatContext; // Combat context (multiple enemies, etc.)
         float deltaTime = 0.0f;
         float weaponReach = 150.0f; // Weapon reach (from Precision or fallback)
     };

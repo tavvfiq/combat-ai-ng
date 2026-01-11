@@ -110,15 +110,9 @@ namespace CombatAI
             return result;
         }
 
-        // Can't bash with a bow or crossbow
-        if (a_actor) {
-            auto equippedWield = ActorUtils::SafeGetEquippedObject(a_actor, false);
-            if (equippedWield && equippedWield->IsWeapon()) {
-                auto weapon = equippedWield->As<RE::TESObjectWEAP>();
-                if (weapon && (weapon->IsBow() || weapon->IsCrossbow())) {
-                    return result; // Return None
-                }
-            }
+        // Can't bash with a bow or crossbow - use weapon type from state
+        if (a_state.self.isRanged) {
+            return result; // Return None - ranged weapons can't bash
         }
 
         // Get interrupt distance - use actual weapon reach from state
@@ -163,6 +157,19 @@ namespace CombatAI
             shouldBash = true;
             basePriority = 1.3f; // High priority for interrupting spells/bows
             
+            // Use temporal state: Higher priority if target has been casting/drawing for a while (more vulnerable)
+            float castingDuration = a_state.temporal.target.castingDuration;
+            float drawingDuration = a_state.temporal.target.drawingDuration;
+            float vulnerableDuration = (castingDuration > drawingDuration) ? castingDuration : drawingDuration;
+            
+            if (vulnerableDuration > 1.0f) {
+                // Target has been casting/drawing for > 1 second - very vulnerable
+                situationBonus += 0.3f; // Significant bonus for extended vulnerability
+            } else if (vulnerableDuration > 0.5f) {
+                // Target has been casting/drawing for > 0.5 seconds - vulnerable
+                situationBonus += 0.15f; // Moderate bonus
+            }
+            
             // Higher priority if target is facing us (interrupt before they finish)
             if (a_state.target.orientationDot > 0.6f) {
                 situationBonus += 0.2f; // Target facing us - interrupt before cast completes
@@ -180,8 +187,35 @@ namespace CombatAI
             shouldBash = true;
             basePriority = 1.1f; // Moderate priority for breaking guard
             
-            // Higher priority if target has been blocking for a while (defensive)
-            // Note: We don't track blocking duration, but we can infer from orientation
+            // Use temporal state: Higher priority if target has been blocking for a while (committed to defense)
+            float targetBlockingDuration = a_state.temporal.target.blockingDuration;
+            if (targetBlockingDuration > 1.0f) {
+                // Target has been blocking for > 1 second - very committed to defense, excellent bash opportunity
+                situationBonus += 0.4f; // Significant bonus for committed blocking
+            } else if (targetBlockingDuration > 0.5f) {
+                // Target has been blocking for > 0.5 seconds - committed to defense
+                situationBonus += 0.2f; // Moderate bonus
+            } else {
+                // Target just started blocking - might be reactive, less committed
+                basePriority -= 0.2f; // Reduce priority for reactive blocking
+            }
+            
+            // Weapon type considerations: Two-handed weapons break blocks better, so bash less needed
+            // One-handed weapons benefit more from bash to break guard
+            if (a_state.self.isTwoHanded) {
+                basePriority -= 0.2f; // Two-handed can break blocks easier, bash less critical
+            } else if (a_state.self.isOneHanded) {
+                situationBonus += 0.15f; // One-handed weapons benefit more from bash
+            }
+            
+            // Target weapon type: Bash is more effective against one-handed blockers
+            if (a_state.target.isOneHanded) {
+                situationBonus += 0.1f; // Easier to bash one-handed blockers
+            } else if (a_state.target.isTwoHanded) {
+                basePriority -= 0.1f; // Two-handed blockers are harder to bash
+            }
+            
+            // Higher priority if target is facing us defensively
             if (a_state.target.orientationDot > 0.7f) {
                 situationBonus += 0.2f; // Target facing us defensively - bash to break guard
             }
@@ -217,12 +251,21 @@ namespace CombatAI
                 return result; // Already attacking - don't bash
             }
             
-            // Multiple enemies = less likely to bash (risky when outnumbered)
-            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                basePriority -= 0.3f; // Reduce priority when outnumbered
+            // Use enhanced combat context: Threat level
+            // Higher threat level = less likely to bash (risky when outnumbered)
+            ThreatLevel bashThreatLevel = a_state.combatContext.threatLevel;
+            if (bashThreatLevel >= ThreatLevel::High) {
+                basePriority -= 0.4f; // Reduce priority significantly when high threat
+            } else if (bashThreatLevel == ThreatLevel::Moderate) {
+                basePriority -= 0.2f; // Reduce priority moderately when moderate threat
             } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
                 // More allies: can be more aggressive with bash
                 situationBonus += 0.15f; // Safer to bash when we have allies
+            }
+            
+            // More enemies targeting us = less likely to bash
+            if (a_state.combatContext.enemiesTargetingUs > 1) {
+                basePriority -= 0.2f; // Multiple enemies targeting us - bash is risky
             }
             
             // Stamina consideration: bash costs stamina, need some left
@@ -317,31 +360,49 @@ namespace CombatAI
 
         // --- Jump Evasion Logic ---
         if (config.GetDecisionMatrix().enableJumpEvasion) {
-            // Check if target is using a bow or crossbow
-            if (a_state.target.equippedRightHand && a_state.target.equippedRightHand->IsWeapon()) {
-                auto weapon = a_state.target.equippedRightHand->As<RE::TESObjectWEAP>();
-                if (weapon && (weapon->IsBow() || weapon->IsCrossbow())) {
-                    // Check distance
-                    if (a_state.target.distance > config.GetDecisionMatrix().jumpEvasionDistanceMin && 
-                        a_state.target.distance < config.GetDecisionMatrix().jumpEvasionDistanceMax &&
-                        a_state.target.orientationDot > 0.9f) {
+            // Check if target is using a ranged weapon (bow or crossbow)
+            // Use weapon type from state instead of checking equipped weapon directly
+            if (a_state.target.isRanged) {
+                // Check distance
+                if (a_state.target.distance > config.GetDecisionMatrix().jumpEvasionDistanceMin && 
+                    a_state.target.distance < config.GetDecisionMatrix().jumpEvasionDistanceMax &&
+                    a_state.target.orientationDot > 0.9f) {
                     
-                        // Random chance to jump
-                        std::random_device rd;
-                        std::mt19937 gen(rd());
-                        std::uniform_real_distribution<> dis(0.0, 1.0);
-                        if (dis(gen) < config.GetDecisionMatrix().evasionJumpChance) {
-                            result.action = ActionType::Jump;
-                            result.priority = 1.5f; // Evasion priority
-                            // Jump evasion - high intensity for urgent escape
-                            result.intensity = 0.9f; // High intensity for jump evasion
-                            return result;
-                        }
+                    // Random chance to jump
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_real_distribution<> dis(0.0, 1.0);
+                    if (dis(gen) < config.GetDecisionMatrix().evasionJumpChance) {
+                        result.action = ActionType::Jump;
+                        result.priority = 1.5f; // Evasion priority
+                        // Jump evasion - high intensity for urgent escape
+                        result.intensity = 0.9f; // High intensity for jump evasion
+                        return result;
                     }
                 }
             }
         }
+        
+        // Weapon type considerations for evasion: Two-handed weapons are slower to dodge
+        // One-handed weapons can dodge/react faster
+        float weaponEvasionModifier = 0.0f;
+        if (a_state.self.isTwoHanded) {
+            weaponEvasionModifier -= 0.1f; // Two-handed weapons are slower to dodge
+        } else if (a_state.self.isOneHanded) {
+            weaponEvasionModifier += 0.1f; // One-handed weapons can dodge faster
+        }
 
+        // Use temporal state: Prevent dodge spam - don't dodge too frequently
+        float timeSinceLastDodge = a_state.temporal.self.timeSinceLastDodge;
+        if (timeSinceLastDodge < 1.0f) {
+            // Just dodged < 1s ago - prevent spam, prefer strafe instead
+            // But allow if target is power attacking (urgent)
+            if (!a_state.target.isPowerAttacking) {
+                // Not urgent - prefer strafe instead of dodge spam
+                // Continue to strafe evaluation below
+            }
+        }
+        
         // Trigger: Target is attacking me and close, OR target is blocking AND close
         // Use threshold instead of exact equality (0.7 = roughly facing towards, more lenient for blocking)
         bool shouldDodge = false;
@@ -351,9 +412,16 @@ namespace CombatAI
             
             if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
                 // Attacking: dodge if within evasion range
+                // Use temporal state: Higher priority if target has been attacking for a while (committed)
+                float targetAttackingDuration = a_state.temporal.target.attackingDuration;
                 if (a_state.target.distance >= minEvasionDist && 
                     a_state.target.distance <= config.GetDecisionMatrix().sprintAttackMaxDistance) {
                     conditionsMet = true;
+                    
+                    // Boost priority if target has been attacking for a while (committed to attack)
+                    if (targetAttackingDuration > 0.5f) {
+                        // Target committed to attack - better dodge timing
+                    }
                 }
             } else if (a_state.target.isBlocking) {
                 // Blocking: only dodge if close enough (blocking isn't as urgent as attacking)
@@ -406,22 +474,42 @@ namespace CombatAI
 
         if (shouldDodge) {
             result.action = ActionType::Dodge;
-            result.priority = 1.5f; // Base evasion priority
+            float baseDodgePriority = 1.5f; // Base evasion priority
             
-            // Multiple enemies = higher priority for dodge
-            if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 0.5f; // More defensive when outnumbered
+            // Use enhanced combat context: Threat level
+            // Higher threat level = higher priority for dodge
+            ThreatLevel dodgeThreatLevel = a_state.combatContext.threatLevel;
+            if (dodgeThreatLevel == ThreatLevel::Critical) {
+                baseDodgePriority += 0.7f; // Critical threat - very high dodge priority
+            } else if (dodgeThreatLevel == ThreatLevel::High) {
+                baseDodgePriority += 0.5f; // High threat - high dodge priority
+            } else if (dodgeThreatLevel == ThreatLevel::Moderate) {
+                baseDodgePriority += 0.3f; // Moderate threat - moderate dodge priority
             }
+            
+            // More enemies targeting us = higher dodge priority
+            if (a_state.combatContext.enemiesTargetingUs > 1) {
+                baseDodgePriority += 0.3f; // Multiple enemies targeting us - dodge is critical
+            }
+            
+            // Apply weapon evasion modifier (one-handed can dodge faster, two-handed slower)
+            result.priority = baseDodgePriority + weaponEvasionModifier;
             
             // Dodge intensity based on urgency (closer = more urgent)
             float distance = a_state.target.distance;
+            float dodgeIntensity = 0.6f; // Base intensity
             if (distance < config.GetDecisionMatrix().evasionMinDistance) {
-                result.intensity = 1.0f; // Maximum intensity when very close
+                dodgeIntensity = 1.0f; // Maximum intensity when very close
             } else if (distance < config.GetDecisionMatrix().evasionMinDistance && distance < config.GetDecisionMatrix().sprintAttackMaxDistance) {
-                result.intensity = 0.8f; // High intensity when close
-            } else {
-                result.intensity = 0.6f; // Moderate intensity when further
+                dodgeIntensity = 0.8f; // High intensity when close
             }
+            
+            // One-handed weapons can dodge faster/more agile
+            if (a_state.self.isOneHanded) {
+                dodgeIntensity = (dodgeIntensity + 0.1f > 1.0f) ? 1.0f : (dodgeIntensity + 0.1f);
+            }
+            
+            result.intensity = dodgeIntensity;
         } else {
             // Strafe should only trigger when there's a tactical reason, not as a default fallback
             // Only strafe if:
@@ -542,21 +630,35 @@ namespace CombatAI
             }
         }
         
-        // Tactical retreat when significantly outnumbered (even if health is okay)
+        // Use enhanced combat context: Threat level
+        // Tactical retreat when significantly outnumbered OR high threat level (even if health is okay)
         // This helps avoid being surrounded and creates better positioning
+        ThreatLevel retreatThreatLevel = a_state.combatContext.threatLevel;
         bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
         bool significantlyOutnumbered = (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
         
-        if (!shouldRetreat && significantlyOutnumbered) {
-            // Retreat when significantly outnumbered, but only if health is moderate or low
+        if (!shouldRetreat && (significantlyOutnumbered || retreatThreatLevel >= ThreatLevel::High)) {
+            // Retreat when significantly outnumbered or high threat, but only if health is moderate or low
             // Don't retreat if health is high (might want to fight)
             if (a_state.self.healthPercent < 0.7f) {
                 shouldRetreat = true;
                 retreatPriority = 1.5f; // Tactical retreat priority (lower than survival)
                 
+                // Higher priority based on threat level
+                if (retreatThreatLevel == ThreatLevel::Critical) {
+                    retreatPriority += 0.4f; // Critical threat - very high retreat priority
+                } else if (retreatThreatLevel == ThreatLevel::High) {
+                    retreatPriority += 0.2f; // High threat - higher retreat priority
+                }
+                
                 // Higher priority if health is lower
                 if (a_state.self.healthPercent < 0.5f) {
-                    retreatPriority = 1.8f; // Closer to survival priority
+                    retreatPriority += 0.3f; // Closer to survival priority
+                }
+                
+                // More enemies targeting us = higher retreat priority
+                if (a_state.combatContext.enemiesTargetingUs > 2) {
+                    retreatPriority += 0.3f; // Multiple enemies targeting us - very dangerous
                 }
             }
         }
@@ -613,13 +715,40 @@ namespace CombatAI
 
         if (a_state.target.distance > sprintAttackMaxDist) {
             // Don't advance if target is actively attacking (stay defensive)
-            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+            // Exception: if target is fleeing, pursue them
+            if ((a_state.target.isAttacking || a_state.target.isPowerAttacking) && !a_state.target.isFleeing) {
                 return result; // Prefer strafe/evasion instead
             }
             
             result.action = ActionType::Advancing;
             
-                // Multiple enemies = less likely to advance (might want to stay defensive)
+            // Boost priority if target is fleeing (pursuit)
+            if (a_state.target.isFleeing) {
+                // Higher priority to pursue fleeing targets
+                float basePriority = 1.0f; // Increased from 0.7f when pursuing
+                
+                // Even higher priority if target is low health (finish them)
+                if (a_state.target.healthPercent < 0.3f) {
+                    basePriority = 1.3f; // Very high priority to finish low-health fleeing target
+                }
+                
+                result.priority = basePriority;
+                
+                // Calculate advancing direction (towards fleeing target)
+                if (a_state.target.isValid) {
+                    RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
+                    toTarget.z = 0.0f; // Keep on horizontal plane
+                    toTarget.Unitize();
+                    result.direction = toTarget; // Move towards fleeing target
+                } else {
+                    result.direction = a_state.self.forwardVector;
+                }
+                
+                result.intensity = 1.0f; // High intensity for pursuit
+                return result;
+            }
+            
+            // Multiple enemies = less likely to advance (might want to stay defensive)
             float basePriority = 0.7f;
             bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
             if (outnumbered) {
@@ -632,6 +761,11 @@ namespace CombatAI
             }
             if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
                 basePriority += 0.3f;
+            }
+            
+            // Boost if target is in attack recovery (good time to close distance)
+            if (a_state.target.isInAttackRecovery) {
+                basePriority += 0.3f; // Target recovering - good time to advance
             }
             
             result.priority = basePriority;
@@ -663,9 +797,15 @@ namespace CombatAI
 
         if (a_state.target.distance > sprintAttackMinDist && a_state.target.distance < sprintAttackMaxDist) {
             // Don't sprint attack if target is actively attacking (too risky)
-            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+            // Exception: if target is in attack recovery or fleeing, sprint attack is viable
+            if ((a_state.target.isAttacking || a_state.target.isPowerAttacking) && 
+                !a_state.target.isInAttackRecovery && !a_state.target.isFleeing) {
                 return result; // Prefer advancing or strafe instead
             }
+            
+            // Sprint attacks work best when we're already sprinting OR target is fleeing (pursuit)
+            // If not sprinting and target not fleeing, we can still sprint attack but it's less ideal
+            // (The game engine will handle starting sprint if needed)
             
             // Sprint attacks consume stamina - check if we have enough (if enabled)
             // Check actual stamina value against stamina cost
@@ -726,12 +866,21 @@ namespace CombatAI
                 sprintOpeningRisk += 0.3f; // Allies can cover
             }
             
-            // Multiple enemies = slightly less likely to sprint attack (risky when outnumbered)
-            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                basePriority = 1.1f; // Still competitive but slightly lower when outnumbered
+            // Use enhanced combat context: Threat level
+            // Higher threat level = less likely to sprint attack (risky when outnumbered)
+            ThreatLevel sprintThreatLevel = a_state.combatContext.threatLevel;
+            if (sprintThreatLevel >= ThreatLevel::High) {
+                basePriority = 1.0f; // Lower priority when high threat
+            } else if (sprintThreatLevel == ThreatLevel::Moderate) {
+                basePriority = 1.1f; // Slightly lower priority when moderate threat
             } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
                 // More allies: can be more aggressive
                 basePriority = 1.5f; // Higher priority when outnumbering
+            }
+            
+            // More enemies targeting us = less likely to sprint attack
+            if (a_state.combatContext.enemiesTargetingUs > 1) {
+                basePriority -= 0.2f; // Multiple enemies targeting us - sprint attack is risky
             }
             
             // Boost significantly if target is vulnerable (excellent opportunities)
@@ -743,6 +892,19 @@ namespace CombatAI
                 basePriority += 0.4f; // Target casting/drawing - very vulnerable
                 sprintOpeningRisk += 0.3f; // Safer when target vulnerable
             }
+            if (a_state.target.isInAttackRecovery) {
+                basePriority += 0.4f; // Target in attack recovery - excellent sprint attack opportunity
+                sprintOpeningRisk += 0.3f; // Safer when target recovering
+            }
+            if (a_state.target.isFleeing) {
+                basePriority += 0.5f; // Target fleeing - perfect sprint attack opportunity
+                sprintOpeningRisk += 0.4f; // Very safe when target fleeing
+                
+                // Extra boost if target is low health (finishing move)
+                if (a_state.target.healthPercent < 0.3f) {
+                    basePriority += 0.3f; // Finish low-health fleeing target
+                }
+            }
             if (a_state.target.isBlocking && !a_state.target.isAttacking) {
                 basePriority += 0.3f; // Target blocking - good opportunity
             }
@@ -751,6 +913,13 @@ namespace CombatAI
             if (a_state.target.orientationDot < 0.5f) {
                 basePriority += 0.2f; // Target not facing us - good opportunity
                 sprintOpeningRisk += 0.2f; // Safer when target not facing us
+            }
+            
+            // Boost if target is low health (finishing move opportunity)
+            if (a_state.target.healthPercent < 0.2f) {
+                basePriority += 0.4f; // Target very low health - finish them with sprint attack
+            } else if (a_state.target.healthPercent < 0.4f) {
+                basePriority += 0.2f; // Target low health - pressure with sprint attack
             }
             
             basePriority += sprintOpeningRisk + staminaModifier;
@@ -771,31 +940,71 @@ namespace CombatAI
         float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
         float optimalAttackDistance = reachDistance * 0.9f; // Optimal range is slightly less than base reach
 
-        // Only consider attacks when within reasonable range
-        if (a_state.target.distance <= maxAttackDistance) {
+        // Use enhanced combat context: Range granularity
+        // Only consider attacks when in attack range (use range category for more precise check)
+        if (a_state.combatContext.isInAttackRange || a_state.target.distance <= maxAttackDistance) {
             // TACTICAL CONSIDERATIONS: Don't attack blindly - need good opening
             
             // Don't attack if target is actively attacking (too risky - prefer evasion/strafe)
-            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+            // Exception: if target is in attack recovery (kFollowThrough), we can attack during their recovery window
+            if ((a_state.target.isAttacking || a_state.target.isPowerAttacking) && !a_state.target.isInAttackRecovery) {
                 return result; // Let evasion handle this - strafe/dodge instead
             }
             
+            // Use temporal state: Prevent action spam - don't attack too quickly after last action
+            float timeSinceLastAction = a_state.temporal.self.timeSinceLastAction;
+            if (timeSinceLastAction < 0.3f) {
+                // Just executed an action < 0.3s ago - too soon, prevent spam
+                return result;
+            }
+            
             // Don't attack if we just finished an attack (should reposition first)
-            // Exception: if target is staggered/vulnerable, we can chain attacks
+            // Exception: if target is staggered/vulnerable or in attack recovery, we can chain attacks
             bool targetIsVulnerable = (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) ||
-                                     a_state.target.isCasting || a_state.target.isDrawingBow;
+                                     a_state.target.isCasting || a_state.target.isDrawingBow ||
+                                     a_state.target.isInAttackRecovery;
             if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough && !targetIsVulnerable) {
                 return result; // Prefer strafe/repositioning after attack (unless target is vulnerable)
             }
             
-            // Multiple enemies = less likely to commit to attacks (prefer defensive)
+            // Use temporal state: Detect vulnerable windows based on target timing
+            float targetTimeSinceLastAttack = a_state.temporal.target.timeSinceLastAttack;
+            float targetIdleDuration = a_state.temporal.target.idleDuration;
+            
+            // Boost priority if target just finished attacking (recovery window)
+            if (targetTimeSinceLastAttack < 0.5f && targetTimeSinceLastAttack > 0.1f) {
+                targetIsVulnerable = true; // Target just finished attack - recovery window
+            }
+            
+            // Boost priority if target has been idle for a while (good attack opportunity)
+            if (targetIdleDuration > 1.0f) {
+                targetIsVulnerable = true; // Target idle for > 1s - vulnerable window
+            }
+            
+            // Use enhanced combat context: Threat level
+            // Higher threat level = more defensive, lower threat level = more aggressive
             float priorityModifier = 0.0f;
-            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                // Outnumbered: reduce offensive action priority significantly
+            ThreatLevel attackThreatLevel = a_state.combatContext.threatLevel;
+            
+            if (attackThreatLevel == ThreatLevel::Critical) {
+                // Critical threat (5+ enemies) - very defensive
+                priorityModifier = -0.7f;
+            } else if (attackThreatLevel == ThreatLevel::High) {
+                // High threat (3-4 enemies) - defensive
                 priorityModifier = -0.5f;
-            } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
-                // More allies: can be more aggressive
+            } else if (attackThreatLevel == ThreatLevel::Moderate) {
+                // Moderate threat (2 enemies) - slightly defensive
+                priorityModifier = -0.2f;
+            } else if (attackThreatLevel == ThreatLevel::Low && a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
+                // Low threat (1 enemy) and we have allies - can be aggressive
                 priorityModifier = 0.2f;
+            }
+            
+            // Also consider enemies targeting us specifically (more accurate threat assessment)
+            if (a_state.combatContext.enemiesTargetingUs > 2) {
+                priorityModifier -= 0.3f; // Multiple enemies targeting us - very defensive
+            } else if (a_state.combatContext.enemiesTargetingUs == 1 && a_state.combatContext.allyCount > 0) {
+                priorityModifier += 0.1f; // Only one enemy targeting us and we have allies - safer
             }
             
             // Flanking bonus: if we're flanking (behind/side of target), attacks are more effective
@@ -825,8 +1034,10 @@ namespace CombatAI
             float openingRiskModifier = 0.0f;
             
             // Check if target is ready/alert (can counter-attack effectively)
+            // Target is NOT ready if: attacking, in recovery, casting, drawing, staggered, or fleeing
             bool targetIsReady = (!a_state.target.isAttacking && !a_state.target.isPowerAttacking &&
                                  !a_state.target.isCasting && !a_state.target.isDrawingBow &&
+                                 !a_state.target.isInAttackRecovery && !a_state.target.isFleeing &&
                                  a_state.target.knockState == RE::KNOCK_STATE_ENUM::kNormal);
             
             // Check if target is facing us (more dangerous - can counter-attack)
@@ -855,7 +1066,8 @@ namespace CombatAI
             
             // Target is vulnerable - attacking is safer (smaller opening)
             if (!targetIsReady || a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal ||
-                a_state.target.isCasting || a_state.target.isDrawingBow) {
+                a_state.target.isCasting || a_state.target.isDrawingBow ||
+                a_state.target.isInAttackRecovery || a_state.target.isFleeing) {
                 openingRiskModifier += 0.3f; // Target vulnerable - safer to attack
             }
             
@@ -885,15 +1097,59 @@ namespace CombatAI
                                  !a_state.target.isPowerAttacking && !a_state.target.isCasting && 
                                  !a_state.target.isDrawingBow);
             
-            if (targetIsIdle) {
+            // Target in attack recovery is also a good opportunity
+            // Use temporal state: Detect recovery window timing (reuse variable declared above)
+            if (a_state.target.isInAttackRecovery || (targetTimeSinceLastAttack < 0.5f && targetTimeSinceLastAttack > 0.1f)) {
+                targetStateModifier += 0.5f; // Excellent opportunity - target is recovering from attack
+                hasGoodOpening = true;
+                
+                // Extra bonus if target just finished attack (immediate recovery window)
+                if (targetTimeSinceLastAttack < 0.3f && targetTimeSinceLastAttack > 0.1f) {
+                    targetStateModifier += 0.2f; // Just finished attack - perfect timing
+                }
+            }
+            
+            // Target fleeing is a good opportunity for pursuit/finishing
+            if (a_state.target.isFleeing) {
+                targetStateModifier += 0.4f; // Good opportunity - target is fleeing
+                hasGoodOpening = true;
+                
+                // Extra bonus if target is low health (finishing move opportunity)
+                if (a_state.target.healthPercent < 0.3f) {
+                    targetStateModifier += 0.3f; // Target low health and fleeing - finish them
+                }
+            }
+            
+            // Target low health - finishing move opportunity
+            if (a_state.target.healthPercent < 0.2f) {
+                targetStateModifier += 0.4f; // Target very low health - finish them
+                hasGoodOpening = true;
+            } else if (a_state.target.healthPercent < 0.4f) {
+                targetStateModifier += 0.2f; // Target low health - pressure them
+            }
+            
+            // Target low stamina - easier to pressure
+            if (a_state.target.staminaPercent < 0.2f) {
+                targetStateModifier += 0.2f; // Target low stamina - easier to pressure
+            }
+            
+            // Use temporal state: Detect idle target vulnerability (reuse variable declared above)
+            if (targetIsIdle || targetIdleDuration > 0.5f) {
                 // Idle target is a good opportunity, especially when very close
                 float idleBonus = 0.2f; // Base bonus for idle target
                 
+                // Boost based on how long target has been idle (longer = more vulnerable)
+                if (targetIdleDuration > 1.5f) {
+                    idleBonus += 0.3f; // Target idle for > 1.5s - very vulnerable
+                } else if (targetIdleDuration > 1.0f) {
+                    idleBonus += 0.2f; // Target idle for > 1s - vulnerable
+                }
+                
                 // Boost significantly when very close to idle target (perfect opportunity)
                 if (a_state.target.distance <= optimalAttackDistance) {
-                    idleBonus = 0.4f; // Much better opportunity when close
+                    idleBonus += 0.2f; // Much better opportunity when close
                 } else if (a_state.target.distance <= optimalAttackDistance * 1.2f) {
-                    idleBonus = 0.3f; // Good opportunity when moderately close
+                    idleBonus += 0.1f; // Good opportunity when moderately close
                 }
                 
                 targetStateModifier += idleBonus;
@@ -940,26 +1196,73 @@ namespace CombatAI
             float basePriority = 1.0f + priorityModifier + healthModifier + openingRiskModifier + 
                                 targetStateModifier + flankingBonus + coordinationBonus + outnumberingBonus;
             
-            // Distance-based modifier: closer = higher priority, but penalize if too far
-            float distanceModifier = 0.0f;
-            
-            if (a_state.target.distance <= optimalAttackDistance) {
-                // Optimal range - boost priority significantly when very close
-                float optimalRatio = a_state.target.distance / optimalAttackDistance; // 0.0 to 1.0
-                distanceModifier = (1.0f - optimalRatio) * 0.4f; // Increased from 0.3f - up to +0.4f when very close
-                
-                // Extra boost when extremely close (right in face)
-                if (a_state.target.distance <= optimalAttackDistance * 0.6f) {
-                    distanceModifier += 0.3f; // Additional boost when extremely close
-                }
-            } else {
-                // Beyond optimal range - reduce priority
-                float beyondOptimalRatio = (a_state.target.distance - optimalAttackDistance) / (maxAttackDistance - optimalAttackDistance); // 0.0 to 1.0
-                distanceModifier = -0.4f * beyondOptimalRatio; // Up to -0.4f when at max range
+            // Weapon type considerations: Different weapons have different optimal ranges
+            // Two-handed weapons have longer reach, one-handed are shorter
+            float weaponReachModifier = 0.0f;
+            if (a_state.self.isTwoHanded) {
+                // Two-handed weapons have longer reach - attacks are viable at longer distances
+                weaponReachModifier += 0.1f; // Bonus for reach advantage
+            } else if (a_state.self.weaponType == WeaponType::OneHandedDagger) {
+                // Daggers have short reach - need to be very close
+                weaponReachModifier -= 0.15f; // Penalty for short reach
             }
             
-            // Final priority calculation
+            // Matchup considerations: Reach advantage matters
+            if (a_state.self.isTwoHanded && a_state.target.isOneHanded) {
+                weaponReachModifier += 0.15f; // Reach advantage against one-handed
+            } else if (a_state.self.isOneHanded && a_state.target.isTwoHanded) {
+                weaponReachModifier -= 0.2f; // Reach disadvantage - need to get closer
+            }
+            
+            // Use enhanced combat context: Range granularity
+            // Use range category for more precise distance-based decision-making
+            float distanceModifier = 0.0f;
+            RangeCategory rangeCategory = a_state.combatContext.rangeCategory;
+            
+            switch (rangeCategory) {
+                case RangeCategory::CloseRange:
+                    // Very close - maximum priority boost
+                    distanceModifier = 0.7f; // Significant boost for close range
+                    break;
+                case RangeCategory::OptimalRange:
+                    // Optimal range - good priority boost
+                    distanceModifier = 0.4f; // Good boost for optimal range
+                    break;
+                case RangeCategory::MaxRange:
+                    // Max range - moderate penalty
+                    distanceModifier = -0.2f; // Slight penalty for max range
+                    break;
+                case RangeCategory::OutOfRange:
+                    // Out of range - significant penalty (but still allow if very close to max range)
+                    if (a_state.target.distance <= maxAttackDistance * 1.1f) {
+                        distanceModifier = -0.3f; // Slightly out of range but close
+                    } else {
+                        distanceModifier = -0.5f; // Significant penalty for out of range
+                    }
+                    break;
+            }
+            
+            // Apply weapon reach modifier to distance modifier
+            distanceModifier += weaponReachModifier;
+            
+            // Final priority calculation (includes weapon reach modifier)
             float finalPriority = basePriority + distanceModifier;
+            
+            // Additional weapon type considerations for attack priority
+            // Two-handed weapons are slower but hit harder - prefer when target is vulnerable
+            // One-handed weapons are faster - prefer when target is ready (can react faster)
+            if (a_state.self.isTwoHanded && targetIsVulnerable) {
+                finalPriority += 0.15f; // Two-handed excels against vulnerable targets
+            } else if (a_state.self.isOneHanded && targetIsReady) {
+                finalPriority += 0.1f; // One-handed can react faster to ready targets
+            }
+            
+            // Matchup advantage: Two-handed vs one-handed
+            if (a_state.self.isTwoHanded && a_state.target.isOneHanded) {
+                finalPriority += 0.1f; // Reach and power advantage
+            } else if (a_state.self.isOneHanded && a_state.target.isTwoHanded) {
+                finalPriority -= 0.1f; // Reach disadvantage - need better positioning
+            }
             
             // Only proceed if priority is reasonable (don't attack with very low priority)
             if (finalPriority < 0.5f) {
@@ -971,6 +1274,32 @@ namespace CombatAI
             // Choose power attack when we have good opportunities, allies to cover us, and enough stamina (if enabled)
             bool shouldPowerAttack = false;
             float powerAttackBonus = 0.0f;
+            
+            // Weapon type considerations: Two-handed weapons are better for power attacks
+            // One-handed weapons are faster, so normal attacks might be better
+            if (a_state.self.isTwoHanded) {
+                powerAttackBonus += 0.2f; // Two-handed weapons excel at power attacks
+                shouldPowerAttack = true; // Prefer power attacks with two-handed
+            } else if (a_state.self.weaponType == WeaponType::OneHandedDagger) {
+                powerAttackBonus -= 0.2f; // Daggers are fast, prefer normal attacks
+            }
+            
+            // Matchup considerations: Power attacks are better against certain weapon types
+            if (a_state.target.isOneHanded && a_state.self.isTwoHanded) {
+                powerAttackBonus += 0.15f; // Two-handed vs one-handed: power attack advantage
+            } else if (a_state.target.isTwoHanded && a_state.self.isOneHanded) {
+                powerAttackBonus -= 0.1f; // One-handed vs two-handed: prefer faster normal attacks
+            }
+            
+            // Use temporal state: Space out power attacks appropriately
+            float timeSinceLastPowerAttack = a_state.temporal.self.timeSinceLastPowerAttack;
+            if (timeSinceLastPowerAttack < 2.0f) {
+                // Just used power attack < 2s ago - space them out, prefer normal attack
+                result.action = ActionType::Attack;
+                result.priority = finalPriority;
+                result.intensity = 0.6f; // Moderate intensity for normal attack
+                return result;
+            }
             
             // Power attacks require stamina - check actual stamina value against cost (only if stamina check is enabled)
             if (config.GetDecisionMatrix().enablePowerAttackStaminaCheck) {
@@ -1000,10 +1329,22 @@ namespace CombatAI
                 shouldPowerAttack = true;
             }
             
-            // Power attacks are riskier when target is ready and facing us
-            if (targetIsReady && targetFacingUs && a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                powerAttackBonus -= 0.3f; // Riskier when outnumbered and target ready
+            // Use enhanced combat context: Threat level
+            // Power attacks are riskier when high threat level and target is ready
+            ThreatLevel powerThreatLevel = a_state.combatContext.threatLevel;
+            if (targetIsReady && targetFacingUs && powerThreatLevel >= ThreatLevel::High) {
+                powerAttackBonus -= 0.4f; // Very risky when high threat and target ready
                 shouldPowerAttack = false; // Prefer normal attack instead
+            } else if (targetIsReady && targetFacingUs && powerThreatLevel == ThreatLevel::Moderate) {
+                powerAttackBonus -= 0.2f; // Risky when moderate threat and target ready
+            }
+            
+            // More enemies targeting us = less likely to power attack
+            if (a_state.combatContext.enemiesTargetingUs > 1) {
+                powerAttackBonus -= 0.3f; // Multiple enemies targeting us - power attack is very risky
+                if (a_state.combatContext.enemiesTargetingUs > 2) {
+                    shouldPowerAttack = false; // Too many enemies targeting us - prefer normal attack
+                }
             }
             
             // Stamina consideration: reduce power attack priority if stamina is low (only if stamina check is enabled)
@@ -1030,11 +1371,31 @@ namespace CombatAI
                 // Power attacks are especially effective against blocking targets
                 if (a_state.target.isBlocking && !a_state.target.isAttacking) {
                     powerAttackBonus += 0.3f; // Power attacks break blocks better
+                    
+                    // Two-handed weapons break blocks even better
+                    if (a_state.self.isTwoHanded) {
+                        powerAttackBonus += 0.2f; // Two-handed power attacks devastate blocks
+                    }
                 }
                 
                 // Power attacks are good for finishing (when target is staggered/vulnerable)
                 if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
                     powerAttackBonus += 0.2f; // Finish staggered target with power attack
+                }
+                
+                // Power attacks are excellent when target is in attack recovery
+                if (a_state.target.isInAttackRecovery) {
+                    powerAttackBonus += 0.3f; // Target recovering - perfect power attack opportunity
+                }
+                
+                // Power attacks are excellent for finishing fleeing/low-health targets
+                if (a_state.target.isFleeing) {
+                    powerAttackBonus += 0.3f; // Target fleeing - finish them with power attack
+                }
+                if (a_state.target.healthPercent < 0.2f) {
+                    powerAttackBonus += 0.3f; // Target very low health - finish with power attack
+                } else if (a_state.target.healthPercent < 0.4f) {
+                    powerAttackBonus += 0.2f; // Target low health - pressure with power attack
                 }
                 
                 // Power attacks are better when flanking (harder to block)
@@ -1251,6 +1612,23 @@ namespace CombatAI
         float basePriority = 1.4f;
         float situationBonus = 0.0f;
         
+        // Use enhanced combat context: Target facing relative to allies
+        // If target is facing away from ally, we can flank from behind (excellent opportunity)
+        if (a_state.combatContext.targetFacingAwayFromAlly) {
+            basePriority += 0.3f; // Target facing away from ally - perfect flanking opportunity
+            situationBonus += 0.2f; // Significant bonus for coordinated flanking
+        } else if (a_state.combatContext.targetFacingTowardAlly) {
+            basePriority += 0.2f; // Target facing toward ally - we can flank from behind
+        }
+        
+        // Use enhanced combat context: Range granularity
+        // Flanking is more effective when in optimal range
+        if (a_state.combatContext.isInOptimalRange) {
+            basePriority += 0.15f; // In optimal range - better flanking position
+        } else if (a_state.combatContext.rangeCategory == RangeCategory::OutOfRange) {
+            basePriority -= 0.2f; // Out of range - flanking less effective
+        }
+        
         // Check if target is vulnerable (casting/drawing) - excellent flanking opportunity
         bool targetIsVulnerable = a_state.target.isCasting || a_state.target.isDrawingBow ||
                                   a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal;
@@ -1390,10 +1768,29 @@ namespace CombatAI
         
         // Feinting is especially effective after we attacked and target blocked
         // OR when target is defensive and we're ready
+        // Use temporal state: Wait for target to commit to blocking before feinting
         bool goodFeintOpportunity = false;
+        float blockingDuration = a_state.temporal.target.blockingDuration;
+        
+        // Weapon type considerations: Feinting is more useful for one-handed weapons
+        // Two-handed weapons can break blocks easier, so feinting less needed
+        bool feintIsUseful = true;
+        if (a_state.self.isTwoHanded) {
+            feintIsUseful = false; // Two-handed can break blocks easier, feinting less needed
+        }
+        
         if (targetIsBlocking && justFinishedAttack) {
-            goodFeintOpportunity = true; // We attacked, they blocked - feint to break guard
-        } else if (targetIsDefensive && readyToFeint) {
+            // We attacked, they blocked - feint to break guard
+            // But wait for them to commit to blocking (at least 0.3s) for better timing
+            if (blockingDuration > 0.3f && feintIsUseful) {
+                goodFeintOpportunity = true;
+            }
+        } else if (targetIsBlocking && readyToFeint) {
+            // Target is blocking - wait for them to commit (at least 0.5s) before feinting
+            if (blockingDuration > 0.5f && feintIsUseful) {
+                goodFeintOpportunity = true; // Target committed to blocking - feint to break guard
+            }
+        } else if (targetIsDefensive && readyToFeint && feintIsUseful) {
             goodFeintOpportunity = true; // Target is defensive - feint to bait
         }
 
@@ -1404,6 +1801,26 @@ namespace CombatAI
             float basePriority = 1.3f;
             if (targetIsBlocking) {
                 basePriority = 1.6f; // Much higher priority when target is blocking
+                
+                // Weapon type considerations: Feinting is more valuable for one-handed weapons
+                if (a_state.self.isOneHanded) {
+                    basePriority += 0.2f; // One-handed weapons benefit more from feinting
+                } else if (a_state.self.isTwoHanded) {
+                    basePriority -= 0.3f; // Two-handed can break blocks easier, feinting less needed
+                }
+                
+                // Target weapon type: Feinting is more effective against one-handed blockers
+                if (a_state.target.isOneHanded) {
+                    basePriority += 0.1f; // Easier to feint one-handed blockers
+                }
+                
+                // Use temporal state: Higher priority if target has been blocking for a while (committed to defense)
+                float targetBlockingDurationFeint = a_state.temporal.target.blockingDuration;
+                if (targetBlockingDurationFeint > 1.0f) {
+                    basePriority += 0.3f; // Target committed to blocking for > 1s - excellent feint opportunity
+                } else if (targetBlockingDurationFeint > 0.5f) {
+                    basePriority += 0.15f; // Target committed to blocking for > 0.5s - good feint opportunity
+                }
                 
                 // Extra bonus if we just attacked and they blocked (perfect feint opportunity)
                 if (justFinishedAttack) {

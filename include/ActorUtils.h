@@ -348,5 +348,96 @@ namespace CombatAI
                 return false;
             }
         }
+
+        // Safe IsBlocking
+        inline bool SafeIsBlocking(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->IsBlocking();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe IsAttacking
+        inline bool SafeIsAttacking(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->IsAttacking();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        // Safe IsWalking
+        inline bool SafeIsWalking(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                RE::ActorState* state = SafeAsActorState(a_actor);
+                if (state) {
+                    return state->IsWalking();
+                }
+            } catch (...) {
+                // Actor access failed
+            }
+            return false;
+        }
+
+        // Safe GetKnockState
+        inline RE::KNOCK_STATE_ENUM SafeGetKnockState(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return RE::KNOCK_STATE_ENUM::kNormal;
+            }
+            try {
+                RE::ActorState* state = SafeAsActorState(a_actor);
+                if (state) {
+                    return state->GetKnockState();
+                }
+            } catch (...) {
+                // Actor access failed - common when actor is transitioning states
+            }
+            return RE::KNOCK_STATE_ENUM::kNormal;
+        }
+
+        // Safe IsFleeing (from CombatController)
+        inline bool SafeIsFleeing(RE::Actor* a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                auto& runtimeData = a_actor->GetActorRuntimeData();
+                RE::CombatController* combatController = runtimeData.combatController;
+                if (combatController) {
+                    return combatController->IsFleeing();
+                }
+            } catch (...) {
+                // Combat controller access failed
+            }
+            return false;
+        }
+
+        // Safe GetHeading
+        inline std::optional<float> SafeGetHeading(RE::Actor* a_actor, bool a_absolute)
+        {
+            if (!a_actor) {
+                return std::nullopt;
+            }
+            try {
+                return a_actor->GetHeading(a_absolute);
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
     }
 }

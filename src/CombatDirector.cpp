@@ -117,6 +117,9 @@ namespace CombatAI
                 // Mark action as used (start cooldown)
                 m_humanizer.MarkActionUsed(a_actor, decision.action);
 
+                // Notify temporal state tracker that action was executed
+                m_observer.NotifyActionExecuted(a_actor, decision.action);
+
                 // Track actor by FormID - use thread-safe operations
                 auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
                 if (formIDOpt.has_value()) {

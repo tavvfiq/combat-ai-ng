@@ -4,8 +4,8 @@
 #include "DecisionMatrix.h"
 #include "ActionExecutor.h"
 #include "Humanizer.h"
+#include "ThreadSafeMap.h"
 #include "RE/A/Actor.h"
-#include <unordered_set>
 
 namespace CombatAI
 {
@@ -48,13 +48,23 @@ namespace CombatAI
         Humanizer m_humanizer;
 
         // Track processed actors (for cleanup) - use FormID as key for safety
-        std::unordered_set<RE::FormID> m_processedActors;
+        // Thread-safe to prevent crashes from concurrent access
+        ThreadSafeSet<RE::FormID> m_processedActors;
 
         // Track per-actor processing timers (for throttling) - use FormID as key for safety
-        std::unordered_map<RE::FormID, float> m_actorProcessTimers;
+        // Thread-safe to prevent crashes from concurrent access
+        ThreadSafeMap<RE::FormID, float> m_actorProcessTimers;
+
+        // Track actor spawn times to delay processing newly spawned actors
+        // Prevents processing actors before they're fully initialized
+        // Thread-safe to prevent crashes from concurrent access
+        ThreadSafeMap<RE::FormID, float> m_actorSpawnTimes;
 
         // Processing throttle (don't process every frame)
         float m_processTimer = 0.0f;
         float m_processInterval = 0.1f; // Process every 100ms (loaded from config)
+        
+        // Minimum time before processing newly spawned actors (safety delay)
+        static constexpr float SPAWN_WARMUP_DELAY = 0.5f; // 500ms delay
     };
 }

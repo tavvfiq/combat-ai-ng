@@ -131,14 +131,133 @@ namespace CombatAI
             // Apply reach multiplier from config
             reachDistance *= config.GetDecisionMatrix().interruptReachMultiplier;
         }
+        
+        // Optimal bash range: closer is better, but not too close
+        float optimalBashDistance = reachDistance * 0.7f; // Optimal is 70% of max reach
+        float minBashDistance = reachDistance * 0.3f; // Too close might be risky
 
-        // Trigger: Target is power attacking + Distance < Reach + Target facing towards me
-        // Use threshold instead of exact equality (0.9 = roughly facing towards, accounting for floating point precision)
-        if (a_state.target.isPowerAttacking && a_state.target.distance < reachDistance && a_state.target.orientationDot > 0.9f) {
-            result.action = ActionType::Bash;
-            result.priority = 1.2f; // Interrupt priority
-            // Bash is a quick interrupt - high intensity for immediate response
-            result.intensity = 1.0f; // Maximum intensity for urgent interrupt
+        // Bash opportunities: interrupt dangerous actions or break guard
+        bool shouldBash = false;
+        float basePriority = 0.0f;
+        float situationBonus = 0.0f;
+        
+        // 1. Interrupt power attacks (highest priority - very dangerous)
+        if (a_state.target.isPowerAttacking && a_state.target.distance < reachDistance) {
+            shouldBash = true;
+            basePriority = 1.4f; // High priority for interrupting power attacks
+            
+            // Higher priority if target is facing us (more dangerous)
+            if (a_state.target.orientationDot > 0.7f) {
+                situationBonus += 0.3f; // Target facing us - very dangerous
+            }
+            
+            // Higher priority if we're in optimal range
+            if (a_state.target.distance >= minBashDistance && a_state.target.distance <= optimalBashDistance) {
+                situationBonus += 0.2f; // Optimal bash range
+            }
+        }
+        
+        // 2. Interrupt casting/drawing (high priority - vulnerable target)
+        if (!shouldBash && (a_state.target.isCasting || a_state.target.isDrawingBow) && 
+            a_state.target.distance < reachDistance) {
+            shouldBash = true;
+            basePriority = 1.3f; // High priority for interrupting spells/bows
+            
+            // Higher priority if target is facing us (interrupt before they finish)
+            if (a_state.target.orientationDot > 0.6f) {
+                situationBonus += 0.2f; // Target facing us - interrupt before cast completes
+            }
+            
+            // Higher priority if we're in optimal range
+            if (a_state.target.distance >= minBashDistance && a_state.target.distance <= optimalBashDistance) {
+                situationBonus += 0.15f; // Optimal bash range
+            }
+        }
+        
+        // 3. Break guard when target is blocking (tactical bash)
+        if (!shouldBash && a_state.target.isBlocking && !a_state.target.isAttacking && 
+            a_state.target.distance < reachDistance) {
+            shouldBash = true;
+            basePriority = 1.1f; // Moderate priority for breaking guard
+            
+            // Higher priority if target has been blocking for a while (defensive)
+            // Note: We don't track blocking duration, but we can infer from orientation
+            if (a_state.target.orientationDot > 0.7f) {
+                situationBonus += 0.2f; // Target facing us defensively - bash to break guard
+            }
+            
+            // Higher priority if we're in optimal range
+            if (a_state.target.distance >= minBashDistance && a_state.target.distance <= optimalBashDistance) {
+                situationBonus += 0.15f; // Optimal bash range
+            }
+        }
+        
+        // 4. Interrupt normal attacks (moderate priority - risky but can work)
+        if (!shouldBash && a_state.target.isAttacking && !a_state.target.isPowerAttacking && 
+            a_state.target.distance < reachDistance * 0.8f) { // Closer range for interrupting attacks
+            shouldBash = true;
+            basePriority = 1.0f; // Moderate priority for interrupting attacks
+            
+            // Higher priority if target is facing us (more dangerous)
+            if (a_state.target.orientationDot > 0.8f) {
+                situationBonus += 0.2f; // Target facing us - interrupt attack
+            }
+            
+            // Higher priority if we're in optimal range
+            if (a_state.target.distance >= minBashDistance && a_state.target.distance <= optimalBashDistance) {
+                situationBonus += 0.15f; // Optimal bash range
+            }
+        }
+        
+        // Additional considerations
+        if (shouldBash) {
+            // Don't bash if we're already attacking (bash is an interrupt, not a combo)
+            if (a_state.self.attackState != RE::ATTACK_STATE_ENUM::kNone && 
+                a_state.self.attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+                return result; // Already attacking - don't bash
+            }
+            
+            // Multiple enemies = less likely to bash (risky when outnumbered)
+            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                basePriority -= 0.3f; // Reduce priority when outnumbered
+            } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
+                // More allies: can be more aggressive with bash
+                situationBonus += 0.15f; // Safer to bash when we have allies
+            }
+            
+            // Stamina consideration: bash costs stamina, need some left
+            if (a_state.self.staminaPercent < 0.2f) {
+                basePriority -= 0.2f; // Reduce priority when very low stamina
+            } else if (a_state.self.staminaPercent > 0.6f) {
+                situationBonus += 0.1f; // Bonus when we have good stamina
+            }
+            
+            // Distance modifier: penalize if too close or too far
+            float distanceModifier = 0.0f;
+            if (a_state.target.distance < minBashDistance) {
+                // Too close - risky
+                distanceModifier = -0.2f;
+            } else if (a_state.target.distance > optimalBashDistance) {
+                // Beyond optimal - less effective
+                float beyondRatio = (a_state.target.distance - optimalBashDistance) / (reachDistance - optimalBashDistance);
+                distanceModifier = -0.3f * beyondRatio; // Up to -0.3f when at max range
+            }
+            
+            // Final priority calculation
+            float finalPriority = basePriority + situationBonus + distanceModifier;
+            
+            // Only bash if priority is reasonable
+            if (finalPriority >= 0.7f) {
+                result.action = ActionType::Bash;
+                result.priority = finalPriority;
+                
+                // Bash intensity: higher for urgent interrupts (power attacks, casting)
+                if (a_state.target.isPowerAttacking || a_state.target.isCasting || a_state.target.isDrawingBow) {
+                    result.intensity = 1.0f; // Maximum intensity for urgent interrupts
+                } else {
+                    result.intensity = 0.8f; // High intensity for tactical bashes
+                }
+            }
         }
 
         return result;
@@ -153,6 +272,47 @@ namespace CombatAI
         // Check if target is valid
         if (!a_state.target.isValid || !a_state.self.isIdle) {
             return result;
+        }
+
+        // --- Tactical Spacing: Maintain distance when observing ---
+        // If actor is idle and too close to target (not attacking), create space
+        // But only if we're VERY close (within weapon reach) - don't overuse this
+        float weaponReach = a_state.weaponReach;
+        if (weaponReach <= 0.0f) {
+            weaponReach = 150.0f; // Fallback reach
+        }
+        
+        // Tactical spacing distance: only when dangerously close (within weapon reach)
+        // Reduced from 1.3f to 1.0f to be less aggressive about spacing
+        float tacticalSpacingDistance = weaponReach * 1.0f;
+        
+        // Check if we're too close and just observing (not attacking, target not attacking)
+        bool isTooClose = a_state.target.distance < tacticalSpacingDistance;
+        bool isObserving = !a_state.target.isAttacking && !a_state.target.isPowerAttacking && 
+                          !a_state.target.isCasting && !a_state.target.isDrawingBow;
+        bool justFinishedAttack = (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough);
+        
+        // Only prioritize spacing if VERY close (within weapon reach) and observing
+        // This prevents constant strafing when at safe distances
+        if (isTooClose && isObserving && !justFinishedAttack) {
+            // Prefer strafe for tactical repositioning (better than backoff - maintains engagement)
+            result.action = ActionType::Strafe;
+            result.priority = 1.3f; // Reduced from 1.4f - still important but not overriding
+            
+            // Boost priority if dangerously close (within weapon reach)
+            if (a_state.target.distance < weaponReach * 0.8f) {
+                result.priority = 1.5f; // Higher priority when dangerously close
+            }
+            
+            // Boost priority if target is blocking (good time to reposition)
+            if (a_state.target.isBlocking) {
+                result.priority += 0.1f; // Reduced from 0.2f
+            }
+            
+            result.direction = CalculateStrafeDirection(a_state);
+            result.intensity = 0.6f; // Moderate strafe speed for tactical spacing
+            
+            return result; // Return early - tactical spacing takes priority
         }
 
         // --- Jump Evasion Logic ---
@@ -182,17 +342,27 @@ namespace CombatAI
             }
         }
 
-        // Trigger: Target is attacking me and close, OR target is blocking
+        // Trigger: Target is attacking me and close, OR target is blocking AND close
         // Use threshold instead of exact equality (0.7 = roughly facing towards, more lenient for blocking)
         bool shouldDodge = false;
         if (a_state.target.orientationDot > 0.7f) {
             bool conditionsMet = false;
+            float minEvasionDist = config.GetDecisionMatrix().evasionMinDistance;
+            
             if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
-                if (a_state.target.distance >= config.GetDecisionMatrix().evasionMinDistance) {
+                // Attacking: dodge if within evasion range
+                if (a_state.target.distance >= minEvasionDist && 
+                    a_state.target.distance <= config.GetDecisionMatrix().sprintAttackMaxDistance) {
                     conditionsMet = true;
                 }
             } else if (a_state.target.isBlocking) {
-                conditionsMet = true;
+                // Blocking: only dodge if close enough (blocking isn't as urgent as attacking)
+                // Require closer distance for blocking targets to trigger dodge
+                float blockingEvasionMaxDist = minEvasionDist * 1.5f; // Slightly further than min evasion distance
+                if (a_state.target.distance >= minEvasionDist && 
+                    a_state.target.distance <= blockingEvasionMaxDist) {
+                    conditionsMet = true;
+                }
             }
 
             // Check stamina
@@ -212,10 +382,18 @@ namespace CombatAI
                 std::mt19937 gen(rd());
                 std::uniform_real_distribution<> dis(0.0, 1.0);
                 
-                // Multiple enemies = prefer dodge over strafe (more defensive)
+                // Base dodge chance
                 float dodgeChance = config.GetDecisionMatrix().evasionDodgeChance;
+                
+                // Multiple enemies = prefer dodge over strafe (more defensive)
                 if (a_state.combatContext.enemyCount > 1) {
                     dodgeChance = (std::min)(1.0f, dodgeChance * 1.5f); // Increase dodge chance when outnumbered
+                }
+                
+                // Reduce dodge chance when target is blocking (blocking is less urgent than attacking)
+                // Feinting or strafing might be better responses to blocking
+                if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                    dodgeChance *= 0.4f; // Significantly reduce dodge chance when target is just blocking
                 }
                 
                 if (dis(gen) < dodgeChance) {
@@ -245,43 +423,92 @@ namespace CombatAI
                 result.intensity = 0.6f; // Moderate intensity when further
             }
         } else {
-            result.action = ActionType::Strafe;
+            // Strafe should only trigger when there's a tactical reason, not as a default fallback
+            // Only strafe if:
+            // 1. Target is attacking (evasion)
+            // 2. Target is blocking (repositioning)
+            // 3. We just finished an attack (repositioning)
+            // 4. We're in melee range (tactical positioning)
+            // 5. Multiple enemies (defensive positioning)
             
-            // Base tactical priority - higher than base offense to encourage positioning
+            bool shouldStrafe = false;
             float strafePriority = 1.3f;
             
-            // Boost priority when target is attacking (evasion + tactical)
+            // Strong reasons to strafe
             if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
-                strafePriority = 1.6f; // Higher than base offense when target is attacking
+                shouldStrafe = true;
+                strafePriority = 1.6f; // Higher priority when target is attacking (evasion)
+            } else if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                shouldStrafe = true;
+                strafePriority = 1.4f; // Good time to reposition for better angle
+            } else if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
+                shouldStrafe = true;
+                strafePriority = 1.5f; // Just finished attack, reposition
+            } else {
+                // Weaker reasons - only strafe if in melee range or outnumbered
+                float reachDistance = a_state.weaponReach;
+                if (reachDistance <= 0.0f) {
+                    reachDistance = 150.0f;
+                }
+                
+                bool inMeleeRange = (a_state.target.distance <= reachDistance * 1.5f);
+                // More accurate outnumbered check: enemies > allies + 1
+                bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
+                // Significantly outnumbered: enemies >= allies * 2
+                bool significantlyOutnumbered = (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
+                
+                if (inMeleeRange || outnumbered) {
+                    shouldStrafe = true;
+                    if (inMeleeRange) {
+                        strafePriority += 0.1f; // Slight boost in melee range
+                    }
+                    if (outnumbered) {
+                        strafePriority += 0.3f; // Increased from 0.2f - more defensive when outnumbered
+                    }
+                    if (significantlyOutnumbered) {
+                        strafePriority += 0.4f; // Even higher priority when significantly outnumbered
+                    }
+                }
             }
             
-            // Boost priority when target is blocking (good time to reposition for better angle)
-            if (a_state.target.isBlocking && !a_state.target.isAttacking) {
-                strafePriority += 0.2f;
+            // Proactive repositioning when outnumbered: strafe even when target is idle
+            // This helps avoid being surrounded and creates better positioning
+            if (!shouldStrafe) {
+                bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
+                bool significantlyOutnumbered = (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
+                
+                if (outnumbered) {
+                    float reachDistance = a_state.weaponReach;
+                    if (reachDistance <= 0.0f) {
+                        reachDistance = 150.0f;
+                    }
+                    
+                    // Reposition when outnumbered, especially if close to target
+                    bool closeToTarget = (a_state.target.distance <= reachDistance * 2.0f);
+                    
+                    if (closeToTarget || significantlyOutnumbered) {
+                        shouldStrafe = true;
+                        strafePriority = 1.4f; // Good priority for proactive repositioning
+                        
+                        if (significantlyOutnumbered) {
+                            strafePriority = 1.6f; // Higher priority when significantly outnumbered
+                        }
+                        
+                        // Boost if we're in melee range (more urgent repositioning)
+                        if (a_state.target.distance <= reachDistance * 1.2f) {
+                            strafePriority += 0.2f;
+                        }
+                    }
+                }
             }
             
-            // Boost priority when in melee range (tactical positioning is important)
-            float reachDistance = a_state.weaponReach;
-            if (reachDistance <= 0.0f) {
-                reachDistance = 150.0f;
+            if (shouldStrafe) {
+                result.action = ActionType::Strafe;
+                result.priority = strafePriority;
+                result.direction = CalculateStrafeDirection(a_state);
+                result.intensity = 0.7f; // Moderate strafe speed
             }
-            if (a_state.target.distance <= reachDistance * 1.5f) {
-                strafePriority += 0.2f; // Higher priority in melee range for positioning
-            }
-            
-            // Boost priority if we just attacked (time to reposition)
-            if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
-                strafePriority += 0.3f; // Just finished attack, reposition
-            }
-            
-            // Multiple enemies = higher priority for strafe too
-            if (a_state.combatContext.enemyCount > 1) {
-                strafePriority += 0.3f; // More defensive when outnumbered
-            }
-            
-            result.priority = strafePriority;
-            result.direction = CalculateStrafeDirection(a_state);
-            result.intensity = 0.7f; // Moderate strafe speed
+            // If no tactical reason, return None - let other actions (offense, feinting, etc.) compete
         }
 
         return result;
@@ -300,14 +527,52 @@ namespace CombatAI
         // Get thresholds from config
         const float healthThreshold = config.GetDecisionMatrix().healthThreshold;
 
-        // Trigger: Health < threshold
+        // Trigger: Health < threshold OR significantly outnumbered (tactical retreat)
+        bool shouldRetreat = false;
+        float retreatPriority = 0.0f;
+        
+        // Health-based retreat (survival)
         if (a_state.self.healthPercent <= healthThreshold) {
-            result.action = ActionType::Retreat;
-            result.priority = 2.0f; // Survival is highest priority
+            shouldRetreat = true;
+            retreatPriority = 2.0f; // Survival is highest priority
 
             // Multiple enemies = more urgent retreat
             if (a_state.combatContext.enemyCount > 1) {
-                result.priority += 0.5f; // Higher priority with multiple enemies
+                retreatPriority += 0.5f; // Higher priority with multiple enemies
+            }
+        }
+        
+        // Tactical retreat when significantly outnumbered (even if health is okay)
+        // This helps avoid being surrounded and creates better positioning
+        bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
+        bool significantlyOutnumbered = (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
+        
+        if (!shouldRetreat && significantlyOutnumbered) {
+            // Retreat when significantly outnumbered, but only if health is moderate or low
+            // Don't retreat if health is high (might want to fight)
+            if (a_state.self.healthPercent < 0.7f) {
+                shouldRetreat = true;
+                retreatPriority = 1.5f; // Tactical retreat priority (lower than survival)
+                
+                // Higher priority if health is lower
+                if (a_state.self.healthPercent < 0.5f) {
+                    retreatPriority = 1.8f; // Closer to survival priority
+                }
+            }
+        }
+        
+        // Also retreat when outnumbered and health is low-moderate
+        if (!shouldRetreat && outnumbered && a_state.self.healthPercent < 0.5f) {
+            shouldRetreat = true;
+            retreatPriority = 1.6f; // Tactical retreat when outnumbered and low health
+        }
+
+        if (shouldRetreat) {
+            result.action = ActionType::Retreat;
+            result.priority = retreatPriority;
+
+            // Multiple enemies = faster retreat
+            if (a_state.combatContext.enemyCount > 1) {
                 result.intensity = 1.0f; // Faster retreat when outnumbered
             } else {
                 result.intensity = 0.8f; // Normal retreat speed
@@ -354,10 +619,11 @@ namespace CombatAI
             
             result.action = ActionType::Advancing;
             
-            // Multiple enemies = less likely to advance (might want to stay defensive)
+                // Multiple enemies = less likely to advance (might want to stay defensive)
             float basePriority = 0.7f;
-            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                basePriority = 0.5f; // Lower priority when outnumbered
+            bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
+            if (outnumbered) {
+                basePriority = 0.4f; // Reduced from 0.5f - lower priority when outnumbered (prefer repositioning)
             }
             
             // Boost if target is vulnerable (good time to close distance)
@@ -395,59 +661,99 @@ namespace CombatAI
             return result;
         }
 
-        if (a_state.target.distance > sprintAttackMinDist && a_state.target.distance < sprintAttackMaxDist && a_state.self.staminaPercent > config.GetDecisionMatrix().sprintAttackStaminaThreshold) {
+        if (a_state.target.distance > sprintAttackMinDist && a_state.target.distance < sprintAttackMaxDist) {
             // Don't sprint attack if target is actively attacking (too risky)
             if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
                 return result; // Prefer advancing or strafe instead
             }
             
-            // Only sprint attack when target is vulnerable
-            bool hasGoodOpening = false;
-            if (a_state.target.isCasting || a_state.target.isDrawingBow || 
-                a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal ||
-                (a_state.target.isBlocking && !a_state.target.isAttacking)) {
-                hasGoodOpening = true;
-            }
-            
-            if (!hasGoodOpening) {
-                return result; // No good opening - prefer advancing/strafe
+            // Sprint attacks consume stamina - check if we have enough (if enabled)
+            // Check actual stamina value against stamina cost
+            if (config.GetDecisionMatrix().enableSprintAttackStaminaCheck) {
+                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+                if (actorOwner) {
+                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
+                    float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
+                    if (currentStamina < sprintAttackCost) {
+                        return result; // Not enough stamina for sprint attack
+                    }
+                }
             }
             
             result.action = ActionType::SprintAttack;
             
-            // Multiple enemies = less likely to sprint attack (risky when outnumbered)
-            float basePriority = 0.8f;
-            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
-                basePriority = 0.6f; // Lower priority when outnumbered
-            }
+            // Higher base priority to compete with defensive actions
+            float basePriority = 1.3f; // Increased from 0.8f to be competitive
             
-            // Boost if target is vulnerable
-            if (a_state.target.isCasting || a_state.target.isDrawingBow) {
-                basePriority += 0.2f;
-            }
-            if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
-                basePriority += 0.3f;
-            }
-            
-            // Stamina consideration: reduce priority if stamina is low (but still allow it)
-            // This encourages actors to conserve stamina for future actions
-            auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-            if (actorOwner) {
-                float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
-                float currentStamina = a_state.self.staminaPercent * maxStamina;
-                float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
-                
-                // Reduce priority if stamina is low relative to cost
-                // If stamina is less than cost, significantly reduce priority
-                if (currentStamina < sprintAttackCost) {
-                    float staminaRatio = currentStamina / sprintAttackCost; // 0.0 to 1.0
-                    basePriority *= staminaRatio * 0.5f; // Reduce priority by up to 50% when low stamina
-                } else if (currentStamina < sprintAttackCost * 1.5f) {
-                    // Stamina is enough but not much left - slight reduction
-                    float staminaRatio = (currentStamina - sprintAttackCost) / (sprintAttackCost * 0.5f); // 0.0 to 1.0
-                    basePriority *= (0.9f + staminaRatio * 0.1f); // Reduce by 0-10%
+            // Stamina consideration: reduce priority if stamina is low relative to cost (only if stamina check is enabled)
+            // Sprint attacks consume stamina, so we need to consider if we have enough left
+            float staminaModifier = 0.0f;
+            if (config.GetDecisionMatrix().enableSprintAttackStaminaCheck) {
+                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+                if (actorOwner) {
+                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
+                    float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
+                    
+                    // Reduce priority if stamina is critically low relative to cost
+                    if (currentStamina < sprintAttackCost * 1.2f) {
+                        // Stamina is barely enough - reduce priority
+                        float staminaRatio = currentStamina / (sprintAttackCost * 1.2f); // 0.0 to 1.0
+                        staminaModifier = -0.3f * (1.0f - staminaRatio); // Reduce by up to 30% when low stamina
+                    }
                 }
             }
+            
+            // Sprint attacks create bigger openings (committed movement)
+            // Consider opening risk similar to regular attacks
+            bool targetIsReady = (!a_state.target.isAttacking && !a_state.target.isPowerAttacking &&
+                                 !a_state.target.isCasting && !a_state.target.isDrawingBow &&
+                                 a_state.target.knockState == RE::KNOCK_STATE_ENUM::kNormal);
+            bool targetFacingUs = (a_state.target.orientationDot > 0.7f);
+            float sprintOpeningRisk = 0.0f;
+            
+            if (targetIsReady && targetFacingUs) {
+                // Target ready and facing us - sprint attack creates significant opening
+                sprintOpeningRisk = -0.5f; // More risky than normal attack
+                
+                // Even riskier when outnumbered
+                if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                    sprintOpeningRisk = -0.7f; // Very risky when outnumbered
+                }
+            }
+            
+            // Safer when we have allies
+            if (a_state.combatContext.hasNearbyAlly && a_state.combatContext.allyCount >= 1) {
+                sprintOpeningRisk += 0.3f; // Allies can cover
+            }
+            
+            // Multiple enemies = slightly less likely to sprint attack (risky when outnumbered)
+            if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                basePriority = 1.1f; // Still competitive but slightly lower when outnumbered
+            } else if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
+                // More allies: can be more aggressive
+                basePriority = 1.5f; // Higher priority when outnumbering
+            }
+            
+            // Boost significantly if target is vulnerable (excellent opportunities)
+            if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
+                basePriority += 0.5f; // Target staggered - perfect sprint attack opportunity
+                sprintOpeningRisk += 0.3f; // Safer when target vulnerable
+            }
+            if (a_state.target.isCasting || a_state.target.isDrawingBow) {
+                basePriority += 0.4f; // Target casting/drawing - very vulnerable
+                sprintOpeningRisk += 0.3f; // Safer when target vulnerable
+            }
+            if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                basePriority += 0.3f; // Target blocking - good opportunity
+            }
+            
+            // Boost if target is not facing us (good angle for sprint attack)
+            if (a_state.target.orientationDot < 0.5f) {
+                basePriority += 0.2f; // Target not facing us - good opportunity
+                sprintOpeningRisk += 0.2f; // Safer when target not facing us
+            }
+            
+            basePriority += sprintOpeningRisk + staminaModifier;
             
             result.priority = basePriority;
             
@@ -461,9 +767,12 @@ namespace CombatAI
             reachDistance = 150.0f; // Default fallback
         }
 
-        reachDistance *= config.GetDecisionMatrix().offenseReachMultiplier;
+        // Apply reach multiplier but be more conservative - only allow attacks when actually in range
+        float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
+        float optimalAttackDistance = reachDistance * 0.9f; // Optimal range is slightly less than base reach
 
-        if (a_state.target.distance <= reachDistance) {
+        // Only consider attacks when within reasonable range
+        if (a_state.target.distance <= maxAttackDistance) {
             // TACTICAL CONSIDERATIONS: Don't attack blindly - need good opening
             
             // Don't attack if target is actively attacking (too risky - prefer evasion/strafe)
@@ -472,8 +781,11 @@ namespace CombatAI
             }
             
             // Don't attack if we just finished an attack (should reposition first)
-            if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
-                return result; // Prefer strafe/repositioning after attack
+            // Exception: if target is staggered/vulnerable, we can chain attacks
+            bool targetIsVulnerable = (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) ||
+                                     a_state.target.isCasting || a_state.target.isDrawingBow;
+            if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough && !targetIsVulnerable) {
+                return result; // Prefer strafe/repositioning after attack (unless target is vulnerable)
             }
             
             // Multiple enemies = less likely to commit to attacks (prefer defensive)
@@ -486,86 +798,256 @@ namespace CombatAI
                 priorityModifier = 0.2f;
             }
             
-            // Health-based modifier: Lower health = more cautious
+            // Flanking bonus: if we're flanking (behind/side of target), attacks are more effective
+            float flankingBonus = 0.0f;
+            if (a_state.target.orientationDot < 0.3f) {
+                // We're behind or to the side of target - excellent flanking position
+                flankingBonus = 0.3f;
+                if (a_state.combatContext.hasNearbyAlly) {
+                    flankingBonus = 0.4f; // Even better if ally is engaging target
+                }
+            }
+            
+            // Health-based modifier: Lower health = more cautious, but also consider relative health
             float healthModifier = 0.0f;
             if (a_state.self.healthPercent < 0.4f) {
                 healthModifier = -0.3f; // Low health - be more defensive
+            } else if (a_state.self.healthPercent > 0.7f) {
+                // High health - can be more aggressive
+                healthModifier = 0.1f;
             }
             
-            // Stamina consideration: reduce priority if stamina is low (but still allow attacks)
-            // This encourages actors to conserve stamina for future actions
-            float staminaModifier = 0.0f;
-            auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-            if (actorOwner) {
-                float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
-                float currentStamina = a_state.self.staminaPercent * maxStamina;
-                float attackCost = config.GetDecisionMatrix().attackStaminaCost;
+            // Relative health advantage: if we have significantly more health, be more aggressive
+            // Note: We don't have target health in state, so we'll skip this for now
+            
+            // Attack creates opening consideration: attacks don't consume stamina but create openings for target
+            // This makes actors more cautious about attacking when target is ready to counter-attack
+            float openingRiskModifier = 0.0f;
+            
+            // Check if target is ready/alert (can counter-attack effectively)
+            bool targetIsReady = (!a_state.target.isAttacking && !a_state.target.isPowerAttacking &&
+                                 !a_state.target.isCasting && !a_state.target.isDrawingBow &&
+                                 a_state.target.knockState == RE::KNOCK_STATE_ENUM::kNormal);
+            
+            // Check if target is facing us (more dangerous - can counter-attack)
+            bool targetFacingUs = (a_state.target.orientationDot > 0.7f);
+            
+            if (targetIsReady && targetFacingUs) {
+                // Target is ready and facing us - attacking creates a significant opening
+                openingRiskModifier = -0.4f; // Reduce priority - risky to attack
                 
-                // Reduce priority if stamina is low relative to cost
-                if (currentStamina < attackCost) {
-                    // Stamina is less than cost - significantly reduce priority
-                    float staminaRatio = currentStamina / attackCost; // 0.0 to 1.0
-                    staminaModifier = -0.4f * (1.0f - staminaRatio); // Reduce by up to 40% when very low stamina
-                } else if (currentStamina < attackCost * 2.0f) {
-                    // Stamina is enough for one attack but not much left - slight reduction
-                    float staminaRatio = (currentStamina - attackCost) / attackCost; // 0.0 to 1.0
-                    staminaModifier = -0.1f * (1.0f - staminaRatio); // Reduce by 0-10%
+                // Even riskier when outnumbered (multiple enemies can counter)
+                if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                    openingRiskModifier = -0.6f; // Very risky when outnumbered
                 }
-            } else {
-                // Fallback: if we can't get actor owner, use percentage threshold
-                if (a_state.self.staminaPercent < 0.15f) {
-                    staminaModifier = -0.3f; // Reduce priority when very low stamina
-                } else if (a_state.self.staminaPercent < 0.3f) {
-                    staminaModifier = -0.1f; // Slight reduction when low stamina
+            } else if (targetIsReady && !targetFacingUs) {
+                // Target is ready but not facing us - moderate risk
+                openingRiskModifier = -0.2f;
+            }
+            
+            // Safer to attack when we have allies (they can cover us)
+            if (a_state.combatContext.hasNearbyAlly && a_state.combatContext.allyCount >= 1) {
+                openingRiskModifier += 0.2f; // Allies can cover - reduce risk
+                if (a_state.combatContext.allyCount >= 2) {
+                    openingRiskModifier += 0.1f; // Multiple allies - even safer
                 }
             }
             
-            // Target state modifiers - only attack when there's a good opening
+            // Target is vulnerable - attacking is safer (smaller opening)
+            if (!targetIsReady || a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal ||
+                a_state.target.isCasting || a_state.target.isDrawingBow) {
+                openingRiskModifier += 0.3f; // Target vulnerable - safer to attack
+            }
+            
+            // Target state modifiers - boost priority when opportunities exist
             float targetStateModifier = 0.0f;
             bool hasGoodOpening = false;
             
-            // Excellent opportunities
+            // Excellent opportunities - significant boosts
             if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
-                targetStateModifier += 0.4f; // Target staggered - perfect opportunity
+                targetStateModifier += 0.6f; // Target staggered - perfect opportunity
                 hasGoodOpening = true;
             }
             if (a_state.target.isCasting || a_state.target.isDrawingBow) {
-                targetStateModifier += 0.3f; // Target casting/drawing - very vulnerable
+                targetStateModifier += 0.5f; // Target casting/drawing - very vulnerable
                 hasGoodOpening = true;
             }
             
             // Good opportunities
             if (a_state.target.isBlocking && !a_state.target.isAttacking) {
-                targetStateModifier += 0.2f; // Target blocking (not attacking) - good opportunity
+                targetStateModifier += 0.3f; // Target blocking (not attacking) - good opportunity
                 hasGoodOpening = true;
+            }
+            
+            // Target is idle/not ready - good opportunity, especially when close
+            // Note: We don't have target idle state, but we can infer from not attacking/blocking
+            bool targetIsIdle = (!a_state.target.isAttacking && !a_state.target.isBlocking && 
+                                 !a_state.target.isPowerAttacking && !a_state.target.isCasting && 
+                                 !a_state.target.isDrawingBow);
+            
+            if (targetIsIdle) {
+                // Idle target is a good opportunity, especially when very close
+                float idleBonus = 0.2f; // Base bonus for idle target
+                
+                // Boost significantly when very close to idle target (perfect opportunity)
+                if (a_state.target.distance <= optimalAttackDistance) {
+                    idleBonus = 0.4f; // Much better opportunity when close
+                } else if (a_state.target.distance <= optimalAttackDistance * 1.2f) {
+                    idleBonus = 0.3f; // Good opportunity when moderately close
+                }
+                
+                targetStateModifier += idleBonus;
+                hasGoodOpening = true; // Idle target counts as good opening
             }
             
             // Orientation bonus: Higher priority if target is not facing us directly
             if (a_state.target.orientationDot < 0.5f) {
-                targetStateModifier += 0.15f; // Target not facing us - good opportunity
+                targetStateModifier += 0.2f; // Target not facing us - good opportunity
                 hasGoodOpening = true;
             }
             
-            // If no good opening, significantly reduce priority (prefer strafe/repositioning)
-            if (!hasGoodOpening) {
-                priorityModifier -= 0.4f; // No clear opening - prefer tactical positioning
+            // Coordination bonus: if allies are engaging the target, attacks are safer
+            float coordinationBonus = 0.0f;
+            if (a_state.combatContext.hasNearbyAlly && a_state.combatContext.allyCount >= 1) {
+                coordinationBonus = 0.15f; // Allies present - safer to attack
+                if (a_state.combatContext.allyCount >= 2) {
+                    coordinationBonus = 0.25f; // Multiple allies - even safer
+                }
             }
             
-            // Lower base priority to allow tactical actions (strafe) to compete
-            float basePriority = 0.7f + priorityModifier + healthModifier + staminaModifier + targetStateModifier;
+            // Outnumbering bonus: when we outnumber the target, attacks are safer and more effective
+            float outnumberingBonus = 0.0f;
+            bool outnumberingTarget = (a_state.combatContext.allyCount > a_state.combatContext.enemyCount);
+            if (outnumberingTarget) {
+                outnumberingBonus = 0.3f; // Significant bonus when outnumbering
+                if (a_state.combatContext.allyCount >= a_state.combatContext.enemyCount + 2) {
+                    outnumberingBonus = 0.5f; // Even higher bonus when significantly outnumbering
+                }
+                hasGoodOpening = true; // Outnumbering counts as good opening
+            }
             
-            // Distance-based modifier: closer = slightly higher priority
-            float distanceRatio = a_state.target.distance / reachDistance;
-            float distanceModifier = (1.0f - distanceRatio) * 0.1f; // Up to +0.1f when closer
+            // If no good opening, reduce priority (but less harsh when very close)
+            if (!hasGoodOpening) {
+                // Less penalty when very close - should still attack when right in face
+                if (a_state.target.distance <= optimalAttackDistance * 0.8f) {
+                    priorityModifier -= 0.2f; // Reduced penalty when very close
+                } else {
+                    priorityModifier -= 0.5f; // Full penalty when further away
+                }
+            }
             
-            if (a_state.self.staminaPercent > config.GetDecisionMatrix().powerAttackStaminaThreshold) {
+            // Base priority - competitive but not overriding
+            float basePriority = 1.0f + priorityModifier + healthModifier + openingRiskModifier + 
+                                targetStateModifier + flankingBonus + coordinationBonus + outnumberingBonus;
+            
+            // Distance-based modifier: closer = higher priority, but penalize if too far
+            float distanceModifier = 0.0f;
+            
+            if (a_state.target.distance <= optimalAttackDistance) {
+                // Optimal range - boost priority significantly when very close
+                float optimalRatio = a_state.target.distance / optimalAttackDistance; // 0.0 to 1.0
+                distanceModifier = (1.0f - optimalRatio) * 0.4f; // Increased from 0.3f - up to +0.4f when very close
+                
+                // Extra boost when extremely close (right in face)
+                if (a_state.target.distance <= optimalAttackDistance * 0.6f) {
+                    distanceModifier += 0.3f; // Additional boost when extremely close
+                }
+            } else {
+                // Beyond optimal range - reduce priority
+                float beyondOptimalRatio = (a_state.target.distance - optimalAttackDistance) / (maxAttackDistance - optimalAttackDistance); // 0.0 to 1.0
+                distanceModifier = -0.4f * beyondOptimalRatio; // Up to -0.4f when at max range
+            }
+            
+            // Final priority calculation
+            float finalPriority = basePriority + distanceModifier;
+            
+            // Only proceed if priority is reasonable (don't attack with very low priority)
+            if (finalPriority < 0.5f) {
+                return result; // Priority too low - prefer other actions
+            }
+            
+            // Power Attack vs Normal Attack decision
+            // Power attacks consume stamina but create bigger openings and are more effective
+            // Choose power attack when we have good opportunities, allies to cover us, and enough stamina (if enabled)
+            bool shouldPowerAttack = false;
+            float powerAttackBonus = 0.0f;
+            
+            // Power attacks require stamina - check actual stamina value against cost (only if stamina check is enabled)
+            if (config.GetDecisionMatrix().enablePowerAttackStaminaCheck) {
+                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+                if (actorOwner) {
+                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
+                    float powerAttackCost = config.GetDecisionMatrix().powerAttackStaminaCost;
+                    if (currentStamina < powerAttackCost) {
+                        // Not enough stamina for power attack - use normal attack instead
+                        result.action = ActionType::Attack;
+                        result.priority = finalPriority;
+                        result.intensity = 0.6f; // Moderate intensity for normal attack
+                        return result;
+                    }
+                }
+            }
+            
+            // Power attacks are better when we have good openings
+            if (hasGoodOpening) {
+                powerAttackBonus = 0.3f; // Power attacks are excellent when opportunities exist
+                shouldPowerAttack = true;
+            }
+            
+            // Power attacks are safer when we have allies (they can cover the bigger opening)
+            if (a_state.combatContext.hasNearbyAlly && a_state.combatContext.allyCount >= 1) {
+                powerAttackBonus += 0.2f; // Allies can cover - safer for power attack
+                shouldPowerAttack = true;
+            }
+            
+            // Power attacks are riskier when target is ready and facing us
+            if (targetIsReady && targetFacingUs && a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
+                powerAttackBonus -= 0.3f; // Riskier when outnumbered and target ready
+                shouldPowerAttack = false; // Prefer normal attack instead
+            }
+            
+            // Stamina consideration: reduce power attack priority if stamina is low (only if stamina check is enabled)
+            // Power attacks consume stamina, so we need to consider if we have enough left
+            float powerAttackStaminaModifier = 0.0f;
+            if (config.GetDecisionMatrix().enablePowerAttackStaminaCheck) {
+                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+                if (actorOwner) {
+                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
+                    float powerAttackCost = config.GetDecisionMatrix().powerAttackStaminaCost;
+                    
+                    // Reduce priority if stamina is critically low relative to cost
+                    if (currentStamina < powerAttackCost * 1.2f) {
+                        // Stamina is barely enough - reduce priority
+                        float staminaRatio = currentStamina / (powerAttackCost * 1.2f); // 0.0 to 1.0
+                        powerAttackStaminaModifier = -0.2f * (1.0f - staminaRatio); // Reduce by up to 20% when low stamina
+                    }
+                }
+            }
+            
+            if (shouldPowerAttack) {
                 result.action = ActionType::PowerAttack;
-                result.priority = basePriority + distanceModifier;
+                
+                // Power attacks are especially effective against blocking targets
+                if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                    powerAttackBonus += 0.3f; // Power attacks break blocks better
+                }
+                
+                // Power attacks are good for finishing (when target is staggered/vulnerable)
+                if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
+                    powerAttackBonus += 0.2f; // Finish staggered target with power attack
+                }
+                
+                // Power attacks are better when flanking (harder to block)
+                if (flankingBonus > 0.0f) {
+                    powerAttackBonus += 0.2f; // Flanking power attack is devastating
+                }
+                
+                result.priority = finalPriority + powerAttackBonus + powerAttackStaminaModifier;
                 // Power attack - committed attack, high intensity
                 result.intensity = 0.8f; // High intensity for committed power attack
             } else {
                 result.action = ActionType::Attack;
-                result.priority = basePriority + distanceModifier;
+                result.priority = finalPriority;
                 // Normal attack - moderate intensity
                 result.intensity = 0.6f; // Moderate intensity for normal attack
             }
@@ -702,6 +1184,7 @@ namespace CombatAI
         // - Target is engaged with another actor (ally)
         // - We can position ourselves to the side/back of target
         // - We're in melee range or approaching it
+        // - We outnumber the target (more allies = higher priority)
 
         // Validate closestAllyPosition is valid (not zero/uninitialized)
         // Check if position is reasonable (not NaN, not zero, not extremely far)
@@ -725,8 +1208,11 @@ namespace CombatAI
         // Calculate angle between target's forward vector and direction to ally
         float targetAllyDot = a_state.target.forwardVector.Dot(targetToAlly);
         
-        // If target is facing towards ally (dot > 0.5), we can flank from behind/side
-        bool targetEngagedWithAlly = (targetAllyDot > 0.5f && targetToAllyDist < 800.0f);
+        // Relaxed condition: target doesn't need to face directly at ally
+        // If target is facing somewhat towards ally (dot > 0.0) or ally is close, consider them engaged
+        // Also check if ally is in reasonable combat range
+        bool targetEngagedWithAlly = (targetAllyDot > 0.0f && targetToAllyDist < 1200.0f) || 
+                                     (targetToAllyDist < 600.0f); // If ally is very close, assume engagement
 
         // Calculate our position relative to target
         RE::NiPoint3 targetToSelf = a_state.self.position - a_state.target.position;
@@ -741,21 +1227,117 @@ namespace CombatAI
         float targetSelfDot = a_state.target.forwardVector.Dot(targetToSelf);
 
         // Optimal flanking position: to the side or behind target (dot < 0.3)
-        // If we're already in good flanking position, we might want to attack instead
+        // Allow flanking even if already in position to maintain it or improve it
         bool isInFlankingPosition = (targetSelfDot < 0.3f);
+        
+        // Calculate outnumbering bonus (more allies = higher priority)
+        float outnumberBonus = 0.0f;
+        if (a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
+            // Outnumbering: add bonus based on ratio
+            float ratio = static_cast<float>(a_state.combatContext.allyCount) / 
+                         (static_cast<float>(a_state.combatContext.enemyCount) + 1.0f);
+            outnumberBonus = (ratio - 1.0f) * 0.2f; // 0.2 per extra ally
+            outnumberBonus = (outnumberBonus > 0.6f) ? 0.6f : outnumberBonus; // Cap at 0.6 bonus
+        }
 
-        // Only suggest flanking if:
-        // 1. Target is engaged with ally AND we're not in optimal flanking position yet
-        // 2. OR we're close to melee range but not quite there
-        if (targetEngagedWithAlly && !isInFlankingPosition && targetToSelfDist < 1000.0f) {
+        // More lenient conditions for flanking:
+        // 1. Target is engaged with ally OR we significantly outnumber them
+        // 2. We're within reasonable range (increased from 1000 to 1500)
+        // 3. We're not already perfectly flanking (but allow if we want to maintain/improve)
+        // 4. Target is vulnerable (casting/drawing) - excellent flanking opportunity
+        // 5. Multiple allies engaged with target - better flanking opportunity
+        
+        bool shouldFlank = false;
+        float basePriority = 1.4f;
+        float situationBonus = 0.0f;
+        
+        // Check if target is vulnerable (casting/drawing) - excellent flanking opportunity
+        bool targetIsVulnerable = a_state.target.isCasting || a_state.target.isDrawingBow ||
+                                  a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal;
+        
+        // Check if multiple allies are engaged (better flanking opportunity)
+        bool multipleAlliesEngaged = (a_state.combatContext.allyCount >= 2);
+        
+        // Check if we're already behind target (very good flanking position)
+        bool isBehindTarget = (targetSelfDot < -0.3f);
+        
+        if (targetEngagedWithAlly && targetToSelfDist < 1500.0f) {
+            // If target is engaged with ally, flanking is always useful
+            shouldFlank = true;
+            basePriority = 1.5f; // Higher base priority when target is engaged
+            
+            // Bonus for multiple allies engaged
+            if (multipleAlliesEngaged) {
+                situationBonus += 0.3f; // Multiple allies = better flanking opportunity
+            }
+            
+            // Bonus if target is vulnerable
+            if (targetIsVulnerable) {
+                situationBonus += 0.4f; // Target vulnerable = perfect flanking opportunity
+            }
+        } else if (a_state.combatContext.allyCount >= 2 && targetToSelfDist < 1500.0f) {
+            // If we have multiple allies, flanking is tactically sound even if target isn't directly engaged
+            shouldFlank = true;
+            basePriority = 1.4f;
+            
+            // Bonus if target is vulnerable
+            if (targetIsVulnerable) {
+                situationBonus += 0.3f; // Target vulnerable = good flanking opportunity
+            }
+        }
+        
+        // If we're already in flanking position but outnumber significantly, maintain it
+        if (isInFlankingPosition && a_state.combatContext.allyCount >= 2 && 
+            a_state.combatContext.allyCount > a_state.combatContext.enemyCount) {
+            shouldFlank = true;
+            basePriority = 1.3f; // Lower priority but still valid to maintain position
+            
+            // Bonus if we're already behind target (excellent position)
+            if (isBehindTarget) {
+                situationBonus += 0.2f; // Already behind = maintain position
+            }
+        }
+        
+        // If target is vulnerable and we have allies, flanking is excellent
+        if (targetIsVulnerable && a_state.combatContext.allyCount >= 1 && 
+            targetToSelfDist < 1500.0f && !shouldFlank) {
+            shouldFlank = true;
+            basePriority = 1.5f; // High priority when target is vulnerable
+            situationBonus += 0.3f; // Vulnerable target = excellent opportunity
+        }
+        
+        // If we're already behind target and have allies, maintain flanking position
+        if (isBehindTarget && a_state.combatContext.allyCount >= 1 && 
+            targetToSelfDist < 1200.0f && !shouldFlank) {
+            shouldFlank = true;
+            basePriority = 1.4f; // Good priority to maintain behind-target position
+            situationBonus += 0.2f; // Already in good position
+        }
+
+        if (shouldFlank) {
             result.action = ActionType::Flanking;
-            result.priority = 1.4f; // Higher priority than normal strafe when flanking
+            result.priority = basePriority + outnumberBonus + situationBonus; // Add all bonuses
             
             // Calculate optimal flanking direction (perpendicular to target, away from ally)
             // This creates a pincer movement
             RE::NiPoint3 flankingDir = CalculateFlankingDirection(a_state);
             result.direction = flankingDir;
-            result.intensity = 1.0f; // Full intensity for tactical positioning
+            
+            // Adjust intensity based on distance, outnumbering, and situation
+            float intensity = 1.0f;
+            if (targetToSelfDist > 800.0f) {
+                intensity = 0.8f; // Less intensity when further away
+            }
+            if (outnumberBonus > 0.3f) {
+                intensity = (intensity + 0.1f > 1.0f) ? 1.0f : (intensity + 0.1f); // More intensity when significantly outnumbering
+            }
+            if (targetIsVulnerable) {
+                intensity = (intensity + 0.1f > 1.0f) ? 1.0f : (intensity + 0.1f); // More intensity when target is vulnerable
+            }
+            if (isBehindTarget) {
+                intensity = 0.7f; // Lower intensity when already behind (maintain position, don't overcommit)
+            }
+            result.intensity = intensity;
         }
 
         return result;
@@ -767,7 +1349,7 @@ namespace CombatAI
 
         // Feinting conditions:
         // 1. Target is blocking or being defensive
-        // 2. We're in melee range
+        // 2. We're in melee range or approaching it
         // 3. Target is not currently attacking (safe to feint)
         // 4. We have stamina to perform feint + follow-up
 
@@ -775,39 +1357,102 @@ namespace CombatAI
             return result;
         }
 
-        // Feinting is most effective when target is defensive
-        bool targetIsDefensive = a_state.target.isBlocking || 
-                                 (a_state.target.orientationDot > 0.7f && !a_state.target.isAttacking);
-
-        // Need to be in melee range for feinting to be effective
-        float reachDistance = a_state.weaponReach * 1.2f; // Slightly beyond reach
-        bool inMeleeRange = (a_state.target.distance <= reachDistance);
-
         // Don't feint if target is actively attacking (too risky)
         if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
             return result;
         }
 
-        // Need sufficient stamina for feint + potential follow-up
-        if (a_state.self.staminaPercent < 0.4f) {
+        // Need sufficient stamina for feint + potential follow-up (reduced threshold)
+        if (a_state.self.staminaPercent < 0.25f) {
             return result;
         }
 
+        // Feinting is most effective when target is blocking (perfect counter)
+        bool targetIsBlocking = a_state.target.isBlocking;
+        bool targetIsDefensive = targetIsBlocking || 
+                                 (a_state.target.orientationDot > 0.6f && !a_state.target.isAttacking);
+
+        // Relaxed range: allow feinting when approaching melee range, not just in it
+        float reachDistance = a_state.weaponReach * 1.5f; // Extended range for feinting
+        bool inFeintRange = (a_state.target.distance <= reachDistance);
+
         // Feinting is effective when:
         // - Target is blocking/defensive
-        // - We're in melee range
-        // - We haven't attacked recently (to avoid spam)
-        if (targetIsDefensive && inMeleeRange && 
-            a_state.self.attackState == RE::ATTACK_STATE_ENUM::kNone) {
-            
+        // - We're in feint range (approaching or in melee)
+        // - We're not currently in the middle of an attack (but allow after attack completes)
+        // - We just attacked and target blocked (feint to break guard)
+        // - Target is defensive but not blocking (feint to bait)
+        
+        // Check if we can feint (idle OR just finished attack)
+        bool canFeint = (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kNone);
+        bool justFinishedAttack = (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough);
+        bool readyToFeint = canFeint || justFinishedAttack;
+        
+        // Feinting is especially effective after we attacked and target blocked
+        // OR when target is defensive and we're ready
+        bool goodFeintOpportunity = false;
+        if (targetIsBlocking && justFinishedAttack) {
+            goodFeintOpportunity = true; // We attacked, they blocked - feint to break guard
+        } else if (targetIsDefensive && readyToFeint) {
+            goodFeintOpportunity = true; // Target is defensive - feint to bait
+        }
+
+        if (goodFeintOpportunity && inFeintRange) {
             result.action = ActionType::Feint;
-            result.priority = 1.2f; // Moderate priority - useful but not urgent
+            
+            // Higher priority when target is blocking (feinting is the counter to blocking)
+            float basePriority = 1.3f;
+            if (targetIsBlocking) {
+                basePriority = 1.6f; // Much higher priority when target is blocking
+                
+                // Extra bonus if we just attacked and they blocked (perfect feint opportunity)
+                if (justFinishedAttack) {
+                    basePriority += 0.3f; // We attacked, they blocked - feint to break guard
+                }
+            } else if (a_state.target.orientationDot > 0.7f) {
+                basePriority = 1.4f; // Higher priority when target is facing us defensively
+            }
+            
+            // Boost priority if we're close to target (better feint opportunity)
+            float distanceRatio = a_state.target.distance / reachDistance;
+            float distanceBonus = (1.0f - distanceRatio) * 0.2f; // Up to +0.2f when closer
+            
+            // Boost priority if we have good stamina (can follow up effectively)
+            float staminaBonus = 0.0f;
+            if (a_state.self.staminaPercent > 0.6f) {
+                staminaBonus = 0.1f; // Bonus for having stamina to follow up
+            }
+            
+            // Boost if target is defensive but not blocking (feint to bait defensive response)
+            float defensiveBonus = 0.0f;
+            if (!targetIsBlocking && targetIsDefensive) {
+                defensiveBonus = 0.2f; // Target is defensive - feint to bait
+            }
+            
+            result.priority = basePriority + distanceBonus + staminaBonus + defensiveBonus;
             
             // Feint direction: slight forward movement to appear aggressive
             RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
-            toTarget.Unitize();
+            float toTargetLenSq = toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z;
+            if (toTargetLenSq > 0.01f) {
+                float toTargetLen = std::sqrt(toTargetLenSq);
+                toTarget.x /= toTargetLen;
+                toTarget.y /= toTargetLen;
+                toTarget.z /= toTargetLen;
+            }
             result.direction = toTarget;
-            result.intensity = 0.6f; // Moderate intensity - not full commitment
+            
+            // Higher intensity when target is blocking (more aggressive feint)
+            if (targetIsBlocking) {
+                result.intensity = 0.8f; // Higher intensity to break guard
+                
+                // Even higher intensity if we just attacked and they blocked
+                if (justFinishedAttack) {
+                    result.intensity = 0.9f; // Very aggressive feint after blocked attack
+                }
+            } else {
+                result.intensity = 0.6f; // Moderate intensity for defensive feint
+            }
         }
 
         return result;
@@ -938,26 +1583,91 @@ namespace CombatAI
         // Factor 1: Intensity (higher = more committed, better)
         score += a_decision.intensity * 10.0f;
         
-        // Factor 2: Health-based preference
-        if (a_state.self.healthPercent > 0.5f) {
+        // Factor 2: Health-based preference (more nuanced thresholds)
+        float healthPercent = a_state.self.healthPercent;
+        if (healthPercent > 0.7f) {
+            // Excellent health: strongly prefer offensive actions
+            if (a_decision.action == ActionType::Attack || 
+                a_decision.action == ActionType::PowerAttack || 
+                a_decision.action == ActionType::SprintAttack ||
+                a_decision.action == ActionType::Bash ||
+                a_decision.action == ActionType::Feint) {
+                score += 6.0f;
+            }
+            // Also prefer tactical actions when healthy
+            if (a_decision.action == ActionType::Flanking) {
+                score += 4.0f;
+            }
+        } else if (healthPercent > 0.5f) {
             // Good health: prefer offensive actions
             if (a_decision.action == ActionType::Attack || 
                 a_decision.action == ActionType::PowerAttack || 
                 a_decision.action == ActionType::SprintAttack ||
-                a_decision.action == ActionType::Bash) {
+                a_decision.action == ActionType::Bash ||
+                a_decision.action == ActionType::Feint) {
                 score += 5.0f;
             }
-        } else {
-            // Low health: prefer defensive actions
+        } else if (healthPercent > 0.3f) {
+            // Moderate health: balanced approach
             if (a_decision.action == ActionType::Retreat || 
                 a_decision.action == ActionType::Backoff || 
                 a_decision.action == ActionType::Dodge ||
                 a_decision.action == ActionType::Strafe) {
-                score += 5.0f;
+                score += 4.0f;
+            }
+        } else {
+            // Low health: strongly prefer defensive actions
+            if (a_decision.action == ActionType::Retreat || 
+                a_decision.action == ActionType::Backoff || 
+                a_decision.action == ActionType::Dodge ||
+                a_decision.action == ActionType::Strafe ||
+                a_decision.action == ActionType::Jump) {
+                score += 6.0f;
+            }
+            // Penalize risky offensive actions when low health
+            if (a_decision.action == ActionType::PowerAttack || 
+                a_decision.action == ActionType::SprintAttack) {
+                score -= 3.0f;
             }
         }
         
-        // Factor 3: Distance-based preference
+        // Factor 3: Opening risk consideration (attacks don't consume stamina but create openings)
+        // Note: Attacks don't consume stamina, but they create openings for the target
+        // This factor considers the risk/reward of creating openings
+        // (Stamina considerations removed - focus on tactical positioning and opportunities)
+        
+        // Factor 4: Target state-based preference
+        if (a_state.target.isValid) {
+            // Feinting is excellent against blocking targets
+            if (a_decision.action == ActionType::Feint && a_state.target.isBlocking) {
+                score += 8.0f; // Strong bonus for countering blocks
+            }
+            
+            // Flanking is better when target is engaged with ally
+            if (a_decision.action == ActionType::Flanking && 
+                a_state.combatContext.hasNearbyAlly && 
+                a_state.combatContext.allyCount >= 1) {
+                score += 4.0f;
+            }
+            
+            // Attacks are better when target is vulnerable
+            if ((a_decision.action == ActionType::Attack || 
+                 a_decision.action == ActionType::PowerAttack) &&
+                (a_state.target.isCasting || a_state.target.isDrawingBow ||
+                 a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal)) {
+                score += 3.0f; // Bonus for attacking vulnerable targets
+            }
+            
+            // Avoid attacking when target is blocking (unless feinting)
+            if ((a_decision.action == ActionType::Attack || 
+                 a_decision.action == ActionType::PowerAttack) &&
+                a_state.target.isBlocking && 
+                a_decision.action != ActionType::Feint) {
+                score -= 2.0f; // Penalty for attacking blocks
+            }
+        }
+        
+        // Factor 5: Distance-based preference
         float distance = a_state.target.distance;
         if (a_decision.action == ActionType::Advancing && distance > 800.0f) {
             score += 3.0f; // Prefer advancing when very far
@@ -966,9 +1676,13 @@ namespace CombatAI
         } else if ((a_decision.action == ActionType::Attack || a_decision.action == ActionType::PowerAttack) 
                 && distance >= 150.0f && distance <= 300.0f) {
             score += 2.0f; // Prefer attacks at optimal range
+        } else if (a_decision.action == ActionType::Feint && distance >= 100.0f && distance <= 400.0f) {
+            score += 2.0f; // Prefer feinting at melee range
+        } else if (a_decision.action == ActionType::Flanking && distance >= 200.0f && distance <= 1200.0f) {
+            score += 2.0f; // Prefer flanking at tactical range
         }
         
-        // Factor 4: Combat context (enemy/ally ratio)
+        // Factor 6: Combat context (enemy/ally ratio)
         int enemyCount = a_state.combatContext.enemyCount;
         int allyCount = a_state.combatContext.allyCount;
         
@@ -981,25 +1695,43 @@ namespace CombatAI
                 a_decision.action == ActionType::Jump) {
                 score += 3.0f;
             }
-            // Outnumbered: reduce offensive action score
-            if (a_decision.action == ActionType::Attack || 
-                a_decision.action == ActionType::PowerAttack || 
+            // Outnumbered: reduce risky offensive action score
+            if (a_decision.action == ActionType::PowerAttack || 
                 a_decision.action == ActionType::SprintAttack) {
                 score -= 2.0f;
             }
+            // Flanking is less effective when outnumbered
+            if (a_decision.action == ActionType::Flanking) {
+                score -= 1.0f;
+            }
         } else if (allyCount > enemyCount) {
-            // More allies: prefer offensive actions
+            // More allies: prefer offensive and tactical actions
             if (a_decision.action == ActionType::Attack || 
                 a_decision.action == ActionType::PowerAttack || 
                 a_decision.action == ActionType::SprintAttack ||
                 a_decision.action == ActionType::Bash) {
                 score += 2.0f;
             }
+            // Flanking is excellent when outnumbering
+            if (a_decision.action == ActionType::Flanking && allyCount >= 2) {
+                score += 4.0f; // Strong bonus for tactical positioning when outnumbering
+            }
         }
         
-        // Factor 5: Action type priority (implicit ordering)
-        // Higher enum values get slight preference (for variety)
-        score += static_cast<float>(static_cast<int>(a_decision.action)) * 0.1f;
+        // Factor 7: Target orientation (for tactical actions)
+        if (a_state.target.isValid) {
+            // Flanking is better when target is facing away from us
+            if (a_decision.action == ActionType::Flanking && 
+                a_state.target.orientationDot < 0.5f) {
+                score += 2.0f; // Target not facing us = better flanking opportunity
+            }
+            
+            // Feinting is better when target is facing us (defensive)
+            if (a_decision.action == ActionType::Feint && 
+                a_state.target.orientationDot > 0.6f) {
+                score += 2.0f; // Target facing us defensively = better feint opportunity
+            }
+        }
         
         return score;
     }

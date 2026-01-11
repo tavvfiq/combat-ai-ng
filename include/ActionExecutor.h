@@ -90,6 +90,10 @@ namespace CombatAI
         // Helper: Reset jump variable (when actor lands or when executing other actions)
         void ResetJumpVariable(RE::Actor* a_actor);
 
+        // Helper: Calculate CPR circling angles based on strafe direction
+        // CPR angles are relative to target's facing direction (0° = front, 90° = side, 180° = back)
+        void CalculateCPRCirclingAngles(const RE::NiPoint3& a_strafeDirection, const ActorStateData& a_state, float& a_outMinAngle, float& a_outMaxAngle);
+
         // Dodge system
         DodgeSystem m_dodgeSystem;
         bool m_isBFCOEnabled = false;

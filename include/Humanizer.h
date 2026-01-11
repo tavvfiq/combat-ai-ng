@@ -2,6 +2,7 @@
 
 #include "RE/A/Actor.h"
 #include "DecisionResult.h"
+#include "ThreadSafeMap.h"
 #include <chrono>
 #include <unordered_map>
 
@@ -60,6 +61,9 @@ namespace CombatAI
         // Cleanup invalid actors (call periodically)
         void Cleanup();
 
+        // Emergency recovery: clear corrupted maps if they become unusable
+        void RecoverFromCorruption();
+
         // Configuration
         void SetConfig(const Config& a_config) { m_config = a_config; }
         const Config& GetConfig() const { return m_config; }
@@ -74,16 +78,29 @@ namespace CombatAI
 
         struct ActorCooldownState
         {
-            std::unordered_map<ActionType, float> cooldowns;
+            ThreadSafeMap<ActionType, float> cooldowns;
+            
+            // Default constructor
+            ActorCooldownState() = default;
+            
+            // Move constructor (needed because ThreadSafeMap is non-copyable)
+            ActorCooldownState(ActorCooldownState&&) = default;
+            ActorCooldownState& operator=(ActorCooldownState&&) = default;
+            
+            // Delete copy constructor (ThreadSafeMap is non-copyable)
+            ActorCooldownState(const ActorCooldownState&) = delete;
+            ActorCooldownState& operator=(const ActorCooldownState&) = delete;
         };
 
         Config m_config;
 
         // Per-actor reaction states (keyed by FormID for safety - FormIDs don't become invalid like pointers)
-        std::unordered_map<RE::FormID, ActorReactionState> m_reactionStates;
+        // Thread-safe to prevent crashes from concurrent access
+        ThreadSafeMap<RE::FormID, ActorReactionState> m_reactionStates;
 
         // Per-actor cooldowns (keyed by FormID for safety)
-        std::unordered_map<RE::FormID, ActorCooldownState> m_cooldownStates;
+        // Thread-safe to prevent crashes from concurrent access
+        ThreadSafeMap<RE::FormID, ActorCooldownState> m_cooldownStates;
 
         // Calculate mistake probability based on level and action type
         float CalculateMistakeChance(std::uint16_t a_level, ActionType a_action) const;

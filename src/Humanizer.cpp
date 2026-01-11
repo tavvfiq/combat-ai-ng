@@ -25,24 +25,29 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
+        // Validate FormID before using it (should not be 0 or invalid)
+        // IMPORTANT: Check FormID BEFORE any map operations to prevent crashes
+        if (formID == RE::FormID(0)) {
+            return false; // Invalid FormID
+        }
+
         // Only process actors in combat - clean up if not in combat
         if (!ActorUtils::SafeIsInCombat(a_actor)) {
             // Remove reaction state if actor left combat
-            m_reactionStates.erase(formID);
+            m_reactionStates.Erase(formID);
             return false;
         }
-
-        // Use FormID as key - much safer than raw pointer
-        auto it = m_reactionStates.find(formID);
-        if (it == m_reactionStates.end()) {
-            // Actor not in map, insert it
-            auto [newIt, inserted] = m_reactionStates.emplace(formID, ActorReactionState{});
-            if (!inserted) {
-                return false; // Failed to insert
-            }
-            it = newIt;
+        
+        // Use thread-safe map operations - get or create default state
+        auto* statePtr = m_reactionStates.GetOrCreateDefault(formID);
+        if (!statePtr) {
+            return false; // Failed to get or create
         }
-        auto& state = it->second;
+        
+        if (!statePtr) {
+            return false; // Failed to get state
+        }
+        auto& state = *statePtr;
 
         // Initialize delay if not set
         // Re-validate actor before accessing it (could become invalid)
@@ -50,35 +55,36 @@ namespace CombatAI
             // Validate actor is still valid before initializing
             if (!ActorUtils::SafeIsInCombat(a_actor)) {
                 // Actor left combat, clean up and exit
-                m_reactionStates.erase(formID);
+                m_reactionStates.Erase(formID);
                 return false;
             }
             InitializeReactionDelay(a_actor);
-            // Re-find state after initialization (iterator might be invalidated)
-            it = m_reactionStates.find(formID);
-            if (it == m_reactionStates.end()) {
+            // Re-get state after initialization
+            statePtr = m_reactionStates.GetMutable(formID);
+            if (!statePtr) {
                 return false; // State was removed or not found
             }
+            state = *statePtr;
         }
 
         // Re-validate actor before accessing state (actor could become invalid)
         if (!ActorUtils::SafeIsInCombat(a_actor)) {
             // Actor left combat, clean up and exit
-            m_reactionStates.erase(formID);
+            m_reactionStates.Erase(formID);
             return false;
         }
 
         // If already can react, return true (don't reset here - reset after action is executed)
-        if (it->second.canReact) {
+        if (state.canReact) {
             return true;
         }
 
         // Update timer
-        it->second.reactionTimer += a_deltaTime * 1000.0f; // Convert to milliseconds
+        state.reactionTimer += a_deltaTime * 1000.0f; // Convert to milliseconds
 
         // Check if delay has passed
-        if (it->second.reactionTimer >= it->second.reactionDelay) {
-            it->second.canReact = true;
+        if (state.reactionTimer >= state.reactionDelay) {
+            state.canReact = true;
             return true;
         }
 
@@ -98,13 +104,18 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
-        // Use FormID as key - much safer than raw pointer
-        auto it = m_reactionStates.find(formID);
-        if (it != m_reactionStates.end()) {
+        // Validate FormID before using it
+        if (formID == RE::FormID(0)) {
+            return; // Invalid FormID
+        }
+
+        // Use thread-safe map operations
+        auto* statePtr = m_reactionStates.GetMutable(formID);
+        if (statePtr) {
             // Reset timer and delay, will be re-initialized on next CanReact call
-            it->second.reactionTimer = 0.0f;
-            it->second.reactionDelay = 0.0f;
-            it->second.canReact = false;
+            statePtr->reactionTimer = 0.0f;
+            statePtr->reactionDelay = 0.0f;
+            statePtr->canReact = false;
         }
     }
 
@@ -139,19 +150,24 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
-        // Use FormID as key - much safer than raw pointer
-        auto it = m_cooldownStates.find(formID);
-        if (it == m_cooldownStates.end()) {
+        // Validate FormID before using it
+        if (formID == RE::FormID(0)) {
+            return true; // Invalid FormID - safe default (on cooldown)
+        }
+
+        // Use thread-safe map operations
+        auto* cooldownStatePtr = m_cooldownStates.GetMutable(formID);
+        if (!cooldownStatePtr) {
             return false;
         }
 
-        auto& cooldowns = it->second.cooldowns;
-        auto cooldownIt = cooldowns.find(a_action);
-        if (cooldownIt == cooldowns.end()) {
+        // Check nested cooldown map (also thread-safe)
+        auto cooldownOpt = cooldownStatePtr->cooldowns.Find(a_action);
+        if (!cooldownOpt.has_value()) {
             return false;
         }
 
-        return cooldownIt->second > 0.0f;
+        return cooldownOpt.value() > 0.0f;
     }
 
     float Humanizer::GetCooldownForAction(ActionType a_action) const
@@ -188,53 +204,70 @@ namespace CombatAI
             return; // No cooldown for this action
         }
 
-        // Use FormID as key - much safer than raw pointer
-        auto cooldownIt = m_cooldownStates.find(formID);
-        if (cooldownIt == m_cooldownStates.end()) {
-            auto [newIt, inserted] = m_cooldownStates.emplace(formID, ActorCooldownState{});
-            if (!inserted) {
-                return; // Failed to insert, exit early
-            }
-            cooldownIt = newIt;
+        // Validate FormID before using it
+        if (formID == RE::FormID(0)) {
+            return; // Invalid FormID
         }
-        auto& cooldownState = cooldownIt->second;
+
+        // Use thread-safe map operations - get or create default
+        auto* cooldownStatePtr = m_cooldownStates.GetOrCreateDefault(formID);
+        if (!cooldownStatePtr) {
+            return; // Failed to get or create
+        }
         
         // Map Strafe to Dodge cooldown (they share the same cooldown)
         ActionType cooldownKey = (a_action == ActionType::Strafe) ? ActionType::Dodge : a_action;
-        cooldownState.cooldowns[cooldownKey] = cooldown;
+        // Use thread-safe nested map
+        cooldownStatePtr->cooldowns.Emplace(cooldownKey, cooldown);
+    }
+
+    void Humanizer::RecoverFromCorruption()
+    {
+        // Emergency recovery: clear all maps if they're corrupted
+        // This is a last resort when maps become unusable
+        // Thread-safe wrappers handle this safely
+        m_reactionStates.Clear();
+        m_cooldownStates.Clear();
     }
 
     void Humanizer::Update(float a_deltaTime)
     {
         // Update cooldowns and clean up expired ones
-        // Note: With FormID keys, we don't need to validate actors during iteration
-        // FormIDs are stable identifiers that don't become invalid
-        auto actorIt = m_cooldownStates.begin();
-        while (actorIt != m_cooldownStates.end()) {
-            auto& cooldowns = actorIt->second.cooldowns;
-            auto it = cooldowns.begin();
-            while (it != cooldowns.end()) {
-                if (it->second > 0.0f) {
-                    it->second -= a_deltaTime;
-                    if (it->second <= 0.0f) {
-                        // Cooldown expired, remove from map to save memory
-                        it = cooldowns.erase(it);
-                    } else {
-                        ++it;
+        // Use thread-safe iteration with write lock
+        m_cooldownStates.WithWriteLock([&](auto& cooldownStatesMap) {
+            auto actorIt = cooldownStatesMap.begin();
+            while (actorIt != cooldownStatesMap.end()) {
+                auto& cooldownState = actorIt->second;
+                
+                // Update nested cooldown map (also thread-safe)
+                cooldownState.cooldowns.WithWriteLock([&](auto& cooldownsMap) {
+                    auto it = cooldownsMap.begin();
+                    while (it != cooldownsMap.end()) {
+                        if (it->second > 0.0f) {
+                            it->second -= a_deltaTime;
+                            if (it->second <= 0.0f) {
+                                // Cooldown expired, remove from map to save memory
+                                it = cooldownsMap.erase(it);
+                            } else {
+                                ++it;
+                            }
+                        } else {
+                            // Already zero or negative, remove it
+                            it = cooldownsMap.erase(it);
+                        }
                     }
-                } else {
-                    // Already zero or negative, remove it
-                    it = cooldowns.erase(it);
-                }
+                });
+                
+                // If all cooldowns expired, remove the entire actor entry
+                cooldownState.cooldowns.WithReadLock([&](const auto& cooldownsMap) {
+                    if (cooldownsMap.empty()) {
+                        actorIt = cooldownStatesMap.erase(actorIt);
+                    } else {
+                        ++actorIt;
+                    }
+                });
             }
-            
-            // If all cooldowns expired, remove the entire actor entry
-            if (cooldowns.empty()) {
-                actorIt = m_cooldownStates.erase(actorIt);
-            } else {
-                ++actorIt;
-            }
-        }
+        });
     }
 
     void Humanizer::Cleanup()
@@ -332,22 +365,22 @@ namespace CombatAI
             return;
         }
 
-        // Use FormID as key - much safer than raw pointer
-        auto stateIt = m_reactionStates.find(formID);
-        if (stateIt == m_reactionStates.end()) {
-            auto [newIt, inserted] = m_reactionStates.emplace(formID, ActorReactionState{});
-            if (!inserted) {
-                return; // Failed to insert
-            }
-            stateIt = newIt;
+        // Validate FormID before using it
+        if (formID == RE::FormID(0)) {
+            return; // Invalid FormID
         }
-        auto& state = stateIt->second;
+
+        // Use thread-safe map operations - get or create default
+        auto* statePtr = m_reactionStates.GetOrCreateDefault(formID);
+        if (!statePtr) {
+            return; // Failed to get or create
+        }
 
         // Calculate base delay based on actor level
         // Use wrapper to safely get level - validate actor again before accessing
         if (!ActorUtils::SafeIsInCombat(a_actor)) {
             // Actor left combat during initialization, clean up
-            m_reactionStates.erase(formID);
+            m_reactionStates.Erase(formID);
             return;
         }
         
@@ -357,8 +390,8 @@ namespace CombatAI
         // Random variance: base + variance
         std::uniform_real_distribution<float> dist(0.0f, m_config.reactionVarianceMs);
         float variance = dist(g_gen);
-        state.reactionDelay = baseDelay + variance;
-        state.reactionTimer = 0.0f;
-        state.canReact = false;
+        statePtr->reactionDelay = baseDelay + variance;
+        statePtr->reactionTimer = 0.0f;
+        statePtr->canReact = false;
     }
 }

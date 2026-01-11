@@ -61,8 +61,22 @@ namespace CombatAI
 
     void CombatDirector::ProcessActor(RE::Actor* a_actor, float a_deltaTime)
     {
+        // Debug logging - log ProcessActor calls occasionally
+        static std::uint32_t processActorCallCount = 0;
+        processActorCallCount++;
+
+        bool debugEnabled = Config::GetInstance().GetGeneral().enableDebugLog;
+        
         if (!ShouldProcessActor(a_actor, a_deltaTime)) {
             return;
+        }
+
+        if (debugEnabled && processActorCallCount % 100 == 0) { // Log every 100 calls
+            auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+            if (formIDOpt.has_value()) {
+                std::uint32_t formID = static_cast<std::uint32_t>(formIDOpt.value());
+                LOG_DEBUG("ProcessActor called for actor FormID: 0x{:08X}", formID);
+            }
         }
 
         // Update humanizer
@@ -77,15 +91,8 @@ namespace CombatAI
         ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
         DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
         
-        // Allow movement actions to execute continuously (bypass reaction delay)
-        bool isMovementAction = (decision.action == ActionType::Strafe || 
-                                decision.action == ActionType::Retreat || 
-                                decision.action == ActionType::Advancing || 
-                                decision.action == ActionType::Backoff ||
-                                decision.action == ActionType::Flanking);
-        
-        if (!canReact && !isMovementAction) {
-            return; // Not a movement action and can't react yet
+        if (!canReact) {
+            return; // can't react yet
         }
 
         // State and decision already gathered above for movement action check
@@ -110,26 +117,34 @@ namespace CombatAI
                 // Mark action as used (start cooldown)
                 m_humanizer.MarkActionUsed(a_actor, decision.action);
 
-                // For movement actions (Strafe, Retreat, Advancing, Backoff), don't reset reaction state
-                // They need to be continuously applied, not just once
-                // (isMovementAction already declared above)
-                if (!isMovementAction) {
-                    // Reset reaction state for next reaction (only for non-movement actions)
-                    m_humanizer.ResetReactionState(a_actor);
-                }
-                // For movement actions, keep reaction state active so we can continuously apply movement
-
-                // Track actor by FormID
+                // Track actor by FormID - use thread-safe operations
                 auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
                 if (formIDOpt.has_value()) {
-                    m_processedActors.insert(formIDOpt.value());
+                    m_processedActors.Insert(formIDOpt.value());
                 }
             }
         }
     }
 
     void CombatDirector::Update(float a_deltaTime)
-    {
+    {   
+        // Clean up spawn time entries:
+        // 1. Remove entries for actors that have been processed for a while (after warmup period)
+        // 2. This also catches actors that left combat (their spawn times stop incrementing)
+        m_actorSpawnTimes.WithWriteLock([&](auto& spawnTimesMap) {
+            auto spawnIt = spawnTimesMap.begin();
+            while (spawnIt != spawnTimesMap.end()) {
+                // Clean up old spawn times (actors that have been processed for a while or left combat)
+                if (spawnIt->second > SPAWN_WARMUP_DELAY + 5.0f) {
+                    // Actor has been processed for 5+ seconds after warmup, remove spawn time entry
+                    // This also cleans up entries for actors that left combat (their times stop incrementing)
+                    spawnIt = spawnTimesMap.erase(spawnIt);
+                } else {
+                    ++spawnIt;
+                }
+            }
+        });
+        
         // Periodic cleanup (from config)
         static float cleanupTimer = 0.0f;
         auto& config = Config::GetInstance();
@@ -157,6 +172,10 @@ namespace CombatAI
         // Clean up Humanizer state (it also uses lazy cleanup)
         m_humanizer.Cleanup();
         
+        // Clean up spawn times for actors no longer in combat
+        // This is done lazily in Update(), but we can also clean up here if needed
+        // (Spawn times are cleaned up automatically in Update() after warmup period)
+        
         // If we want to be more aggressive, we could add a size limit and remove oldest entries
         // But for now, lazy cleanup is safer and more efficient
     }
@@ -167,11 +186,21 @@ namespace CombatAI
             return false;
         }
 
+        // Additional validation for newly spawned actors:
+        // Check if actor has a valid FormID before processing
+        // Newly spawned actors might not have FormID initialized yet
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value() || formIDOpt.value() == RE::FormID(0)) {
+            return false; // Actor not fully initialized yet
+        }
+
         // Validate actor using safe wrappers - protects against transitional states
         // Actor is passed directly from hook, but could become invalid at any time
         
         // Quick validation - if actor is dead or not in combat, skip early
-        if (ActorUtils::SafeIsDead(a_actor) || !ActorUtils::SafeIsInCombat(a_actor)) {
+        bool isDead = ActorUtils::SafeIsDead(a_actor);
+        bool inCombat = ActorUtils::SafeIsInCombat(a_actor);
+        if (isDead || !inCombat) {
             return false;
         }
 
@@ -182,7 +211,8 @@ namespace CombatAI
 
         // Only process NPCs, not creatures
         // Check for ActorTypeNPC keyword (NPCs have this, creatures don't)
-        if (!ActorUtils::SafeHasKeywordString(a_actor, "ActorTypeNPC")) {
+        bool hasNPCCheck = ActorUtils::SafeHasKeywordString(a_actor, "ActorTypeNPC");
+        if (!hasNPCCheck) {
             return false;
         }
 
@@ -211,30 +241,54 @@ namespace CombatAI
             return false;
         }
 
-        // Throttle processing: only process at configured interval
-        // Use FormID as key for safety
-        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-        if (!formIDOpt.has_value()) {
-            return false; // Can't get FormID, actor is invalid
-        }
         RE::FormID formID = formIDOpt.value();
         
-        auto timerIt = m_actorProcessTimers.find(formID);
-        if (timerIt == m_actorProcessTimers.end()) {
-            // First time processing this actor, initialize timer
-            m_actorProcessTimers[formID] = 0.0f;
-            return true;
+        // Check spawn warmup delay for newly spawned actors
+        // This prevents processing actors before they're fully initialized
+        auto spawnTimeOpt = m_actorSpawnTimes.Find(formID);
+        if (!spawnTimeOpt.has_value()) {
+            // First time seeing this actor - record spawn time
+            // Start at 0.0f, we'll increment it each frame
+            m_actorSpawnTimes.Emplace(formID, 0.0f);
+            // Don't process newly spawned actors immediately
+            return false;
         }
         
-        timerIt->second += a_deltaTime;
+        // Increment spawn time using the deltaTime for this actor
+        // This ensures spawn times are updated even if Update() hasn't been called yet
+        auto* spawnTimePtr = m_actorSpawnTimes.GetMutable(formID);
+        if (spawnTimePtr) {
+            *spawnTimePtr += a_deltaTime;
+        }
+        
+        // Check if actor is still in warmup period
+        auto currentSpawnTimeOpt = m_actorSpawnTimes.Find(formID);
+        if (currentSpawnTimeOpt.has_value() && currentSpawnTimeOpt.value() < SPAWN_WARMUP_DELAY) {
+            // Actor is still warming up, don't process yet
+            return false;
+        }
+        
+        // Use thread-safe map operations for timer
+        auto* timerPtr = m_actorProcessTimers.GetMutable(formID);
+        if (!timerPtr) {
+            // First time processing this actor, initialize timer
+            auto [inserted, newTimerPtr] = m_actorProcessTimers.Emplace(formID, 0.0f);
+            if (!inserted || !newTimerPtr) {
+                return false; // Failed to insert
+            }
+            return true; // First time, allow processing
+        }
+        
+        // Update timer
+        *timerPtr += a_deltaTime;
         
         // Only process if interval has passed
-        if (timerIt->second < m_processInterval) {
+        if (*timerPtr < m_processInterval) {
             return false; // Skip processing this frame
         }
         
         // Reset timer for next interval
-        timerIt->second = 0.0f;
+        *timerPtr = 0.0f;
 
         return true;
     }

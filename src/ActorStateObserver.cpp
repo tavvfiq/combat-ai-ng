@@ -337,16 +337,17 @@ namespace CombatAI
         // Validate actor before accessing cache
         if (ActorUtils::SafeIsDead(a_actor) || !ActorUtils::SafeIsInCombat(a_actor)) {
             // Actor is invalid, clean up cache and return empty context
-            m_combatContextCache.erase(formID);
+            m_combatContextCache.Erase(formID);
             return context;
         }
 
-        // Check cache first
-        auto cacheIt = m_combatContextCache.find(formID);
-        if (cacheIt != m_combatContextCache.end()) {
+        // Check cache first - use thread-safe operations
+        auto cachedContextOpt = m_combatContextCache.Find(formID);
+        if (cachedContextOpt.has_value()) {
             // Check if cache is still valid
-            if (a_currentTime - cacheIt->second.lastUpdateTime < COMBAT_CONTEXT_UPDATE_INTERVAL) {
-                context = cacheIt->second.context;
+            const auto& cached = cachedContextOpt.value();
+            if (a_currentTime - cached.lastUpdateTime < COMBAT_CONTEXT_UPDATE_INTERVAL) {
+                context = cached.context;
                 // Ensure raw pointer is cleared (it was cleared when cached)
                 context.closestEnemy = nullptr;
                 return context;
@@ -391,11 +392,12 @@ namespace CombatAI
             if (!ActorUtils::SafeIsDead(a_actor) && ActorUtils::SafeIsInCombat(a_actor)) {
                 // Clear raw pointer before caching
                 context.closestEnemy = nullptr;
-                m_combatContextCache[formID] = {context, a_currentTime};
+                CachedCombatContext cached{context, a_currentTime};
+                m_combatContextCache.Emplace(formID, std::move(cached));
             }
         } catch (...) {
             // Actor access failed - return empty context
-            m_combatContextCache.erase(formID);
+            m_combatContextCache.Erase(formID);
             return context;
         }
 
@@ -569,6 +571,6 @@ namespace CombatAI
         RE::FormID formID = formIDOpt.value();
 
         // Remove cached combat context for this actor
-        m_combatContextCache.erase(formID);
+        m_combatContextCache.Erase(formID);
     }
 }

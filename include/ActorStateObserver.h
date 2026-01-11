@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ActorStateData.h"
+#include "ThreadSafeMap.h"
 #include "RE/A/Actor.h"
-#include <unordered_map>
 
 // Forward declaration
 namespace CombatAI { class PrecisionIntegration; }
@@ -50,7 +50,8 @@ namespace CombatAI
             CombatContext context;
             float lastUpdateTime = 0.0f;
         };
-        std::unordered_map<RE::FormID, CachedCombatContext> m_combatContextCache;
+        // Thread-safe to prevent crashes from concurrent access
+        ThreadSafeMap<RE::FormID, CachedCombatContext> m_combatContextCache;
         static constexpr float COMBAT_CONTEXT_UPDATE_INTERVAL = 5.0f; // Update every 1 second
     };
 }

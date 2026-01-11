@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "Hooks.h"
 #include "CombatDirector.h"
+#include "ActorUtils.h"
+#include "Logger.h"
 #include "RE/Offsets.h"
 
 namespace CombatAI
@@ -16,19 +18,17 @@ namespace CombatAI
                 // Call original function first
                 func(a_actor, a_delta);
                 
+                CombatDirector::GetInstance().ProcessActor(a_actor, RE::GetSecondsSinceLastFrame());
+
                 // Accumulate delta time and call Update when threshold is reached
+                // This hook is called for EVERY actor, so we accumulate delta across all actors
+                // and call Update() once per frame (approximately every 0.016s = 60 FPS)
                 static float accumulatedDelta = 0.0f;
                 accumulatedDelta += a_delta;
-                
                 // Call Update approximately once per frame (~60 FPS = 0.016s)
-                if (accumulatedDelta >= 0.016f) {
+                if (accumulatedDelta >= 0.016f) {     
                     CombatDirector::GetInstance().Update(accumulatedDelta);
                     accumulatedDelta = 0.0f;
-                }
-                
-                // Then run our custom logic per-actor (post-hook)
-                if (a_actor) {
-                    CombatDirector::GetInstance().ProcessActor(a_actor, RE::GetSecondsSinceLastFrame());
                 }
             }
             

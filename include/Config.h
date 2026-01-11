@@ -65,12 +65,15 @@ namespace CombatAI
             bool enableSurvivalRetreat = true;
             bool enableOffense = true;
             float offenseReachMultiplier = 1.0f;
-            float powerAttackStaminaThreshold = 0.5f;
             float sprintAttackMinDistance = 300.0f;
             float sprintAttackMaxDistance = 800.0f;
-            float sprintAttackStaminaThreshold = 0.3f;
-            float attackStaminaCost = 15.0f; // Stamina cost for normal attacks
+            float attackStaminaCost = 15.0f; // Stamina cost for normal attacks (not used for decision, only for reference)
+            float powerAttackStaminaCost = 20.0f; // Stamina cost for power attacks
             float sprintAttackStaminaCost = 25.0f; // Stamina cost for sprint attacks (higher due to sprinting + attack)
+            bool enablePowerAttackStaminaCheck = true; // If true, check stamina before allowing power attacks
+            bool enableSprintAttackStaminaCheck = true; // If true, check stamina before allowing sprint attacks
+            // Note: Normal attacks always allowed regardless of stamina (even if stamina is 0)
+            // Stamina checks compare actual stamina value against stamina cost (not percentage thresholds)
         };
 
         struct PerformanceSettings

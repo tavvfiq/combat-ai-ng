@@ -136,12 +136,13 @@ namespace CombatAI
         m_decisionMatrix.enableSurvivalRetreat = a_ini.GetBoolValue("DecisionMatrix", "EnableSurvivalRetreat", m_decisionMatrix.enableSurvivalRetreat);
         m_decisionMatrix.enableOffense = a_ini.GetBoolValue("DecisionMatrix", "EnableOffense", m_decisionMatrix.enableOffense);
         m_decisionMatrix.offenseReachMultiplier = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "OffenseReachMultiplier", m_decisionMatrix.offenseReachMultiplier));
-        m_decisionMatrix.powerAttackStaminaThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "PowerAttackStaminaThreshold", m_decisionMatrix.powerAttackStaminaThreshold));
         m_decisionMatrix.sprintAttackMinDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance));
         m_decisionMatrix.sprintAttackMaxDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackMaxDistance", m_decisionMatrix.sprintAttackMaxDistance));
-        m_decisionMatrix.sprintAttackStaminaThreshold = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackStaminaThreshold", m_decisionMatrix.sprintAttackStaminaThreshold));
         m_decisionMatrix.attackStaminaCost = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "AttackStaminaCost", m_decisionMatrix.attackStaminaCost));
+        m_decisionMatrix.powerAttackStaminaCost = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "PowerAttackStaminaCost", m_decisionMatrix.powerAttackStaminaCost));
         m_decisionMatrix.sprintAttackStaminaCost = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "SprintAttackStaminaCost", m_decisionMatrix.sprintAttackStaminaCost));
+        m_decisionMatrix.enablePowerAttackStaminaCheck = a_ini.GetBoolValue("DecisionMatrix", "EnablePowerAttackStaminaCheck", m_decisionMatrix.enablePowerAttackStaminaCheck);
+        m_decisionMatrix.enableSprintAttackStaminaCheck = a_ini.GetBoolValue("DecisionMatrix", "EnableSprintAttackStaminaCheck", m_decisionMatrix.enableSprintAttackStaminaCheck);
 
         // Clamp values
         m_decisionMatrix.evasionDodgeChance = ClampValue(m_decisionMatrix.evasionDodgeChance, 0.0f, 1.0f);
@@ -153,11 +154,10 @@ namespace CombatAI
         m_decisionMatrix.staminaThreshold = ClampValue(m_decisionMatrix.staminaThreshold, 0.0f, 1.0f);
         m_decisionMatrix.healthThreshold = ClampValue(m_decisionMatrix.healthThreshold, 0.0f, 1.0f);
         m_decisionMatrix.offenseReachMultiplier = ClampValue(m_decisionMatrix.offenseReachMultiplier, 0.1f, 5.0f);
-        m_decisionMatrix.powerAttackStaminaThreshold = ClampValue(m_decisionMatrix.powerAttackStaminaThreshold, 0.0f, 1.0f);
         m_decisionMatrix.sprintAttackMinDistance = (std::max)(0.0f, m_decisionMatrix.sprintAttackMinDistance);
         m_decisionMatrix.sprintAttackMaxDistance = (std::max)(0.0f, m_decisionMatrix.sprintAttackMaxDistance);
-        m_decisionMatrix.sprintAttackStaminaThreshold = ClampValue(m_decisionMatrix.sprintAttackStaminaThreshold, 0.0f, 1.0f);
         m_decisionMatrix.attackStaminaCost = (std::max)(0.0f, m_decisionMatrix.attackStaminaCost);
+        m_decisionMatrix.powerAttackStaminaCost = (std::max)(0.0f, m_decisionMatrix.powerAttackStaminaCost);
         m_decisionMatrix.sprintAttackStaminaCost = (std::max)(0.0f, m_decisionMatrix.sprintAttackStaminaCost);
     }
 

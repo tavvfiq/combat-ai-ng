@@ -143,11 +143,8 @@ namespace CombatAI
             return false; // Can't strafe without a valid target
         }
 
-        // Check if this is a flanking maneuver (has nearby ally and direction is set)
-        // Flanking strafe uses calculated flanking direction instead of default strafe
+        // Get movement direction from decision (could be normal strafe or flanking)
         RE::NiPoint3 movementDir = a_decision.direction;
-        bool isFlanking = a_state.combatContext.hasNearbyAlly && 
-                         (movementDir.x != 0.0f || movementDir.y != 0.0f);
 
         // Try CPR circling if available
         // NOTE: CPR only works for melee-only actors (no ranged weapons or magic)
@@ -158,13 +155,16 @@ namespace CombatAI
             // Make ranges more aggressive to ensure circling triggers
             float minDist = (std::max)(50.0f, a_state.target.distance * 0.7f); // More aggressive min distance
             float maxDist = a_state.target.distance * 1.3f; // Wider max distance for better circling
-            float minAngle = 45.0f;
-            float maxAngle = 135.0f;
+            
+            // Calculate circling angles based on strafe direction
+            // CPR angles are relative to target's facing direction (0° = front, 90° = side, 180° = back)
+            float minAngle, maxAngle;
+            CalculateCPRCirclingAngles(movementDir, a_state, minAngle, maxAngle);
             
             SetCPRCircling(a_actor, minDist, maxDist, minAngle, maxAngle);
             
-            // For flanking, also set movement direction to guide CPR circling
-            if (isFlanking) {
+            // Set movement direction to guide CPR circling (works for both normal strafe and flanking)
+            if (movementDir.x != 0.0f || movementDir.y != 0.0f) {
                 SetMovementDirection(a_actor, movementDir, a_decision.intensity);
             }
             return true;
@@ -196,8 +196,10 @@ namespace CombatAI
             // Calculate circling parameters for flanking movement
             float minDist = (std::max)(50.0f, a_state.target.distance * 0.7f);
             float maxDist = a_state.target.distance * 1.3f;
-            float minAngle = 45.0f;
-            float maxAngle = 135.0f;
+            
+            // Calculate circling angles based on flanking direction
+            float minAngle, maxAngle;
+            CalculateCPRCirclingAngles(flankDir, a_state, minAngle, maxAngle);
             
             SetCPRCircling(a_actor, minDist, maxDist, minAngle, maxAngle);
             
@@ -537,6 +539,64 @@ namespace CombatAI
             a_actor->SetGraphVariableBool("CombatAI_NG_Jump", false);
         } catch (...) {
             // Actor access failed - animation graph may be invalid
+        }
+    }
+
+    void ActionExecutor::CalculateCPRCirclingAngles(const RE::NiPoint3& a_strafeDirection, const ActorStateData& a_state, float& a_outMinAngle, float& a_outMaxAngle)
+    {
+        // Default angles (both sides) if we can't determine direction
+        a_outMinAngle = 45.0f;
+        a_outMaxAngle = 135.0f;
+
+        if (!a_state.target.isValid) {
+            return;
+        }
+
+        // Calculate direction from target to actor (target's perspective)
+        RE::NiPoint3 toActor = a_state.self.position - a_state.target.position;
+        toActor.z = 0.0f; // Keep on horizontal plane
+        toActor.Unitize();
+
+        // Get target's forward vector
+        RE::NiPoint3 targetForward = a_state.target.forwardVector;
+        targetForward.z = 0.0f;
+        targetForward.Unitize();
+
+        // Calculate perpendicular to target forward (right side)
+        RE::NiPoint3 targetRight(-targetForward.y, targetForward.x, 0.0f);
+        targetRight.Unitize();
+
+        // Determine if strafe direction is to the right or left relative to target
+        // Dot product with target's right vector: positive = right side, negative = left side
+        float strafeDotRight = a_strafeDirection.Dot(targetRight);
+        
+        // Also check the direction from target to actor to determine which side we're on
+        float actorDotRight = toActor.Dot(targetRight);
+
+        // Use both strafe direction and actor position to determine circling side
+        // If both indicate same side, use that side; otherwise use wider range
+        bool strafeRight = strafeDotRight > 0.0f;
+        bool actorRight = actorDotRight > 0.0f;
+        
+        if (strafeRight && actorRight) {
+            // Both indicate right side - circle to the right (30-90 degrees)
+            a_outMinAngle = 30.0f;
+            a_outMaxAngle = 90.0f;
+        } else if (!strafeRight && !actorRight) {
+            // Both indicate left side - circle to the left (90-150 degrees)
+            a_outMinAngle = 90.0f;
+            a_outMaxAngle = 150.0f;
+        } else {
+            // Mixed signals - use wider range but favor the strafe direction
+            if (strafeRight) {
+                // Strafe right but actor on left - use right side but wider range
+                a_outMinAngle = 30.0f;
+                a_outMaxAngle = 105.0f;
+            } else {
+                // Strafe left but actor on right - use left side but wider range
+                a_outMinAngle = 75.0f;
+                a_outMaxAngle = 150.0f;
+            }
         }
     }
 

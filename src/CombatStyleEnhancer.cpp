@@ -29,8 +29,8 @@ namespace CombatAI
 
         // Get from combat controller first (runtime)
         try {
-            auto& runtimeData = a_actor->GetActorRuntimeData();
-            RE::CombatController* controller = runtimeData.combatController;
+            // In CommonLibSSE, combatController is a direct member of Actor
+            RE::CombatController* controller = a_actor->combatController;
             if (controller && controller->combatStyle) {
                 return controller->combatStyle;
             }
@@ -366,6 +366,23 @@ namespace CombatAI
                 a_decision.priority += 0.1f; // Reduced from 0.2f
             } else if (fallbackMult < 0.5f) {
                 a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f); // Reduced from 0.2f
+            }
+            
+            // Personality/trait-based adjustments for retreat
+            // DecisionMatrix handles outnumbering logic, here we adjust based on combat style traits
+            // Check if NPC has defensive/cowardly traits based on combat style
+            // High defensiveMult, high fallbackMult, or high avoidThreatChance indicate defensive/cowardly behavior
+            bool isDefensiveOrCowardly = (a_style->generalData.defensiveMult > a_style->generalData.offensiveMult * 1.5f) ||
+                                        (fallbackMult > 1.2f) ||
+                                        (a_style->generalData.avoidThreatChance > 0.6f);
+            
+            // Apply trait-based adjustments (regardless of outnumbering - DecisionMatrix handles that)
+            if (isDefensiveOrCowardly) {
+                // Defensive/cowardly NPCs - boost retreat priority (they're naturally more cautious)
+                a_decision.priority += 0.15f;
+            } else {
+                // Aggressive/brave NPCs - reduce retreat priority slightly (they're more willing to fight)
+                a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f);
             }
         }
 

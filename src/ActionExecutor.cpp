@@ -2,6 +2,9 @@
 #include "ActionExecutor.h"
 #include "Config.h"
 #include "ActorUtils.h"
+#include "ParryFeedbackTracker.h"
+#include "TimedBlockIntegration.h"
+#include "TimedBlockFeedbackTracker.h"
 
 #ifdef min
 #undef min
@@ -48,7 +51,15 @@ namespace CombatAI
             break;
 
         case ActionType::Bash:
-            success = ExecuteBash(a_actor);
+            success = ExecuteBash(a_actor, &a_state);
+            break;
+
+        case ActionType::Parry:
+            success = ExecuteParry(a_actor, a_state);
+            break;
+
+        case ActionType::TimedBlock:
+            success = ExecuteTimedBlock(a_actor, a_state);
             break;
 
         case ActionType::Strafe:
@@ -90,7 +101,7 @@ namespace CombatAI
         return success;
     }
 
-    bool ActionExecutor::ExecuteBash(RE::Actor* a_actor)
+    bool ActionExecutor::ExecuteBash(RE::Actor* a_actor, const ActorStateData* a_state)
     {
         if (!a_actor) {
             return false;
@@ -109,8 +120,126 @@ namespace CombatAI
             ResetBFCOAttackState(a_actor);
         }
 
-        // Trigger bash animation
+        // Trigger bash animation (regular bash, not parry)
         return NotifyAnimation(a_actor, "bashStart");
+    }
+
+    bool ActionExecutor::ExecuteParry(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Check if already bashing/attacking (don't interrupt)
+        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            // Already in an attack, don't interrupt
+            return false;
+        }
+
+        // Reset BFCO attack state if BFCO is installed
+        if (m_isBFCOEnabled) {
+            ResetBFCOAttackState(a_actor);
+        }
+
+        // Always record parry attempt - this is specifically a parry action
+        if (a_state.target.isValid && 
+            (a_state.target.isAttacking || a_state.target.isPowerAttacking) &&
+            a_state.temporal.target.timeUntilAttackHits < 999.0f) {
+            // Get target actor
+            RE::Actor* target = nullptr;
+            try {
+                // In CommonLibSSE, combatController is a direct member of Actor
+                RE::CombatController* combatController = a_actor->combatController;
+                if (combatController) {
+                    RE::ActorHandle targetHandle = combatController->targetHandle;
+                    RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
+                    if (targetPtr && targetPtr.get()) {
+                        target = targetPtr.get();
+                    }
+                }
+            } catch (...) {
+                // Target access failed
+            }
+
+            if (target) {
+                ParryFeedbackTracker::GetInstance().RecordParryAttempt(
+                    a_actor,
+                    target,
+                    a_state.temporal.target.estimatedAttackDuration,
+                    a_state.temporal.target.timeUntilAttackHits
+                );
+            }
+        }
+
+        // Trigger bash animation for parry
+        // EldenParry mod will automatically detect this via animation events and handle
+        // the parry timing. The decision matrix already evaluated the timing window,
+        // so this bash is timed correctly for parrying.
+        return NotifyAnimation(a_actor, "bashStart");
+    }
+
+    bool ActionExecutor::ExecuteTimedBlock(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        if (!a_actor) {
+            return false;
+        }
+
+        // Check if already blocking/attacking (don't interrupt)
+        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            // Already in an attack, don't interrupt
+            return false;
+        }
+
+        // Reset BFCO attack state if BFCO is installed
+        if (m_isBFCOEnabled) {
+            ResetBFCOAttackState(a_actor);
+        }
+
+        // Apply timed block window spell (creates 0.33s window for timed block)
+        // This must be applied before blocking starts
+        if (!TimedBlockIntegration::GetInstance().ApplyTimedBlockWindow(a_actor)) {
+            LOG_WARN("Failed to apply timed block window spell");
+            return false;
+        }
+
+        // Record timed block attempt for feedback tracking
+        if (a_state.target.isValid && 
+            (a_state.target.isAttacking || a_state.target.isPowerAttacking) &&
+            a_state.temporal.target.timeUntilAttackHits < 999.0f) {
+            // Get target actor
+            RE::Actor* target = nullptr;
+            try {
+                // In CommonLibSSE, combatController is a direct member of Actor
+                RE::CombatController* combatController = a_actor->combatController;
+                if (combatController) {
+                    RE::ActorHandle targetHandle = combatController->targetHandle;
+                    RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
+                    if (targetPtr && targetPtr.get()) {
+                        target = targetPtr.get();
+                    }
+                }
+            } catch (...) {
+                // Target access failed
+            }
+
+            if (target) {
+                TimedBlockFeedbackTracker::GetInstance().RecordTimedBlockAttempt(
+                    a_actor,
+                    target,
+                    a_state.temporal.target.estimatedAttackDuration,
+                    a_state.temporal.target.timeUntilAttackHits
+                );
+            }
+        }
+
+        // Trigger block animation/state
+        // Simple Timed Block mod will automatically detect hits during the window
+        // and handle the timed block success (damage prevention, stagger, etc.)
+        return NotifyAnimation(a_actor, "blockStart");
     }
 
     bool ActionExecutor::ExecuteDodge(RE::Actor* a_actor, const ActorStateData& a_state)
@@ -517,13 +646,13 @@ namespace CombatAI
         
         // Check if already dodging/jumping - don't trigger another dodge
         bool isJumping = false;
-        if (ActorUtils::SafeGetGraphVariableBool(a_actor, "CombatAI_NG_Jump", isJumping) && isJumping) {
+        if (ActorUtils::SafeGetGraphVariableBool(a_actor, "EnhancedCombatAI_Jump", isJumping) && isJumping) {
             return false; // Already in jump state, don't trigger again
         }
         
-        // Set CombatAI_NG_Jump to true BEFORE executing dodge
+        // Set EnhancedCombatAI_Jump to true BEFORE executing dodge
         // This allows OAR to detect it and replace the dodge animation with a jump animation
-        ActorUtils::SafeSetGraphVariableBool(a_actor, "CombatAI_NG_Jump", true);
+        ActorUtils::SafeSetGraphVariableBool(a_actor, "EnhancedCombatAI_Jump", true);
         
         return ExecuteDodge(a_actor, a_state);
     }
@@ -536,7 +665,7 @@ namespace CombatAI
         
         // Wrap in try-catch to protect against stale actors
         try {
-            a_actor->SetGraphVariableBool("CombatAI_NG_Jump", false);
+            a_actor->SetGraphVariableBool("EnhancedCombatAI_Jump", false);
         } catch (...) {
             // Actor access failed - animation graph may be invalid
         }

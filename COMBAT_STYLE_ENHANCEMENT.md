@@ -1,7 +1,7 @@
 # Combat Style Enhancement System
 
 ## Overview
-Instead of suppressing vanilla AI, CombatAI-NG **enhances** NPC combat behavior based on their combat style. Each NPC's combat style determines how they react to situations, making combat feel more unique and varied.
+Instead of suppressing vanilla AI, EnhancedCombatAI **enhances** NPC combat behavior based on their combat style. Each NPC's combat style determines how they react to situations, making combat feel more unique and varied.
 
 ## How It Works
 

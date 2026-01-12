@@ -19,7 +19,9 @@ namespace CombatAI
         Backoff, //9
         Advancing, //10
         Feint, //11 - Fake attack to bait enemy response
-        Flanking //12 - Tactical positioning with allies (pincer movement)
+        Flanking, //12 - Tactical positioning with allies (pincer movement)
+        Parry, //13 - Timed bash for parrying incoming attacks
+        TimedBlock //14 - Timed block for blocking incoming attacks
     };
 
     // Decision result containing action to take

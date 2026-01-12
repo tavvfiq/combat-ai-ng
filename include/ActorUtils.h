@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RE/A/Actor.h"
+#include "RE/A/ActorState.h"
 #include "RE/B/BSTSmartPointer.h"
 #include <optional>
 
@@ -51,26 +52,32 @@ namespace CombatAI
         }
 
         // Safe AsActorState
+        // In CommonLibSSE, Actor inherits from ActorState, so we can cast directly
+        // Since Actor IS an ActorState (inheritance), static_cast is safe
         inline RE::ActorState* SafeAsActorState(RE::Actor* a_actor)
         {
             if (!a_actor) {
                 return nullptr;
             }
             try {
-                return a_actor->AsActorState();
+                // Actor inherits from ActorState, so this cast is valid
+                return static_cast<RE::ActorState*>(a_actor);
             } catch (...) {
                 return nullptr;
             }
         }
 
         // Safe AsActorValueOwner
+        // In CommonLibSSE, Actor inherits from ActorValueOwner, so we can cast directly
         inline RE::ActorValueOwner* SafeAsActorValueOwner(RE::Actor* a_actor)
         {
             if (!a_actor) {
                 return nullptr;
             }
             try {
-                return a_actor->AsActorValueOwner();
+                // Actor inherits from ActorValueOwner, so this cast is valid
+                // GetActorOwner() may return nullptr, so use direct cast instead
+                return static_cast<RE::ActorValueOwner*>(a_actor);
             } catch (...) {
                 return nullptr;
             }
@@ -189,7 +196,7 @@ namespace CombatAI
                 return RE::ATTACK_STATE_ENUM::kNone;
             }
             try {
-                RE::ActorState* state = a_actor->AsActorState();
+                RE::ActorState* state = static_cast<RE::ActorState*>(a_actor);
                 if (state) {
                     return state->GetAttackState();
                 }
@@ -206,7 +213,7 @@ namespace CombatAI
                 return false;
             }
             try {
-                RE::ActorState* state = a_actor->AsActorState();
+                RE::ActorState* state = static_cast<RE::ActorState*>(a_actor);
                 if (state) {
                     return state->IsSprinting();
                 }
@@ -223,7 +230,7 @@ namespace CombatAI
                 return;
             }
             try {
-                RE::ActorState* state = a_actor->AsActorState();
+                RE::ActorState* state = static_cast<RE::ActorState*>(a_actor);
                 if (state) {
                     state->actorState1.sprinting = a_sprinting ? 1 : 0;
                 }
@@ -349,6 +356,23 @@ namespace CombatAI
             }
         }
 
+        // Safe HasMagicEffect - Check if actor has a specific magic effect active
+        inline bool SafeHasMagicEffect(RE::Actor* a_actor, RE::EffectSetting* a_effect)
+        {
+            if (!a_actor || !a_effect) {
+                return false;
+            }
+            try {
+                auto magicTarget = a_actor->GetMagicTarget();
+                if (!magicTarget) {
+                    return false;
+                }
+                return magicTarget->HasMagicEffect(a_effect);
+            } catch (...) {
+                return false;
+            }
+        }
+
         // Safe IsBlocking
         inline bool SafeIsBlocking(RE::Actor* a_actor)
         {
@@ -410,14 +434,14 @@ namespace CombatAI
         }
 
         // Safe IsFleeing (from CombatController)
+        // In CommonLibSSE, combatController is a direct member of Actor
         inline bool SafeIsFleeing(RE::Actor* a_actor)
         {
             if (!a_actor) {
                 return false;
             }
             try {
-                auto& runtimeData = a_actor->GetActorRuntimeData();
-                RE::CombatController* combatController = runtimeData.combatController;
+                RE::CombatController* combatController = a_actor->combatController;
                 if (combatController) {
                     return combatController->IsFleeing();
                 }

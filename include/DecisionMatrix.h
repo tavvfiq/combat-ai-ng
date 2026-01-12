@@ -38,6 +38,12 @@ namespace CombatAI
         // Feinting & Baiting (fake attacks to bait enemy response)
         DecisionResult EvaluateFeinting(RE::Actor* a_actor, const ActorStateData& a_state);
 
+        // Parry (timed bash for parrying incoming attacks)
+        DecisionResult EvaluateParry(RE::Actor* a_actor, const ActorStateData& a_state);
+
+        // Timed Block (timed block for blocking incoming attacks)
+        DecisionResult EvaluateTimedBlock(RE::Actor* a_actor, const ActorStateData& a_state);
+
         // Helper: Calculate strafe direction (perpendicular to target)
         RE::NiPoint3 CalculateStrafeDirection(const ActorStateData& a_state);
 
@@ -49,6 +55,9 @@ namespace CombatAI
 
         // Helper: Calculate score for tie-breaking
         float CalculateDecisionScore(const DecisionResult& a_decision, const ActorStateData& a_state);
+
+        // Helper: Log all state data for selected actor (debugging)
+        void LogActorState(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // CombatStyleEnhancer
         CombatStyleEnhancer m_styleEnhancer;

@@ -1,3 +1,4 @@
+#include "ActorUtils.h"
 #include "pch.h"
 #include "DodgeSystem.h"
 #include "Config.h"
@@ -29,7 +30,7 @@ namespace CombatAI
         }
 
         // Check attack state (can cancel if enabled)
-        RE::ActorState* state = a_actor->AsActorState();
+        RE::ActorState* state = ActorUtils::SafeAsActorState(a_actor);
         if (state) {
             RE::ATTACK_STATE_ENUM attackState = state->GetAttackState();
             if (attackState != RE::ATTACK_STATE_ENUM::kNone && !m_config.enableDodgeAttackCancel) {
@@ -64,7 +65,7 @@ namespace CombatAI
         }
 
         // Check stamina
-        auto actorValueOwner = a_actor->AsActorValueOwner();
+        auto actorValueOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
         float currentStamina = actorValueOwner->GetActorValue(RE::ActorValue::kStamina);
         if (currentStamina < m_config.dodgeStaminaCost) {
             return false;
@@ -92,6 +93,12 @@ namespace CombatAI
 
         // Trigger dodge animation
         bool success = a_actor->NotifyAnimationGraph(RE::BSFixedString(dodgeEvent.c_str()));
+
+        // Apply stamina cost if dodge was successful
+        // This matches TK Dodge RE's behavior (applies cost when dodge starts)
+        if (success) {
+            ApplyDodgeStaminaCost(a_actor);
+        }
 
         return success;
     }
@@ -185,5 +192,21 @@ namespace CombatAI
         bool isDodging = false;
         a_actor->GetGraphVariableBool(RE::BSFixedString("bIsDodging"), isDodging);
         return isDodging;
+    }
+
+    void DodgeSystem::ApplyDodgeStaminaCost(RE::Actor* a_actor)
+    {
+        if (!a_actor) {
+            return;
+        }
+
+        // Apply stamina cost using DamageActorValue
+        // In CommonLibSSE, DamageActorValue takes 2 arguments: (ActorValue, float)
+        // This matches TK Dodge RE's behavior (reduces stamina when dodge starts)
+        auto actorValueOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+        if (actorValueOwner) {
+            // Use DamageActorValue to reduce stamina (positive value = damage)
+            actorValueOwner->DamageActorValue(RE::ActorValue::kStamina, m_config.dodgeStaminaCost);
+        }
     }
 }

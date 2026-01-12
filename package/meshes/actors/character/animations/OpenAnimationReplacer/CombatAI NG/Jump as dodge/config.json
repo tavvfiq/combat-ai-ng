@@ -16,10 +16,10 @@
             "requiredPlugin": "OpenAnimationReplacer-Math",
             "requiredVersion": "1.0.0.0",
             "Math Statement": {
-                "expression": "CombatAI_NG_Jump == 1",
+                "expression": "EnhancedCombatAI_Jump == 1",
                 "variables": {
-                    "combatai_ng_jump": {
-                        "graphVariable": "CombatAI_NG_Jump",
+                    "enhancedcombatai_jump": {
+                        "graphVariable": "EnhancedCombatAI_Jump",
                         "graphVariableType": "Bool"
                     }
                 }

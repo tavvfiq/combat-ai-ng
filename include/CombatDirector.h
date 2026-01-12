@@ -4,7 +4,9 @@
 #include "DecisionMatrix.h"
 #include "ActionExecutor.h"
 #include "Humanizer.h"
+#include "ParryFeedbackTracker.h"
 #include "ThreadSafeMap.h"
+#include "DecisionResult.h"
 #include "RE/A/Actor.h"
 
 namespace CombatAI
@@ -24,6 +26,9 @@ namespace CombatAI
 
         // Initialize the director
         void Initialize();
+
+        // Register mod callback listeners (for EldenParry integration)
+        void RegisterModCallbacks();
 
         // Process an actor (called from hook)
         void ProcessActor(RE::Actor* a_actor, float a_deltaTime);
@@ -59,6 +64,22 @@ namespace CombatAI
         // Prevents processing actors before they're fully initialized
         // Thread-safe to prevent crashes from concurrent access
         ThreadSafeMap<RE::FormID, float> m_actorSpawnTimes;
+
+        // Track active movement actions that need continuous reapplication
+        // Movement actions must be reapplied every frame to override game AI
+        struct ActiveMovementAction
+        {
+            ActionType action = ActionType::None;
+            RE::NiPoint3 direction = RE::NiPoint3(0.0f, 0.0f, 0.0f);
+            float intensity = 1.0f;
+        };
+        ThreadSafeMap<RE::FormID, ActiveMovementAction> m_activeMovementActions;
+
+        // Helper: Check if an action is a movement action that needs continuous reapplication
+        static bool IsMovementAction(ActionType a_action);
+
+        // Helper: Continuously reapply movement actions (called every frame)
+        void ReapplyMovementActions(RE::Actor* a_actor, float a_deltaTime);
 
         // Processing throttle (don't process every frame)
         float m_processTimer = 0.0f;

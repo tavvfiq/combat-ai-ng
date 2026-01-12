@@ -1,7 +1,7 @@
 # Enhancements Summary
 
 ## Overview
-This document summarizes the major enhancements made to CombatAI-NG:
+This document summarizes the major enhancements made to EnhancedCombatAI:
 1. Precision Integration for weapon reach
 2. Combat Style Enhancement System
 3. Jump Evasion System
@@ -109,12 +109,12 @@ No additional configuration needed - both systems work automatically:
 
 ### What It Does
 - NPCs can jump to evade ranged attacks (bows/crossbows)
-- Uses dodge system with `CombatAI_NG_Jump` flag for OAR animation replacement
+- Uses dodge system with `EnhancedCombatAI_Jump` flag for OAR animation replacement
 - Triggers when target is using ranged weapon and within evasion distance
 
 ### Implementation
 - **ActionType::Jump** - New action type
-- Uses `DodgeSystem::ExecuteEvasionDodge` with `CombatAI_NG_Jump=true`
+- Uses `DodgeSystem::ExecuteEvasionDodge` with `EnhancedCombatAI_Jump=true`
 - OAR can detect the flag and replace dodge animation with jump animation
 - Jump variable is reset when actor lands or when executing other actions
 
@@ -125,7 +125,7 @@ No additional configuration needed - both systems work automatically:
 
 ### Files
 - `src/ActionExecutor.cpp` - ExecuteJump implementation
-- `package/SKSE/Plugins/BehaviorDataInjector/CombatAI-NG_BDI.json` - Graph variable registration
+- `package/SKSE/Plugins/BehaviorDataInjector/EnhancedCombatAI_BDI.json` - Graph variable registration
 
 ## 4. Backoff Action
 

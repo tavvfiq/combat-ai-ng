@@ -65,22 +65,6 @@ namespace CombatAI
         // Thread-safe to prevent crashes from concurrent access
         ThreadSafeMap<RE::FormID, float> m_actorSpawnTimes;
 
-        // Track active movement actions that need continuous reapplication
-        // Movement actions must be reapplied every frame to override game AI
-        struct ActiveMovementAction
-        {
-            ActionType action = ActionType::None;
-            RE::NiPoint3 direction = RE::NiPoint3(0.0f, 0.0f, 0.0f);
-            float intensity = 1.0f;
-        };
-        ThreadSafeMap<RE::FormID, ActiveMovementAction> m_activeMovementActions;
-
-        // Helper: Check if an action is a movement action that needs continuous reapplication
-        static bool IsMovementAction(ActionType a_action);
-
-        // Helper: Continuously reapply movement actions (called every frame)
-        void ReapplyMovementActions(RE::Actor* a_actor, float a_deltaTime);
-
         // Processing throttle (don't process every frame)
         float m_processTimer = 0.0f;
         float m_processInterval = 0.1f; // Process every 100ms (loaded from config)

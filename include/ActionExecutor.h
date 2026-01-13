@@ -45,7 +45,7 @@ namespace CombatAI
         bool ExecuteAttack(RE::Actor* a_actor);
 
         // Execute power attack
-        bool ExecutePowerAttack(RE::Actor* a_actor);
+        bool ExecutePowerAttack(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // Execute sprint attack (BFCO support)
         bool ExecuteSprintAttack(RE::Actor* a_actor);

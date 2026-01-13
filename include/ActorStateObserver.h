@@ -90,6 +90,15 @@ namespace CombatAI
             int timedBlockSuccessCount = 0; // Number of successful timed blocks (for learning)
             int timedBlockAttemptCount = 0; // Total number of timed block attempts (for learning)
             
+            // Guard Counter feedback data
+            bool lastGuardCounterSuccess = false; // Whether last guard counter attempt was successful
+            float timeSinceLastGuardCounterAttempt = 999.0f; // Time since last guard counter attempt
+            int guardCounterSuccessCount = 0; // Number of successful guard counters (hit)
+            int guardCounterAttemptCount = 0; // Total number of guard counter attempts
+            int guardCounterFailedCount = 0; // Number of failed guard counters (missed/blocked)
+            int guardCounterMissedOpportunityCount = 0; // Number of times guard counter window expired without attempt
+            float guardCounterSuccessRate = 0.0f; // Success rate (0.0-1.0)
+            
             // Attack defense feedback data (when NPC's attacks are parried/timed blocked)
             bool lastAttackParried = false; // Whether last attack was parried
             bool lastAttackTimedBlocked = false; // Whether last attack was timed blocked

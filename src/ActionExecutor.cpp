@@ -5,6 +5,7 @@
 #include "ParryFeedbackTracker.h"
 #include "TimedBlockIntegration.h"
 #include "TimedBlockFeedbackTracker.h"
+#include "GuardCounterFeedbackTracker.h"
 
 #ifdef min
 #undef min
@@ -43,7 +44,7 @@ namespace CombatAI
             break;
             
         case ActionType::PowerAttack:
-            success = ExecutePowerAttack(a_actor);
+            success = ExecutePowerAttack(a_actor, a_state);
             break;
 
         case ActionType::SprintAttack:
@@ -615,7 +616,7 @@ namespace CombatAI
         return NotifyAnimation(a_actor, "attackStart");
     }
 
-    bool ActionExecutor::ExecutePowerAttack(RE::Actor* a_actor)
+    bool ActionExecutor::ExecutePowerAttack(RE::Actor* a_actor, const ActorStateData& a_state)
     {
         if (!a_actor) {
             return false;
@@ -626,6 +627,28 @@ namespace CombatAI
         if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
             attackState != RE::ATTACK_STATE_ENUM::kDraw) {
             return false;
+        }
+
+        // Track guard counter attempt if guard counter window is active
+        if (a_state.self.isGuardCounterActive && a_state.target.isValid) {
+            // Get target actor
+            RE::Actor* target = nullptr;
+            try {
+                RE::CombatController* combatController = a_actor->combatController;
+                if (combatController) {
+                    RE::ActorHandle targetHandle = combatController->targetHandle;
+                    RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
+                    if (targetPtr && targetPtr.get()) {
+                        target = targetPtr.get();
+                    }
+                }
+            } catch (...) {
+                // Target access failed
+            }
+
+            if (target) {
+                GuardCounterFeedbackTracker::GetInstance().RecordGuardCounterAttempt(a_actor, target);
+            }
         }
 
         if (m_isBFCOEnabled) {

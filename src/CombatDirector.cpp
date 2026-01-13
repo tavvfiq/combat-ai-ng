@@ -8,6 +8,7 @@
 #include "ParryFeedbackTracker.h"
 #include "TimedBlockFeedbackTracker.h"
 #include "AttackDefenseFeedbackTracker.h"
+#include "GuardCounterFeedbackTracker.h"
 #include "Logger.h"
 #include <sstream>
 #include <cstring>
@@ -158,6 +159,9 @@ namespace CombatAI
 
         // Update attack defense feedback tracker (always update, as attacks can be parried/timed blocked regardless of settings)
         AttackDefenseFeedbackTracker::GetInstance().Update(a_deltaTime);
+
+        // Update guard counter feedback tracker (always update, guard counter is handled by EldenCounter mod)
+        GuardCounterFeedbackTracker::GetInstance().Update(a_deltaTime);
 
         // Check if actor can react (reaction delay)
         // For movement actions, allow continuous execution even during reaction delay

@@ -19,6 +19,7 @@
 #include "ParryFeedbackTracker.h"
 #include "TimedBlockFeedbackTracker.h"
 #include "AttackDefenseFeedbackTracker.h"
+#include "GuardCounterFeedbackTracker.h"
 
 namespace CombatAI
 {
@@ -105,6 +106,11 @@ namespace CombatAI
 
         // Blocking state - use safe wrapper
         state.isBlocking = ActorUtils::SafeIsBlocking(a_actor);
+
+        // Guard counter state (from EldenCounter mod)
+        bool guardCounterActive = false;
+        ActorUtils::SafeGetGraphVariableBool(a_actor, "Val_GuardCounter", guardCounterActive);
+        state.isGuardCounterActive = guardCounterActive;
 
         // Movement state - sprinting/walking - use safe wrappers
         state.isSprinting = ActorUtils::SafeIsSprinting(a_actor);
@@ -956,6 +962,16 @@ namespace CombatAI
         actorTemporal.timeSinceLastTimedBlockAttempt = timedBlockFeedback.timeSinceLastTimedBlockAttempt;
         actorTemporal.timedBlockSuccessCount = timedBlockFeedback.timedBlockSuccessCount;
         actorTemporal.timedBlockAttemptCount = timedBlockFeedback.timedBlockAttemptCount;
+
+        // Update guard counter feedback from GuardCounterFeedbackTracker
+        auto guardCounterFeedback = GuardCounterFeedbackTracker::GetInstance().GetFeedback(a_actor);
+        actorTemporal.lastGuardCounterSuccess = guardCounterFeedback.lastGuardCounterSuccess;
+        actorTemporal.timeSinceLastGuardCounterAttempt = guardCounterFeedback.timeSinceLastGuardCounterAttempt;
+        actorTemporal.guardCounterSuccessCount = guardCounterFeedback.guardCounterSuccessCount;
+        actorTemporal.guardCounterAttemptCount = guardCounterFeedback.guardCounterAttemptCount;
+        actorTemporal.guardCounterFailedCount = guardCounterFeedback.guardCounterFailedCount;
+        actorTemporal.guardCounterMissedOpportunityCount = guardCounterFeedback.guardCounterMissedOpportunityCount;
+        actorTemporal.guardCounterSuccessRate = guardCounterFeedback.guardCounterSuccessRate;
 
         // Update attack defense feedback from AttackDefenseFeedbackTracker
         auto attackDefenseFeedback = AttackDefenseFeedbackTracker::GetInstance().GetFeedback(a_actor);

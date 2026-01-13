@@ -1638,6 +1638,14 @@ namespace CombatAI
             bool shouldPowerAttack = false;
             float powerAttackBonus = 0.0f;
             
+            // Guard Counter: If guard counter window is active, strongly prioritize power attack
+            // Guard counter is activated by EldenCounter mod when NPC successfully blocks
+            if (a_state.self.isGuardCounterActive) {
+                // Guard counter window is active - this is a perfect opportunity for power attack
+                powerAttackBonus += 2.0f; // Very high priority for guard counter
+                shouldPowerAttack = true; // Always prefer power attack during guard counter
+            }
+            
             // Weapon type considerations: Two-handed weapons are better for power attacks
             // One-handed weapons are faster, so normal attacks might be better
             if (a_state.self.isTwoHanded) {

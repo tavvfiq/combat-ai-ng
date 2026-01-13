@@ -3,6 +3,7 @@
 #include "ParryFeedbackTracker.h"
 #include "TimedBlockFeedbackTracker.h"
 #include "AttackDefenseFeedbackTracker.h"
+#include "GuardCounterFeedbackTracker.h"
 #include "ActorUtils.h"
 #include "Logger.h"
 
@@ -109,6 +110,10 @@ namespace CombatAI
 
         // This is a successful hit - notify the tracker
         AttackDefenseFeedbackTracker::GetInstance().OnAttackHit(attacker, target);
+        
+        // Also check if this was a guard counter attempt (power attack during guard counter window)
+        // The guard counter tracker will match this hit with the recorded attempt
+        GuardCounterFeedbackTracker::GetInstance().OnGuardCounterHit(attacker);
 
         return RE::BSEventNotifyControl::kContinue;
     }

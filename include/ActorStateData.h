@@ -30,6 +30,7 @@ namespace CombatAI
         float healthPercent = 0.0f;
         RE::ATTACK_STATE_ENUM attackState = RE::ATTACK_STATE_ENUM::kNone;
         bool isBlocking = false;
+        bool isGuardCounterActive = false; // Guard counter window is active (from EldenCounter mod)
         bool isIdle = false;
         bool isSprinting = false; // Movement state: sprinting
         bool isWalking = false; // Movement state: walking
@@ -146,6 +147,15 @@ namespace CombatAI
         float timeSinceLastTimedBlockAttempt = 999.0f; // Time since last timed block attempt
         int timedBlockSuccessCount = 0; // Number of successful timed blocks (for learning)
         int timedBlockAttemptCount = 0; // Total number of timed block attempts (for learning)
+        
+        // Guard Counter feedback data
+        bool lastGuardCounterSuccess = false; // Whether last guard counter attempt was successful
+        float timeSinceLastGuardCounterAttempt = 999.0f; // Time since last guard counter attempt
+        int guardCounterSuccessCount = 0; // Number of successful guard counters (hit)
+        int guardCounterAttemptCount = 0; // Total number of guard counter attempts
+        int guardCounterFailedCount = 0; // Number of failed guard counters (missed/blocked)
+        int guardCounterMissedOpportunityCount = 0; // Number of times guard counter window expired without attempt
+        float guardCounterSuccessRate = 0.0f; // Success rate (0.0-1.0)
         
         // Attack defense feedback data (when NPC's attacks are parried/timed blocked)
         bool lastAttackParried = false; // Whether last attack was parried

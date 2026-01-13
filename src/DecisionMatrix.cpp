@@ -2,12 +2,20 @@
 #include "DecisionMatrix.h"
 #include "Config.h"
 #include "ActorUtils.h"
+#include "TimedBlockIntegration.h"
 #include <cmath>
 #include <string>
 #include <format>
+#include <algorithm>
 
 namespace CombatAI
 {
+    // Helper function to clamp values
+    template<typename T>
+    constexpr T ClampValue(const T& value, const T& minVal, const T& maxVal)
+    {
+        return (std::max)(minVal, (std::min)(maxVal, value));
+    }
     DecisionResult DecisionMatrix::Evaluate(RE::Actor* a_actor, const ActorStateData& a_state)
     {
         std::vector<DecisionResult> possibleDecisions;
@@ -88,7 +96,10 @@ namespace CombatAI
         // Tie-breaking: select best decision from top priority ones
         DecisionResult bestDecision = SelectBestFromTie(topPriorityDecisions, a_state);
 
+        // Log comprehensive state for selected actor (debugging)
         if (debugEnabled && selectedRef && a_actor == selectedRef.get()) {
+            LogActorState(a_actor, a_state);
+            
             std::ostringstream logs;
             if (auto formID = ActorUtils::SafeGetFormID(a_actor)) {
                 logs << "actor: " << std::hex << *formID << std::dec 
@@ -226,7 +237,31 @@ namespace CombatAI
             }
         }
         
-        // 4. Interrupt normal attacks (moderate priority - risky but can work)
+        // 4. Parry opportunity (timed bash for parrying - highest priority when timing is right)
+        // Check parry first as it's a specialized action
+        auto& parryConfig = Config::GetInstance().GetParry();
+        if (parryConfig.enableParry && 
+            (a_state.target.isAttacking || a_state.target.isPowerAttacking)) {
+            DecisionResult parryResult = EvaluateParry(a_actor, a_state);
+            if (parryResult.action == ActionType::Parry) {
+                // Parry opportunity found - return immediately (parry takes precedence)
+                return parryResult;
+            }
+        }
+
+        // 4b. Timed Block opportunity (timed block for blocking - check alongside parry)
+        // Timed block is evaluated after parry, but can be chosen if parry isn't available
+        auto& timedBlockConfig = Config::GetInstance().GetTimedBlock();
+        if (timedBlockConfig.enableTimedBlock && 
+            (a_state.target.isAttacking || a_state.target.isPowerAttacking)) {
+            DecisionResult timedBlockResult = EvaluateTimedBlock(a_actor, a_state);
+            if (timedBlockResult.action == ActionType::TimedBlock) {
+                // Timed block opportunity found - return immediately (timed block takes precedence over regular bash)
+                return timedBlockResult;
+            }
+        }
+        
+        // 5. Interrupt normal attacks (moderate priority - risky but can work)
         if (!shouldBash && a_state.target.isAttacking && !a_state.target.isPowerAttacking && 
             a_state.target.distance < reachDistance * 0.8f) { // Closer range for interrupting attacks
             shouldBash = true;
@@ -306,6 +341,230 @@ namespace CombatAI
         return result;
     }
 
+    DecisionResult DecisionMatrix::EvaluateParry(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        DecisionResult result;
+        
+        auto& config = Config::GetInstance();
+        const auto& parryConfig = config.GetParry();
+        
+        // Check if parry is enabled
+        if (!parryConfig.enableParry) {
+            return result;
+        }
+        
+        // Check if target is valid and attacking
+        if (!a_state.target.isValid || 
+            (!a_state.target.isAttacking && !a_state.target.isPowerAttacking)) {
+            return result;
+        }
+        
+        // Check if self is idle/ready (can't parry while attacking)
+        if (a_state.self.attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            a_state.self.attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            return result; // Already attacking - can't parry
+        }
+        
+        // Check distance
+        if (a_state.target.distance < parryConfig.parryMinDistance || 
+            a_state.target.distance > parryConfig.parryMaxDistance) {
+            return result; // Out of parry range
+        }
+        
+        // Check timing - need valid attack timing data
+        float timeUntilHit = a_state.temporal.target.timeUntilAttackHits;
+        if (timeUntilHit > parryConfig.parryWindowEnd || timeUntilHit < parryConfig.parryWindowStart) {
+            return result; // Outside parry window
+        }
+        
+        // Base priority for parry
+        float priority = parryConfig.parryBasePriority;
+        
+        // Timing bonus: perfect timing gets maximum bonus
+        // Optimal timing is in the middle of the window
+        float optimalTime = (parryConfig.parryWindowStart + parryConfig.parryWindowEnd) * 0.5f;
+        float timeDiff = std::abs(timeUntilHit - optimalTime);
+        float windowSize = parryConfig.parryWindowEnd - parryConfig.parryWindowStart;
+        float timingAccuracy = 1.0f - (timeDiff / (windowSize * 0.5f));
+        timingAccuracy = ClampValue(timingAccuracy, 0.0f, 1.0f);
+        float timingBonus = timingAccuracy * parryConfig.timingBonusMax;
+        priority += timingBonus;
+        
+        // Penalties for early/late timing
+        if (timeUntilHit < optimalTime) {
+            // Too early
+            priority -= parryConfig.earlyBashPenalty * (1.0f - timingAccuracy);
+        } else {
+            // Too late (but still in window)
+            priority -= parryConfig.lateBashPenalty * (1.0f - timingAccuracy);
+        }
+        
+        // Distance modifier: closer is better for parry
+        float optimalDistance = (parryConfig.parryMinDistance + parryConfig.parryMaxDistance) * 0.5f;
+        float distanceDiff = std::abs(a_state.target.distance - optimalDistance);
+        float distanceRange = parryConfig.parryMaxDistance - parryConfig.parryMinDistance;
+        if (distanceRange > 0.0f) {
+            float distanceAccuracy = 1.0f - (distanceDiff / (distanceRange * 0.5f));
+            distanceAccuracy = ClampValue(distanceAccuracy, 0.0f, 1.0f);
+            priority += distanceAccuracy * 0.2f; // Up to 0.2 bonus for optimal distance
+        }
+        
+        // Target facing modifier: higher priority if target is facing us (more dangerous)
+        if (a_state.target.orientationDot > 0.7f) {
+            priority += 0.2f; // Target facing us - more urgent parry
+        }
+        
+        // Power attack modifier: higher priority for power attacks (more dangerous)
+        if (a_state.target.isPowerAttacking) {
+            priority += 0.3f; // Power attacks are more dangerous - higher parry priority
+        }
+        
+        // Threat level modifier: reduce priority when outnumbered
+        ThreatLevel threatLevel = a_state.combatContext.threatLevel;
+        if (threatLevel >= ThreatLevel::High) {
+            priority -= 0.3f; // High threat - parry is risky
+        } else if (threatLevel == ThreatLevel::Moderate) {
+            priority -= 0.15f; // Moderate threat - slight reduction
+        }
+        
+        // Stamina check: need stamina to parry
+        if (a_state.self.staminaPercent < 0.2f) {
+            priority -= 0.3f; // Low stamina - reduce parry priority
+        }
+        
+        // Only parry if priority is high enough
+        if (priority >= 1.0f) {
+            result.action = ActionType::Parry;
+            result.priority = priority;
+            result.intensity = 1.0f; // Maximum intensity for parry
+        }
+        
+        return result;
+    }
+
+    DecisionResult DecisionMatrix::EvaluateTimedBlock(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        DecisionResult result;
+        
+        auto& config = Config::GetInstance();
+        const auto& timedBlockConfig = config.GetTimedBlock();
+        
+        // Check if timed block is enabled
+        if (!timedBlockConfig.enableTimedBlock) {
+            return result;
+        }
+
+        // Check if Timed Block mod is available
+        if (!TimedBlockIntegration::GetInstance().IsAvailable()) {
+            return result;
+        }
+        
+        // Check if target is valid and attacking
+        if (!a_state.target.isValid || 
+            (!a_state.target.isAttacking && !a_state.target.isPowerAttacking)) {
+            return result;
+        }
+        
+        // Check if self is idle/ready (can't timed block while attacking)
+        if (a_state.self.attackState != RE::ATTACK_STATE_ENUM::kNone && 
+            a_state.self.attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+            return result; // Already attacking - can't timed block
+        }
+
+        // Check if actor can block (has shield or weapon)
+        bool canBlock = false;
+        RE::TESForm* leftHand = ActorUtils::SafeGetEquippedObject(a_actor, true);
+        RE::TESForm* rightHand = ActorUtils::SafeGetEquippedObject(a_actor, false);
+        
+        if (leftHand && leftHand->IsArmor()) {
+            // Has shield
+            canBlock = true;
+        } else if (rightHand && rightHand->IsWeapon()) {
+            // Has weapon (can block with weapon)
+            canBlock = true;
+        }
+        
+        if (!canBlock) {
+            return result; // Can't block - no shield or weapon
+        }
+        
+        // Check distance
+        if (a_state.target.distance < timedBlockConfig.timedBlockMinDistance || 
+            a_state.target.distance > timedBlockConfig.timedBlockMaxDistance) {
+            return result; // Out of timed block range
+        }
+        
+        // Check timing - need valid attack timing data
+        float timeUntilHit = a_state.temporal.target.timeUntilAttackHits;
+        if (timeUntilHit > timedBlockConfig.timedBlockWindowEnd || timeUntilHit < timedBlockConfig.timedBlockWindowStart) {
+            return result; // Outside timed block window
+        }
+        
+        // Base priority for timed block
+        float priority = timedBlockConfig.timedBlockBasePriority;
+        
+        // Timing bonus: perfect timing gets maximum bonus
+        // Optimal timing is in the middle of the window
+        float optimalTime = (timedBlockConfig.timedBlockWindowStart + timedBlockConfig.timedBlockWindowEnd) * 0.5f;
+        float timeDiff = std::abs(timeUntilHit - optimalTime);
+        float windowSize = timedBlockConfig.timedBlockWindowEnd - timedBlockConfig.timedBlockWindowStart;
+        float timingAccuracy = 1.0f - (timeDiff / (windowSize * 0.5f));
+        timingAccuracy = ClampValue(timingAccuracy, 0.0f, 1.0f);
+        float timingBonus = timingAccuracy * timedBlockConfig.timedBlockTimingBonusMax;
+        priority += timingBonus;
+        
+        // Penalties for early/late timing
+        if (timeUntilHit < optimalTime) {
+            // Too early
+            priority -= timedBlockConfig.timedBlockEarlyPenalty * (1.0f - timingAccuracy);
+        } else {
+            // Too late (but still in window)
+            priority -= timedBlockConfig.timedBlockLatePenalty * (1.0f - timingAccuracy);
+        }
+        
+        // Distance modifier: closer is better for timed block
+        float optimalDistance = (timedBlockConfig.timedBlockMinDistance + timedBlockConfig.timedBlockMaxDistance) * 0.5f;
+        float distanceDiff = std::abs(a_state.target.distance - optimalDistance);
+        float distanceRange = timedBlockConfig.timedBlockMaxDistance - timedBlockConfig.timedBlockMinDistance;
+        if (distanceRange > 0.0f) {
+            float distanceAccuracy = 1.0f - (distanceDiff / (distanceRange * 0.5f));
+            distanceAccuracy = ClampValue(distanceAccuracy, 0.0f, 1.0f);
+            priority += distanceAccuracy * 0.2f; // Up to 0.2 bonus for optimal distance
+        }
+        
+        // Target facing modifier: higher priority if target is facing us (more dangerous)
+        if (a_state.target.orientationDot > 0.7f) {
+            priority += 0.2f; // Target facing us - more urgent timed block
+        }
+        
+        // Power attack modifier: higher priority for power attacks (more dangerous)
+        if (a_state.target.isPowerAttacking) {
+            priority += 0.3f; // Power attacks are more dangerous - higher timed block priority
+        }
+        
+        // Threat level modifier: reduce priority when outnumbered
+        ThreatLevel threatLevel = a_state.combatContext.threatLevel;
+        if (threatLevel >= ThreatLevel::High) {
+            priority -= 0.3f; // High threat - timed block is risky
+        } else if (threatLevel == ThreatLevel::Moderate) {
+            priority -= 0.15f; // Moderate threat - slight reduction
+        }
+        
+        // Stamina check: need stamina to timed block
+        if (a_state.self.staminaPercent < 0.2f) {
+            priority -= 0.3f; // Low stamina - reduce timed block priority
+        }
+        
+        // Only timed block if priority is high enough
+        if (priority >= 1.0f) {
+            result.action = ActionType::TimedBlock;
+            result.priority = priority;
+            result.intensity = 1.0f; // Maximum intensity for timed block
+        }
+        
+        return result;
+    }
+
     DecisionResult DecisionMatrix::EvaluateEvasion(RE::Actor* a_actor, const ActorStateData& a_state)
     {
         DecisionResult result;
@@ -313,8 +572,19 @@ namespace CombatAI
         auto& config = Config::GetInstance();
         
         // Check if target is valid
-        if (!a_state.target.isValid || !a_state.self.isIdle) {
+        if (!a_state.target.isValid) {
             return result;
+        }
+        
+        // Allow evasion even when not idle if:
+        // 1. Low health and target is attacking (survival priority)
+        // 2. Target is power attacking (urgent evasion needed)
+        if (!a_state.self.isIdle) {
+            bool shouldAllowEvasion = (a_state.self.healthPercent < 0.5f && (a_state.target.isAttacking || a_state.target.isPowerAttacking)) ||
+                                      a_state.target.isPowerAttacking;
+            if (!shouldAllowEvasion) {
+                return result; // Not idle and conditions not met - skip evasion
+            }
         }
 
         // --- Tactical Spacing: Maintain distance when observing ---
@@ -444,31 +714,9 @@ namespace CombatAI
             }
 
             if (conditionsMet) {
-                // evasionDodgeChance is the probability TO dodge
-                // If random < chance, we dodge; otherwise we strafe
-                std::random_device rd;
-                std::mt19937 gen(rd());
-                std::uniform_real_distribution<> dis(0.0, 1.0);
-                
-                // Base dodge chance
-                float dodgeChance = config.GetDecisionMatrix().evasionDodgeChance;
-                
-                // Multiple enemies = prefer dodge over strafe (more defensive)
-                if (a_state.combatContext.enemyCount > 1) {
-                    dodgeChance = (std::min)(1.0f, dodgeChance * 1.5f); // Increase dodge chance when outnumbered
-                }
-                
-                // Reduce dodge chance when target is blocking (blocking is less urgent than attacking)
-                // Feinting or strafing might be better responses to blocking
-                if (a_state.target.isBlocking && !a_state.target.isAttacking) {
-                    dodgeChance *= 0.4f; // Significantly reduce dodge chance when target is just blocking
-                }
-                
-                if (dis(gen) < dodgeChance) {
-                    shouldDodge = true; // Dodge
-                } else {
-                    shouldDodge = false; // Strafe instead
-                }
+                // Always dodge when conditions are met
+                // Stamina cost is now properly deducted in DodgeSystem, so we don't need chance-based selection
+                shouldDodge = true;
             }
         }
 
@@ -490,6 +738,45 @@ namespace CombatAI
             // More enemies targeting us = higher dodge priority
             if (a_state.combatContext.enemiesTargetingUs > 1) {
                 baseDodgePriority += 0.3f; // Multiple enemies targeting us - dodge is critical
+            }
+            
+            // Health-based priority: Low health = higher dodge priority (survival instinct)
+            float healthModifier = 0.0f;
+            if (a_state.self.healthPercent < 0.3f) {
+                // Critical health (< 30%) - very high dodge priority
+                healthModifier = 0.8f;
+            } else if (a_state.self.healthPercent < 0.5f) {
+                // Low health (30-50%) - high dodge priority
+                healthModifier = 0.5f;
+            } else if (a_state.self.healthPercent < 0.7f) {
+                // Moderate health (50-70%) - moderate dodge priority boost
+                healthModifier = 0.2f;
+            }
+            baseDodgePriority += healthModifier;
+            
+            // Pressure-based priority: Target has more HP and is attacking = pressured situation
+            // NPCs should prioritize dodging when outmatched
+            float pressureModifier = 0.0f;
+            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                // Target is attacking - check if we're pressured
+                if (a_state.target.healthPercent > a_state.self.healthPercent + 0.2f) {
+                    // Target has significantly more HP (20%+ more) - we're pressured
+                    pressureModifier = 0.6f; // High priority to dodge when pressured
+                } else if (a_state.target.healthPercent > a_state.self.healthPercent) {
+                    // Target has more HP (even slightly) - moderate pressure
+                    pressureModifier = 0.3f;
+                }
+                
+                // Boost priority if target is power attacking (more dangerous)
+                if (a_state.target.isPowerAttacking) {
+                    pressureModifier += 0.2f;
+                }
+            }
+            baseDodgePriority += pressureModifier;
+            
+            // Extra boost when interrupting own attack to dodge (survival takes priority)
+            if (!a_state.self.isIdle && (a_state.self.healthPercent < 0.5f || a_state.target.isPowerAttacking)) {
+                baseDodgePriority += 0.5f; // High priority to interrupt attack and dodge when low health or power attack incoming
             }
             
             // Apply weapon evasion modifier (one-handed can dodge faster, two-handed slower)
@@ -619,6 +906,9 @@ namespace CombatAI
         bool shouldRetreat = false;
         float retreatPriority = 0.0f;
         
+        // Check if NPC is outnumbering the target (we have more allies than enemies)
+        bool outnumberingTarget = (a_state.combatContext.allyCount > a_state.combatContext.enemyCount);
+        
         // Health-based retreat (survival)
         if (a_state.self.healthPercent <= healthThreshold) {
             shouldRetreat = true;
@@ -627,6 +917,13 @@ namespace CombatAI
             // Multiple enemies = more urgent retreat
             if (a_state.combatContext.enemyCount > 1) {
                 retreatPriority += 0.5f; // Higher priority with multiple enemies
+            }
+            
+            // Reduce survival retreat priority when outnumbering target
+            // NPCs with numerical advantage should be less likely to retreat even at low HP
+            // CombatStyleEnhancer will further adjust based on personality/traits
+            if (outnumberingTarget) {
+                retreatPriority *= 0.7f; // Reduce by 30% when outnumbering (still high priority but less urgent)
             }
         }
         
@@ -637,10 +934,24 @@ namespace CombatAI
         bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
         bool significantlyOutnumbered = (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
         
+        // Note: Comprehensive state logging is now done in LogActorState() helper
+        // This specific debug log can be removed if LogActorState provides sufficient detail
+        
         if (!shouldRetreat && (significantlyOutnumbered || retreatThreatLevel >= ThreatLevel::High)) {
             // Retreat when significantly outnumbered or high threat, but only if health is moderate or low
             // Don't retreat if health is high (might want to fight)
-            if (a_state.self.healthPercent < 0.7f) {
+            // Exception: If we're outnumbering the target, don't retreat unless very low HP
+            // CombatStyleEnhancer will further adjust based on defensive/cowardly traits
+            if (outnumberingTarget) {
+                // We're outnumbering - only retreat if very low HP
+                if (a_state.self.healthPercent < 0.2f) {
+                    // Very low HP (< 20%) - allow retreat even when outnumbering
+                    shouldRetreat = true;
+                    retreatPriority = 1.4f; // Moderate priority - survival instinct
+                }
+                // Otherwise, don't retreat when outnumbering (we have advantage)
+            } else if (a_state.self.healthPercent < 0.7f) {
+                // Not outnumbering - normal retreat logic applies
                 shouldRetreat = true;
                 retreatPriority = 1.5f; // Tactical retreat priority (lower than survival)
                 
@@ -664,9 +975,18 @@ namespace CombatAI
         }
         
         // Also retreat when outnumbered and health is low-moderate
-        if (!shouldRetreat && outnumbered && a_state.self.healthPercent < 0.5f) {
+        // But skip if we're outnumbering the target
+        if (!shouldRetreat && outnumbered && !outnumberingTarget && a_state.self.healthPercent < 0.5f) {
             shouldRetreat = true;
             retreatPriority = 1.6f; // Tactical retreat when outnumbered and low health
+        }
+        
+        // If we're outnumbering and already decided to retreat, reduce priority significantly
+        // (unless it's survival retreat)
+        // CombatStyleEnhancer will further adjust based on defensive/cowardly traits
+        if (shouldRetreat && outnumberingTarget && retreatPriority < 2.0f) {
+            // Reduce retreat priority when outnumbering (unless survival retreat)
+            retreatPriority *= 0.6f; // Reduce by 40% when outnumbering
         }
 
         if (shouldRetreat) {
@@ -1027,7 +1347,16 @@ namespace CombatAI
             }
             
             // Relative health advantage: if we have significantly more health, be more aggressive
-            // Note: We don't have target health in state, so we'll skip this for now
+            if (a_state.target.isValid) {
+                float healthDifference = a_state.self.healthPercent - a_state.target.healthPercent;
+                if (healthDifference > 0.2f) {
+                    // We have a significant health advantage, be more aggressive
+                    healthModifier += 0.2f;
+                } else if (healthDifference < -0.2f) {
+                    // We have a significant health disadvantage, be more cautious
+                    healthModifier -= 0.2f;
+                }
+            }
             
             // Attack creates opening consideration: attacks don't consume stamina but create openings for target
             // This makes actors more cautious about attacking when target is ready to counter-attack
@@ -1247,6 +1576,40 @@ namespace CombatAI
             
             // Final priority calculation (includes weapon reach modifier)
             float finalPriority = basePriority + distanceModifier;
+            
+            // Attack defense feedback: If attacks are frequently parried/timed blocked, reduce attack priority
+            // This encourages NPCs to use feints or vary timing instead of direct attacks
+            float defenseFeedbackPenalty = 0.0f;
+            if (a_state.temporal.self.totalDefenseRate > 0.3f) {
+                // High defense rate (>30%) - significantly reduce attack priority
+                defenseFeedbackPenalty = -0.4f - (a_state.temporal.self.totalDefenseRate - 0.3f) * 0.8f; // Up to -0.96f for 100% defense rate
+            } else if (a_state.temporal.self.totalDefenseRate > 0.15f) {
+                // Moderate defense rate (15-30%) - moderate penalty
+                defenseFeedbackPenalty = -0.2f;
+            } else if (a_state.temporal.self.lastAttackParried || a_state.temporal.self.lastAttackTimedBlocked) {
+                // Recent parry/timed block - immediate penalty
+                defenseFeedbackPenalty = -0.3f;
+            }
+            finalPriority += defenseFeedbackPenalty;
+            
+            // Hit/miss feedback: Adjust attack priority based on recent hit success
+            // If last attack hit, encourage follow-up attacks (combos)
+            // If last attack missed, reduce priority slightly (need better timing/positioning)
+            float hitMissFeedback = 0.0f;
+            if (a_state.temporal.self.lastAttackHit && a_state.temporal.self.timeSinceLastHitAttack < 1.0f) {
+                // Recent hit - encourage follow-up attacks (combo opportunity)
+                hitMissFeedback = 0.2f;
+            } else if (a_state.temporal.self.lastAttackMissed && a_state.temporal.self.timeSinceLastMissedAttack < 1.0f) {
+                // Recent miss - slight penalty (need better timing/positioning)
+                hitMissFeedback = -0.15f;
+            } else if (a_state.temporal.self.missRate > 0.5f && a_state.temporal.self.totalAttackCount >= 5) {
+                // High miss rate (>50%) with enough data - reduce attack priority
+                hitMissFeedback = -0.2f - (a_state.temporal.self.missRate - 0.5f) * 0.4f; // Up to -0.4f for 100% miss rate
+            } else if (a_state.temporal.self.hitRate > 0.6f && a_state.temporal.self.totalAttackCount >= 5) {
+                // High hit rate (>60%) with enough data - encourage attacks
+                hitMissFeedback = 0.15f;
+            }
+            finalPriority += hitMissFeedback;
             
             // Additional weapon type considerations for attack priority
             // Two-handed weapons are slower but hit harder - prefer when target is vulnerable
@@ -1846,7 +2209,20 @@ namespace CombatAI
                 defensiveBonus = 0.2f; // Target is defensive - feint to bait
             }
             
-            result.priority = basePriority + distanceBonus + staminaBonus + defensiveBonus;
+            // Attack defense feedback: If attacks are frequently parried/timed blocked, prioritize feints
+            float defenseFeedbackBonus = 0.0f;
+            if (a_state.temporal.self.totalDefenseRate > 0.3f) {
+                // High defense rate (>30%) - significantly boost feint priority
+                defenseFeedbackBonus = 0.5f + (a_state.temporal.self.totalDefenseRate - 0.3f) * 1.0f; // Up to +1.2f for 100% defense rate
+            } else if (a_state.temporal.self.totalDefenseRate > 0.15f) {
+                // Moderate defense rate (15-30%) - moderate boost
+                defenseFeedbackBonus = 0.3f;
+            } else if (a_state.temporal.self.lastAttackParried || a_state.temporal.self.lastAttackTimedBlocked) {
+                // Recent parry/timed block - immediate boost
+                defenseFeedbackBonus = 0.4f;
+            }
+            
+            result.priority = basePriority + distanceBonus + staminaBonus + defensiveBonus + defenseFeedbackBonus;
             
             // Feint direction: slight forward movement to appear aggressive
             RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
@@ -2151,5 +2527,125 @@ namespace CombatAI
         }
         
         return score;
+    }
+
+    void DecisionMatrix::LogActorState(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        auto& config = Config::GetInstance();
+        if (!config.GetGeneral().enableDebugLog) {
+            return;
+        }
+
+        auto selectedRef = RE::Console::GetSelectedRef();
+        if (!selectedRef || a_actor != selectedRef.get()) {
+            return;
+        }
+
+        // Get actor FormID for logging
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        std::uint32_t formID = formIDOpt.has_value() ? static_cast<std::uint32_t>(formIDOpt.value()) : 0;
+
+        LOG_DEBUG("--- ActorState FormID=0x{:08X} ---", formID);
+        
+        // Self State
+        LOG_DEBUG("Self: Health={:.1f}% Stamina={:.1f}% AttackState={} Blocking={} Sprinting={} Walking={} Idle={}", 
+            a_state.self.healthPercent * 100.0f, 
+            a_state.self.staminaPercent * 100.0f,
+            static_cast<int>(a_state.self.attackState), a_state.self.isBlocking,
+            a_state.self.isSprinting, a_state.self.isWalking, a_state.self.isIdle);
+        LOG_DEBUG("Self: WeaponType={} 1H={} 2H={} Ranged={} Melee={}", 
+            static_cast<int>(a_state.self.weaponType), a_state.self.isOneHanded,
+            a_state.self.isTwoHanded, a_state.self.isRanged, a_state.self.isMelee);
+        LOG_DEBUG("Self: Pos=({:.1f},{:.1f},{:.1f}) Fwd=({:.2f},{:.2f},{:.2f})", 
+            a_state.self.position.x, a_state.self.position.y, a_state.self.position.z,
+            a_state.self.forwardVector.x, a_state.self.forwardVector.y, a_state.self.forwardVector.z);
+
+        // Target State
+        if (a_state.target.isValid) {
+			std::uint32_t targetWeaponFormID = a_state.target.equippedRightHand ? a_state.target.equippedRightHand->GetFormID() : 0;
+            LOG_DEBUG("Target: Valid=true Dist={:.1f} Health={:.1f}% Stamina={:.1f}%",
+                a_state.target.distance,
+                a_state.target.healthPercent * 100.0f, 
+                a_state.target.staminaPercent * 100.0f);
+            LOG_DEBUG("Target: Atk={} PAtk={} Blk={} Cast={} Draw={} Flee={} InAtkRecov={} Knock={}", 
+                a_state.target.isAttacking, a_state.target.isPowerAttacking, a_state.target.isBlocking,
+                a_state.target.isCasting, a_state.target.isDrawingBow, a_state.target.isFleeing,
+                a_state.target.isInAttackRecovery, static_cast<int>(a_state.target.knockState));
+            LOG_DEBUG("Target: Sprint={} Walk={}", a_state.target.isSprinting, a_state.target.isWalking);
+            LOG_DEBUG("Target: OrientDot={:.2f} WeaponType={} WeaponFormID=0x{:08X}",
+                a_state.target.orientationDot, static_cast<int>(a_state.target.weaponType), targetWeaponFormID);
+			LOG_DEBUG("Target: 1H={} 2H={} Ranged={} Melee={}", a_state.target.isOneHanded, a_state.target.isTwoHanded, a_state.target.isRanged, a_state.target.isMelee);
+            LOG_DEBUG("Target: Pos=({:.1f},{:.1f},{:.1f}) Fwd=({:.2f},{:.2f},{:.2f})", 
+                a_state.target.position.x, a_state.target.position.y, a_state.target.position.z,
+                a_state.target.forwardVector.x, a_state.target.forwardVector.y, a_state.target.forwardVector.z);
+        } else {
+            LOG_DEBUG("Target: Valid=false");
+        }
+
+        // Combat Context
+        LOG_DEBUG("Combat: Enemies={} Allies={} ThreatLvl={} TargetingUs={}", 
+            a_state.combatContext.enemyCount, a_state.combatContext.allyCount,
+            static_cast<int>(a_state.combatContext.threatLevel), a_state.combatContext.enemiesTargetingUs);
+        LOG_DEBUG("Combat: ClosestEnemyDist={:.1f} Ally: HasNearby={} ClosestDist={:.1f} ClosestPos=({:.1f},{:.1f},{:.1f})", 
+            a_state.combatContext.closestEnemyDistance, a_state.combatContext.hasNearbyAlly,
+            a_state.combatContext.closestAllyDistance, a_state.combatContext.closestAllyPosition.x, a_state.combatContext.closestAllyPosition.y, a_state.combatContext.closestAllyPosition.z);
+        LOG_DEBUG("Combat: Ally: TargetFacingDot={:.2f} TargetFacingAway={} TargetFacingToward={}",
+            a_state.combatContext.targetFacingAllyDot, a_state.combatContext.targetFacingAwayFromAlly, a_state.combatContext.targetFacingTowardAlly);
+        LOG_DEBUG("Combat: RangeCat={} InAtkRange={} InOptRange={} InCloseRange={}", 
+            static_cast<int>(a_state.combatContext.rangeCategory), a_state.combatContext.isInAttackRange,
+            a_state.combatContext.isInOptimalRange, a_state.combatContext.isInCloseRange);
+
+        // Temporal State - Self
+        LOG_DEBUG("TemporalSelf: LastAtk={:.2f}s LastPAtk={:.2f}s LastSAtk={:.2f}s LastDodge={:.2f}s LastBash={:.2f}s LastFeint={:.2f}s LastAction={:.2f}s", 
+            a_state.temporal.self.timeSinceLastAttack, a_state.temporal.self.timeSinceLastPowerAttack, a_state.temporal.self.timeSinceLastSprintAttack,
+            a_state.temporal.self.timeSinceLastDodge, a_state.temporal.self.timeSinceLastBash, a_state.temporal.self.timeSinceLastFeint, a_state.temporal.self.timeSinceLastAction);
+        LOG_DEBUG("TemporalSelf: BlockDur={:.2f}s AtkDur={:.2f}s IdleDur={:.2f}s", 
+            a_state.temporal.self.blockingDuration, a_state.temporal.self.attackingDuration,
+            a_state.temporal.self.idleDuration);
+        
+        // Parry Feedback
+        LOG_DEBUG("ParryFeedback: LastSuccess={} Attempts={} Successes={} TimeSinceLastAttempt={:.2f}s EstDur={:.2f}s", 
+            a_state.temporal.self.lastParrySuccess, a_state.temporal.self.parryAttemptCount,
+            a_state.temporal.self.parrySuccessCount, a_state.temporal.self.timeSinceLastParryAttempt, a_state.temporal.self.lastParryEstimatedDuration);
+        
+        // Timed Block Feedback
+        LOG_DEBUG("TimedBlockFeedback: LastSuccess={} Attempts={} Successes={} TimeSinceLastAttempt={:.2f}s EstDur={:.2f}s", 
+            a_state.temporal.self.lastTimedBlockSuccess, a_state.temporal.self.timedBlockAttemptCount,
+            a_state.temporal.self.timedBlockSuccessCount, a_state.temporal.self.timeSinceLastTimedBlockAttempt, a_state.temporal.self.lastTimedBlockEstimatedDuration);
+        
+        // Attack Defense Feedback (when NPC's attacks are parried/timed blocked/hit/missed)
+        LOG_DEBUG("AtkDefFeedback: LastParried={} LastTBlocked={} LastHit={} LastMissed={} TotalAtks={} Parried={} TBlocked={} Hit={} Missed={}", 
+            a_state.temporal.self.lastAttackParried, a_state.temporal.self.lastAttackTimedBlocked,
+            a_state.temporal.self.lastAttackHit, a_state.temporal.self.lastAttackMissed,
+            a_state.temporal.self.totalAttackCount, a_state.temporal.self.parriedAttackCount,
+            a_state.temporal.self.timedBlockedAttackCount, a_state.temporal.self.hitAttackCount,
+            a_state.temporal.self.missedAttackCount);
+        LOG_DEBUG("AtkDefFeedback: ParryRate={:.1f}% TBlockRate={:.1f}% HitRate={:.1f}% MissRate={:.1f}% TotalDefRate={:.1f}%", 
+            a_state.temporal.self.parryRate * 100.0f, a_state.temporal.self.timedBlockRate * 100.0f,
+            a_state.temporal.self.hitRate * 100.0f, a_state.temporal.self.missRate * 100.0f,
+            a_state.temporal.self.totalDefenseRate * 100.0f);
+        LOG_DEBUG("AtkDefFeedback: TimeSince: LastParriedAtk={:.2f}s LastTBlockedAtk={:.2f}s LastHitAtk={:.2f}s LastMissedAtk={:.2f}s",
+            a_state.temporal.self.timeSinceLastParriedAttack, a_state.temporal.self.timeSinceLastTimedBlockedAttack,
+            a_state.temporal.self.timeSinceLastHitAttack, a_state.temporal.self.timeSinceLastMissedAttack);
+        
+        // Temporal State - Target
+        if (a_state.target.isValid) {
+            LOG_DEBUG("TemporalTarget: LastAtk={:.2f}s LastPAtk={:.2f}s", 
+                a_state.temporal.target.timeSinceLastAttack, a_state.temporal.target.timeSinceLastPowerAttack);
+            LOG_DEBUG("TemporalTarget: AtkDur={:.2f}s BlockDur={:.2f}s CastDur={:.2f}s DrawDur={:.2f}s IdleDur={:.2f}s", 
+                a_state.temporal.target.attackingDuration, a_state.temporal.target.blockingDuration,
+                a_state.temporal.target.castingDuration, a_state.temporal.target.drawingDuration, a_state.temporal.target.idleDuration);
+
+            if (a_state.temporal.target.timeUntilAttackHits < 999.0f) {
+                LOG_DEBUG("TemporalTarget: TimeUntilAtkHits={:.2f}s EstAtkDur={:.2f}s AtkStartTime={:.2f}s", 
+                    a_state.temporal.target.timeUntilAttackHits, a_state.temporal.target.estimatedAttackDuration, a_state.temporal.target.attackStartTime);
+            } else {
+                LOG_DEBUG("TemporalTarget: TimeUntilAtkHits=N/A EstAtkDur={:.2f}s AtkStartTime={:.2f}s", 
+                    a_state.temporal.target.estimatedAttackDuration, a_state.temporal.target.attackStartTime);
+            }
+        }
+
+        // Misc
+        LOG_DEBUG("Misc: WeaponReach={:.1f} DeltaTime={:.4f}s", a_state.weaponReach, a_state.deltaTime);
     }
 }

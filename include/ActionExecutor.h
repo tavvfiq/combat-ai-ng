@@ -21,7 +21,13 @@ namespace CombatAI
 
     private:
         // Execute bash action
-        bool ExecuteBash(RE::Actor* a_actor);
+        bool ExecuteBash(RE::Actor* a_actor, const ActorStateData* a_state = nullptr);
+
+        // Execute parry (timed bash for parrying incoming attacks)
+        bool ExecuteParry(RE::Actor* a_actor, const ActorStateData& a_state);
+
+        // Execute timed block (timed block for blocking incoming attacks)
+        bool ExecuteTimedBlock(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // Execute dodge (TK Dodge integration)
         bool ExecuteDodge(RE::Actor* a_actor, const ActorStateData& a_state);
@@ -44,7 +50,7 @@ namespace CombatAI
         // Execute sprint attack (BFCO support)
         bool ExecuteSprintAttack(RE::Actor* a_actor);
 
-        // Execute jump (actually executes dodge with CombatAI_NG_Jump=true for OAR animation replacement)
+        // Execute jump (actually executes dodge with EnhancedCombatAI_Jump=true for OAR animation replacement)
         bool ExecuteJump(RE::Actor* a_actor, const ActorStateData& a_state);
 
         // Execute backoff movement (away from target when they're casting/drawing)

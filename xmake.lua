@@ -2,10 +2,11 @@
 set_xmakever("2.8.2")
 
 -- includes
-includes("lib/CommonLibSSE-NG")
+includes("lib/CommonLibSSE")
+includes("extern/styyx-util")
 
 -- set project
-set_project("CombatAI-NG")
+set_project("EnhancedCombatAI")
 set_version("0.0.1")
 set_license("GPL-3.0")
 
@@ -26,17 +27,24 @@ add_requires("simpleini")
 add_requires("spdlog")
 
 -- targets
-target("CombatAI-NG")
+target("EnhancedCombatAI")
     -- add dependencies to target
-    add_deps("commonlibsse-ng")	
+    add_deps("commonlibsse")
+    add_deps("styyx-util")
     add_packages("simpleini")
+    if has_config("skyrim_ae") then
+        set_targetdir("/build/SkyrimAE/skse/plugins")
+    else
+        set_targetdir("/build/SkyrimSE/skse/plugins")
+    end 
 
     -- add commonlibsse-ng plugin
-    add_rules("commonlibsse-ng.plugin", {
-        name = "CombatAI-NG",
+    add_rules("commonlibsse.plugin", {
+        name = "EnhancedCombatAI",
         author = "tavvfiq",
-        description = "SKSE64 plugin template using CommonLibSSE-NG"
+        description = "enhanced combat ai for skyrim"
     })
+    
 
     -- add src files
     add_files("src/**.cpp")

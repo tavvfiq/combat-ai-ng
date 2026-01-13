@@ -1,13 +1,23 @@
 #include "pch.h"
 #include "CombatDirector.h"
+#include "ModEventSinks.h"
 #include "Config.h"
 #include "PrecisionIntegration.h"
+#include "TimedBlockIntegration.h"
 #include "ActorUtils.h"
+#include "ParryFeedbackTracker.h"
+#include "TimedBlockFeedbackTracker.h"
+#include "AttackDefenseFeedbackTracker.h"
 #include "Logger.h"
 #include <sstream>
+#include <cstring>
 
 namespace CombatAI
 {
+    // Track if mod callback events are being received
+    // These flags are accessed by ModEventSinks.cpp
+    bool s_receivedParryModEvent = false;
+    bool s_receivedTimedBlockModEvent = true; // Set to true since mod events work for timed blocks
     void CombatDirector::Initialize()
     {
         LOG_INFO("CombatDirector initialized");
@@ -16,6 +26,11 @@ namespace CombatAI
         auto& config = Config::GetInstance();
         if (config.GetModIntegrations().enablePrecisionIntegration) {
             PrecisionIntegration::GetInstance().Initialize();
+        }
+
+        // Initialize Timed Block integration (if enabled in config)
+        if (config.GetTimedBlock().enableTimedBlock) {
+            TimedBlockIntegration::GetInstance().Initialize();
         }
 
         if (config.GetModIntegrations().enableBFCOIntegration) {
@@ -57,6 +72,49 @@ namespace CombatAI
         humanizerConfig.advancingMistakeMultiplier = config.GetHumanizer().advancingMistakeMultiplier;
         humanizerConfig.flankingMistakeMultiplier = config.GetHumanizer().flankingMistakeMultiplier;
         m_humanizer.SetConfig(humanizerConfig);
+
+        // Register mod callback listeners (for EldenParry integration)
+        RegisterModCallbacks();
+    }
+
+    void CombatDirector::RegisterModCallbacks()
+    {
+        auto modCallbackEventSource = SKSE::GetModCallbackEventSource();
+        if (!modCallbackEventSource) {
+            LOG_WARN("Mod callback event source not available");
+            return;
+        }
+
+        auto& config = Config::GetInstance();
+
+        // Register parry callbacks if parry is enabled
+        if (config.GetParry().enableParry) {
+            static EldenParryEventSink parryEventSink;
+            modCallbackEventSource->AddEventSink(&parryEventSink);
+            LOG_INFO("Registered mod callback listeners for EldenParry integration");
+        } else {
+            LOG_INFO("Parry is disabled, skipping EldenParry callback registration");
+        }
+
+        // Register timed block callbacks if timed block is enabled
+        if (config.GetTimedBlock().enableTimedBlock) {
+            static TimedBlockEventSink timedBlockEventSink;
+            modCallbackEventSource->AddEventSink(&timedBlockEventSink);
+            LOG_INFO("Registered mod callback listeners for Simple Timed Block integration");
+        } else {
+            LOG_INFO("Timed Block is disabled, skipping Simple Timed Block callback registration");
+        }
+
+        // Register TESHitEvent sink to detect when NPC attacks successfully hit the player
+        // This is always enabled as it's needed for hit/miss tracking
+        auto eventSourceHolder = RE::ScriptEventSourceHolder::GetSingleton();
+        if (eventSourceHolder) {
+            static AttackHitEventSink hitEventSink;
+            eventSourceHolder->AddEventSink<RE::TESHitEvent>(&hitEventSink);
+            LOG_INFO("Registered TESHitEvent sink for attack hit detection");
+        } else {
+            LOG_WARN("ScriptEventSourceHolder not available for hit detection");
+        }
     }
 
     void CombatDirector::ProcessActor(RE::Actor* a_actor, float a_deltaTime)
@@ -65,7 +123,13 @@ namespace CombatAI
         static std::uint32_t processActorCallCount = 0;
         processActorCallCount++;
 
-        bool debugEnabled = Config::GetInstance().GetGeneral().enableDebugLog;
+        auto& config = Config::GetInstance();
+        bool debugEnabled = config.GetGeneral().enableDebugLog;
+        
+        // IMPORTANT: Continuously reapply movement actions every frame
+        // This prevents game AI from overriding our movement commands
+        // Must be done BEFORE ShouldProcessActor check so it runs every frame
+        ReapplyMovementActions(a_actor, a_deltaTime);
         
         if (!ShouldProcessActor(a_actor, a_deltaTime)) {
             return;
@@ -81,6 +145,19 @@ namespace CombatAI
 
         // Update humanizer
         m_humanizer.Update(a_deltaTime);
+
+        // Update parry feedback tracker (only if parry is enabled)
+        if (config.GetParry().enableParry) {
+            ParryFeedbackTracker::GetInstance().Update(a_deltaTime);
+        }
+
+        // Update timed block feedback tracker (only if timed block is enabled)
+        if (config.GetTimedBlock().enableTimedBlock) {
+            TimedBlockFeedbackTracker::GetInstance().Update(a_deltaTime);
+        }
+
+        // Update attack defense feedback tracker (always update, as attacks can be parried/timed blocked regardless of settings)
+        AttackDefenseFeedbackTracker::GetInstance().Update(a_deltaTime);
 
         // Check if actor can react (reaction delay)
         // For movement actions, allow continuous execution even during reaction delay
@@ -108,29 +185,50 @@ namespace CombatAI
             return; // On cooldown
         }
 
-        auto& config = Config::GetInstance();
         // Execute decision
         if (decision.action != ActionType::None) {
             bool success = m_executor.Execute(a_actor, decision, state);
 
             if (success) {
+                // Track active movement actions for continuous reapplication
+                auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+                if (formIDOpt.has_value()) {
+                    RE::FormID formID = formIDOpt.value();
+                    
+                    // If this is a movement action, track it for continuous reapplication
+                    if (IsMovementAction(decision.action)) {
+                        ActiveMovementAction activeMovement;
+                        activeMovement.action = decision.action;
+                        activeMovement.direction = decision.direction;
+                        activeMovement.intensity = decision.intensity;
+                        m_activeMovementActions.Emplace(formID, activeMovement);
+                    } else {
+                        // Non-movement action - clear any active movement
+                        m_activeMovementActions.Erase(formID);
+                    }
+                    
+                    m_processedActors.Insert(formID);
+                }
+
                 // Mark action as used (start cooldown)
                 m_humanizer.MarkActionUsed(a_actor, decision.action);
 
                 // Notify temporal state tracker that action was executed
                 m_observer.NotifyActionExecuted(a_actor, decision.action);
-
-                // Track actor by FormID - use thread-safe operations
+            }
+        } else {
+            // No action - clear active movement if actor is no longer in combat
+            if (!ActorUtils::SafeIsInCombat(a_actor)) {
                 auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
                 if (formIDOpt.has_value()) {
-                    m_processedActors.Insert(formIDOpt.value());
+                    m_activeMovementActions.Erase(formIDOpt.value());
                 }
             }
         }
     }
 
     void CombatDirector::Update(float a_deltaTime)
-    {   
+    {
         // Clean up spawn time entries:
         // 1. Remove entries for actors that have been processed for a while (after warmup period)
         // 2. This also catches actors that left combat (their spawn times stop incrementing)
@@ -181,6 +279,78 @@ namespace CombatAI
         
         // If we want to be more aggressive, we could add a size limit and remove oldest entries
         // But for now, lazy cleanup is safer and more efficient
+        
+        // Clean up active movement actions for actors no longer in combat
+        m_activeMovementActions.WithWriteLock([&](auto& movementMap) {
+            auto it = movementMap.begin();
+            while (it != movementMap.end()) {
+                RE::FormID formID = it->first;
+                RE::Actor* actor = RE::TESForm::LookupByID<RE::Actor>(formID);
+                if (!actor || !ActorUtils::SafeIsInCombat(actor)) {
+                    it = movementMap.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        });
+    }
+
+    bool CombatDirector::IsMovementAction(ActionType a_action)
+    {
+        // Movement actions that need continuous reapplication to override game AI
+        return a_action == ActionType::Retreat ||
+               a_action == ActionType::Strafe ||
+               a_action == ActionType::Flanking ||
+               a_action == ActionType::Backoff ||
+               a_action == ActionType::Advancing;
+    }
+
+    void CombatDirector::ReapplyMovementActions(RE::Actor* a_actor, float a_deltaTime)
+    {
+        if (!a_actor) {
+            return;
+        }
+
+        // Only reapply if actor is in combat
+        if (!ActorUtils::SafeIsInCombat(a_actor)) {
+            // Clear movement tracking when actor leaves combat
+            auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+            if (formIDOpt.has_value()) {
+                m_activeMovementActions.Erase(formIDOpt.value());
+            }
+            return;
+        }
+
+        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt.has_value()) {
+            return;
+        }
+
+        RE::FormID formID = formIDOpt.value();
+        auto movementOpt = m_activeMovementActions.Find(formID);
+        if (!movementOpt.has_value()) {
+            return; // No active movement action
+        }
+
+        const ActiveMovementAction& activeMovement = movementOpt.value();
+        if (activeMovement.action == ActionType::None) {
+            return; // Invalid movement action
+        }
+
+        // For continuous reapplication, we need to reapply movement every frame
+        // to override game AI that resets movement variables
+        // Note: CPR variables persist once set, so we only need to reapply direct movement
+        // But Execute will handle this correctly (CPR check happens inside ExecuteRetreat/etc)
+        ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
+        DecisionResult decision;
+        decision.action = activeMovement.action;
+        decision.direction = activeMovement.direction;
+        decision.intensity = activeMovement.intensity;
+
+        // Execute movement (this will set movementDirection/movementSpeed graph variables)
+        // For CPR actions, this will re-check and maintain CPR variables
+        // For direct movement, this will reapply SetMovementDirection
+        m_executor.Execute(a_actor, decision, state);
     }
 
     bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime)

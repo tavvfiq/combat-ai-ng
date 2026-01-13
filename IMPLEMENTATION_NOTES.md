@@ -77,8 +77,8 @@ See `HOOK_PATTERN_EXPLANATION.md` for detailed comparison of pre-hook vs post-ho
 
 ### Configuration System
 ✅ **Implemented using SimpleINI**
-- Configuration file: `CombatAI-NG.ini`
-- Template provided: `CombatAI-NG.ini.template`
+- Configuration file: `EnhancedCombatAI.ini`
+- Template provided: `EnhancedCombatAI.ini.template`
 - Supports all major settings (humanizer, dodge, decision matrix, performance)
 
 ### Testing Checklist

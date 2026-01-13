@@ -12,13 +12,13 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
     auto logsFolder = SKSE::log::log_directory();
     if (!logsFolder)
         SKSE::stl::report_and_fail("SKSE log_directory not provided, logs disabled.");
-    auto logFilePath = *logsFolder / std::format("{}.log", "CombatAI-NG");
+    auto logFilePath = *logsFolder / std::format("{}.log", "EnhancedCombatAI");
     auto fileLoggerPtr = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFilePath.string(), true);
     auto loggerPtr = std::make_shared<spdlog::logger>("log", std::move(fileLoggerPtr));
     spdlog::set_default_logger(std::move(loggerPtr));
 
     // Initialize logger
-    LOG_INFO("CombatAI-NG v{} loading...", "0.0.1");
+    LOG_INFO("EnhancedCombatAI v{} loading...", "0.0.1");
 
     // Load configuration
     auto &config = CombatAI::Config::GetInstance();
@@ -27,7 +27,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
     // Check if plugin is enabled
     if (!config.IsEnabled())
     {
-        LOG_INFO("CombatAI-NG is disabled in configuration file");
+        LOG_INFO("EnhancedCombatAI is disabled in configuration file");
         return true; // Plugin loaded but disabled
     }
 
@@ -44,11 +44,15 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
 
     if (!SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* message) {
             switch (message->type) {
-                case SKSE::MessagingInterface::kPostLoad:
-                    // Initialize CombatDirector with config
+                case SKSE::MessagingInterface::kDataLoaded:
+                    // Initialize CombatDirector with config after data is loaded
+                    // kDataLoaded fires after TESDataHandler is available, which is required for mod detection
+                    // This is the earliest safe point for CommonLibSSE (non-NG) where TESDataHandler is guaranteed to be available
+                    // Initialize BEFORE installing hooks so CombatDirector is ready when hooks start calling ProcessActor
                     CombatAI::CombatDirector::GetInstance().Initialize();
-
-                    // Install hooks
+                    
+                    // Install hooks after initialization
+                    // Hooks will immediately start calling ProcessActor/Update, so CombatDirector must be initialized first
                     CombatAI::Hooks::Install();
                     break;
             }
@@ -56,7 +60,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
             logger::error("Failed to register messaging listener");
     }
 
-    LOG_INFO("CombatAI-NG loaded successfully");
+    LOG_INFO("EnhancedCombatAI loaded successfully");
 
     return true;
 }

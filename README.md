@@ -1,4 +1,4 @@
-# CombatAI-NG
+# EnhancedCombatAI
 
 A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and tactical, moving beyond probability-based combat styles.
 
@@ -43,12 +43,12 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 1. Download the latest release
 2. Extract to your Skyrim directory (where `SkyrimSE.exe` is located)
 3. Ensure SKSE64 is installed and working
-4. Copy `CombatAI-NG.ini` to `Data/SKSE/Plugins/` (or use the template)
+4. Copy `EnhancedCombatAI.ini` to `Data/SKSE/Plugins/` (or use the template)
 5. Launch Skyrim via SKSE64
 
 ## Configuration
 
-The plugin uses `CombatAI-NG.ini` for configuration. A template is provided (`CombatAI-NG.ini.template`).
+The plugin uses `EnhancedCombatAI.ini` for configuration. A template is provided (`EnhancedCombatAI.ini.template`).
 
 ### Key Settings
 

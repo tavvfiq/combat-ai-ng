@@ -1,7 +1,7 @@
 # Precision Integration
 
 ## Overview
-CombatAI-NG integrates with the Precision mod to get accurate weapon reach information for NPCs. This allows the AI to make better tactical decisions based on actual weapon reach rather than hardcoded values.
+EnhancedCombatAI integrates with the Precision mod to get accurate weapon reach information for NPCs. This allows the AI to make better tactical decisions based on actual weapon reach rather than hardcoded values.
 
 ## How It Works
 

@@ -40,6 +40,9 @@ namespace CombatAI
         // Check if actor is currently dodging
         bool IsDodging(RE::Actor* a_actor);
 
+        // Apply stamina cost for dodging (matches TK Dodge RE behavior)
+        void ApplyDodgeStaminaCost(RE::Actor* a_actor);
+
         Config m_config;
     };
 }

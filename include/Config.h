@@ -54,7 +54,6 @@ namespace CombatAI
             float interruptMaxDistance = 150.0f;
             float interruptReachMultiplier = 1.2f;
             bool enableEvasionDodge = true;
-            float evasionDodgeChance = 0.5f;
             float evasionMinDistance = 250.0f;
             bool enableJumpEvasion = true;
             float jumpEvasionDistanceMin = 500.0f;
@@ -91,6 +90,32 @@ namespace CombatAI
             bool enableTKDodgeIntegration = true;
         };
 
+        struct ParrySettings
+        {
+            bool enableParry = true; // Enable parry mechanism (timed bash)
+            float parryWindowStart = 0.05f; // Start bash this many seconds before attack hits (minimum)
+            float parryWindowEnd = 0.25f; // Latest time to start bash before attack hits (maximum)
+            float parryMinDistance = 50.0f; // Minimum distance for parry
+            float parryMaxDistance = 200.0f; // Maximum distance for parry
+            float parryBasePriority = 1.5f; // Base priority for parry opportunity
+            float timingBonusMax = 0.3f; // Maximum bonus for perfect timing
+            float earlyBashPenalty = 0.5f; // Penalty if bash too early
+            float lateBashPenalty = 0.5f; // Penalty if bash too late
+        };
+
+        struct TimedBlockSettings
+        {
+            bool enableTimedBlock = true; // Enable timed block mechanism
+            float timedBlockWindowStart = 0.05f; // Start block this many seconds before attack hits (minimum)
+            float timedBlockWindowEnd = 0.33f; // End of timing window (matches mod's 0.33s window)
+            float timedBlockMinDistance = 50.0f; // Minimum distance for timed block
+            float timedBlockMaxDistance = 200.0f; // Maximum distance for timed block
+            float timedBlockBasePriority = 1.5f; // Base priority for timed block opportunity
+            float timedBlockTimingBonusMax = 0.3f; // Maximum bonus for perfect timing
+            float timedBlockEarlyPenalty = 0.5f; // Penalty if block too early
+            float timedBlockLatePenalty = 0.5f; // Penalty if block too late
+        };
+
         static Config& GetInstance()
         {
             static Config instance;
@@ -101,7 +126,7 @@ namespace CombatAI
         Config& operator=(const Config&) = delete;
 
         // Load configuration from INI file
-        bool Load(const std::string& a_filePath = "Data/SKSE/Plugins/CombatAI-NG.ini");
+        bool Load(const std::string& a_filePath = "Data/SKSE/Plugins/EnhancedCombatAI.ini");
 
         // Get settings
         const GeneralSettings& GetGeneral() const { return m_general; }
@@ -110,6 +135,8 @@ namespace CombatAI
         const DecisionMatrixSettings& GetDecisionMatrix() const { return m_decisionMatrix; }
         const PerformanceSettings& GetPerformance() const { return m_performance; }
         const ModIntegrationSettings& GetModIntegrations() const { return m_modIntegrations; }
+        const ParrySettings& GetParry() const { return m_parry; }
+        const TimedBlockSettings& GetTimedBlock() const { return m_timedBlock; }
 
         // Check if plugin is enabled
         bool IsEnabled() const { return m_general.enablePlugin; }
@@ -125,6 +152,8 @@ namespace CombatAI
         void ReadDecisionMatrixSettings(CSimpleIniA& a_ini);
         void ReadPerformanceSettings(CSimpleIniA& a_ini);
         void ReadModIntegrationSettings(CSimpleIniA& a_ini);
+        void ReadParrySettings(CSimpleIniA& a_ini);
+        void ReadTimedBlockSettings(CSimpleIniA& a_ini);
 
         GeneralSettings m_general;
         HumanizerSettings m_humanizer;
@@ -132,5 +161,7 @@ namespace CombatAI
         DecisionMatrixSettings m_decisionMatrix;
         PerformanceSettings m_performance;
         ModIntegrationSettings m_modIntegrations;
+        ParrySettings m_parry;
+        TimedBlockSettings m_timedBlock;
     };
 }

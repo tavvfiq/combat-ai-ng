@@ -43,6 +43,8 @@ namespace CombatAI
         ReadDecisionMatrixSettings(ini);
         ReadPerformanceSettings(ini);
         ReadModIntegrationSettings(ini);
+        ReadParrySettings(ini);
+        ReadTimedBlockSettings(ini);
 
         LOG_INFO("Configuration loaded successfully");
         return true;
@@ -125,7 +127,6 @@ namespace CombatAI
         m_decisionMatrix.interruptMaxDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "InterruptMaxDistance", m_decisionMatrix.interruptMaxDistance));
         m_decisionMatrix.interruptReachMultiplier = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "InterruptReachMultiplier", m_decisionMatrix.interruptReachMultiplier));
         m_decisionMatrix.enableEvasionDodge = a_ini.GetBoolValue("DecisionMatrix", "EnableEvasionDodge", m_decisionMatrix.enableEvasionDodge);
-        m_decisionMatrix.evasionDodgeChance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "EvasionDodgeChance", m_decisionMatrix.evasionDodgeChance));
         m_decisionMatrix.evasionMinDistance = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "EvasionMinDistance", m_decisionMatrix.evasionMinDistance));
         m_decisionMatrix.enableJumpEvasion = a_ini.GetBoolValue("DecisionMatrix", "EnableJumpEvasion", m_decisionMatrix.enableJumpEvasion);
         m_decisionMatrix.jumpEvasionDistanceMin = static_cast<float>(a_ini.GetDoubleValue("DecisionMatrix", "JumpEvasionDistanceMin", m_decisionMatrix.jumpEvasionDistanceMin));
@@ -145,7 +146,6 @@ namespace CombatAI
         m_decisionMatrix.enableSprintAttackStaminaCheck = a_ini.GetBoolValue("DecisionMatrix", "EnableSprintAttackStaminaCheck", m_decisionMatrix.enableSprintAttackStaminaCheck);
 
         // Clamp values
-        m_decisionMatrix.evasionDodgeChance = ClampValue(m_decisionMatrix.evasionDodgeChance, 0.0f, 1.0f);
         m_decisionMatrix.interruptMaxDistance = (std::max)(0.0f, m_decisionMatrix.interruptMaxDistance);
         m_decisionMatrix.interruptReachMultiplier = ClampValue(m_decisionMatrix.interruptReachMultiplier, 0.1f, 5.0f);
         m_decisionMatrix.jumpEvasionDistanceMin = (std::max)(0.0f, m_decisionMatrix.jumpEvasionDistanceMin);
@@ -177,5 +177,51 @@ namespace CombatAI
         m_modIntegrations.enableBFCOIntegration = a_ini.GetBoolValue("ModIntegrations", "EnableBFCOIntegration", m_modIntegrations.enableBFCOIntegration);
         m_modIntegrations.enablePrecisionIntegration = a_ini.GetBoolValue("ModIntegrations", "EnablePrecisionIntegration", m_modIntegrations.enablePrecisionIntegration);
         m_modIntegrations.enableTKDodgeIntegration = a_ini.GetBoolValue("ModIntegrations", "EnableTKDodgeIntegration", m_modIntegrations.enableTKDodgeIntegration);
+    }
+
+    void Config::ReadParrySettings(CSimpleIniA& a_ini)
+    {
+        m_parry.enableParry = a_ini.GetBoolValue("Parry", "EnableParry", m_parry.enableParry);
+        m_parry.parryWindowStart = static_cast<float>(a_ini.GetDoubleValue("Parry", "ParryWindowStart", m_parry.parryWindowStart));
+        m_parry.parryWindowEnd = static_cast<float>(a_ini.GetDoubleValue("Parry", "ParryWindowEnd", m_parry.parryWindowEnd));
+        m_parry.parryMinDistance = static_cast<float>(a_ini.GetDoubleValue("Parry", "ParryMinDistance", m_parry.parryMinDistance));
+        m_parry.parryMaxDistance = static_cast<float>(a_ini.GetDoubleValue("Parry", "ParryMaxDistance", m_parry.parryMaxDistance));
+        m_parry.parryBasePriority = static_cast<float>(a_ini.GetDoubleValue("Parry", "ParryBasePriority", m_parry.parryBasePriority));
+        m_parry.timingBonusMax = static_cast<float>(a_ini.GetDoubleValue("Parry", "TimingBonusMax", m_parry.timingBonusMax));
+        m_parry.earlyBashPenalty = static_cast<float>(a_ini.GetDoubleValue("Parry", "EarlyBashPenalty", m_parry.earlyBashPenalty));
+        m_parry.lateBashPenalty = static_cast<float>(a_ini.GetDoubleValue("Parry", "LateBashPenalty", m_parry.lateBashPenalty));
+
+        // Clamp values
+        m_parry.parryWindowStart = (std::max)(0.0f, m_parry.parryWindowStart);
+        m_parry.parryWindowEnd = (std::max)(m_parry.parryWindowStart, m_parry.parryWindowEnd);
+        m_parry.parryMinDistance = (std::max)(0.0f, m_parry.parryMinDistance);
+        m_parry.parryMaxDistance = (std::max)(m_parry.parryMinDistance, m_parry.parryMaxDistance);
+        m_parry.parryBasePriority = (std::max)(0.0f, m_parry.parryBasePriority);
+        m_parry.timingBonusMax = ClampValue(m_parry.timingBonusMax, 0.0f, 1.0f);
+        m_parry.earlyBashPenalty = ClampValue(m_parry.earlyBashPenalty, 0.0f, 1.0f);
+        m_parry.lateBashPenalty = ClampValue(m_parry.lateBashPenalty, 0.0f, 1.0f);
+    }
+
+    void Config::ReadTimedBlockSettings(CSimpleIniA& a_ini)
+    {
+        m_timedBlock.enableTimedBlock = a_ini.GetBoolValue("TimedBlock", "EnableTimedBlock", m_timedBlock.enableTimedBlock);
+        m_timedBlock.timedBlockWindowStart = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockWindowStart", m_timedBlock.timedBlockWindowStart));
+        m_timedBlock.timedBlockWindowEnd = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockWindowEnd", m_timedBlock.timedBlockWindowEnd));
+        m_timedBlock.timedBlockMinDistance = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockMinDistance", m_timedBlock.timedBlockMinDistance));
+        m_timedBlock.timedBlockMaxDistance = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockMaxDistance", m_timedBlock.timedBlockMaxDistance));
+        m_timedBlock.timedBlockBasePriority = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockBasePriority", m_timedBlock.timedBlockBasePriority));
+        m_timedBlock.timedBlockTimingBonusMax = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockTimingBonusMax", m_timedBlock.timedBlockTimingBonusMax));
+        m_timedBlock.timedBlockEarlyPenalty = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockEarlyPenalty", m_timedBlock.timedBlockEarlyPenalty));
+        m_timedBlock.timedBlockLatePenalty = static_cast<float>(a_ini.GetDoubleValue("TimedBlock", "TimedBlockLatePenalty", m_timedBlock.timedBlockLatePenalty));
+
+        // Clamp values
+        m_timedBlock.timedBlockWindowStart = (std::max)(0.0f, m_timedBlock.timedBlockWindowStart);
+        m_timedBlock.timedBlockWindowEnd = (std::max)(m_timedBlock.timedBlockWindowStart, m_timedBlock.timedBlockWindowEnd);
+        m_timedBlock.timedBlockMinDistance = (std::max)(0.0f, m_timedBlock.timedBlockMinDistance);
+        m_timedBlock.timedBlockMaxDistance = (std::max)(m_timedBlock.timedBlockMinDistance, m_timedBlock.timedBlockMaxDistance);
+        m_timedBlock.timedBlockBasePriority = (std::max)(0.0f, m_timedBlock.timedBlockBasePriority);
+        m_timedBlock.timedBlockTimingBonusMax = ClampValue(m_timedBlock.timedBlockTimingBonusMax, 0.0f, 1.0f);
+        m_timedBlock.timedBlockEarlyPenalty = ClampValue(m_timedBlock.timedBlockEarlyPenalty, 0.0f, 1.0f);
+        m_timedBlock.timedBlockLatePenalty = ClampValue(m_timedBlock.timedBlockLatePenalty, 0.0f, 1.0f);
     }
 }

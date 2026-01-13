@@ -132,6 +132,40 @@ namespace CombatAI
         float timeSinceLastSprintAttack = 999.0f; // Time since last sprint attack
         float timeSinceLastBash = 999.0f; // Time since last bash
         float timeSinceLastFeint = 999.0f; // Time since last feint
+        
+        // Parry feedback data
+        bool lastParrySuccess = false; // Whether last parry attempt was successful
+        float lastParryEstimatedDuration = 0.0f; // Estimated duration used for last parry attempt
+        float timeSinceLastParryAttempt = 999.0f; // Time since last parry attempt
+        int parrySuccessCount = 0; // Number of successful parries (for learning)
+        int parryAttemptCount = 0; // Total number of parry attempts (for learning)
+        
+        // Timed Block feedback data
+        bool lastTimedBlockSuccess = false; // Whether last timed block attempt was successful
+        float lastTimedBlockEstimatedDuration = 0.0f; // Estimated duration used for last timed block attempt
+        float timeSinceLastTimedBlockAttempt = 999.0f; // Time since last timed block attempt
+        int timedBlockSuccessCount = 0; // Number of successful timed blocks (for learning)
+        int timedBlockAttemptCount = 0; // Total number of timed block attempts (for learning)
+        
+        // Attack defense feedback data (when NPC's attacks are parried/timed blocked)
+        bool lastAttackParried = false; // Whether last attack was parried
+        bool lastAttackTimedBlocked = false; // Whether last attack was timed blocked
+        bool lastAttackHit = false; // Whether last attack successfully hit the target
+        bool lastAttackMissed = false; // Whether last attack missed (no hit, not parried/timed blocked)
+        float timeSinceLastParriedAttack = 999.0f; // Time since last parried attack
+        float timeSinceLastTimedBlockedAttack = 999.0f; // Time since last timed blocked attack
+        float timeSinceLastHitAttack = 999.0f; // Time since last successful hit
+        float timeSinceLastMissedAttack = 999.0f; // Time since last missed attack
+        int parriedAttackCount = 0; // Number of attacks that were parried
+        int timedBlockedAttackCount = 0; // Number of attacks that were timed blocked
+        int hitAttackCount = 0; // Number of attacks that successfully hit
+        int missedAttackCount = 0; // Number of attacks that missed
+        int totalAttackCount = 0; // Total number of attacks attempted
+        float parryRate = 0.0f; // Percentage of attacks parried (0.0-1.0)
+        float timedBlockRate = 0.0f; // Percentage of attacks timed blocked (0.0-1.0)
+        float hitRate = 0.0f; // Percentage of attacks that hit (0.0-1.0)
+        float missRate = 0.0f; // Percentage of attacks that missed (0.0-1.0)
+        float totalDefenseRate = 0.0f; // Combined parry + timed block rate
     };
 
     struct TargetTemporalState
@@ -143,6 +177,11 @@ namespace CombatAI
         float attackingDuration = 0.0f; // How long target has been attacking
         float idleDuration = 0.0f; // How long target has been idle
         float timeSinceLastPowerAttack = 999.0f; // Time since target's last power attack
+        
+        // Parry timing data
+        float attackStartTime = -1.0f; // When current attack started (relative time, -1 if not attacking)
+        float estimatedAttackDuration = 0.0f; // Estimated total duration of current attack
+        float timeUntilAttackHits = 999.0f; // Estimated time until attack hits (999 if not attacking or already hit)
     };
 
     struct TemporalState

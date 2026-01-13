@@ -1,14 +1,14 @@
 # Configuration Guide
 
 ## Overview
-CombatAI-NG uses an INI configuration file to customize all aspects of the combat AI system. The configuration file is located at:
+EnhancedCombatAI uses an INI configuration file to customize all aspects of the combat AI system. The configuration file is located at:
 
-**`Data/SKSE/Plugins/CombatAI-NG.ini`**
+**`Data/SKSE/Plugins/EnhancedCombatAI.ini`**
 
 ## Installation
 
-1. Copy `CombatAI-NG.ini.template` to your Skyrim `Data/SKSE/Plugins/` directory
-2. Rename it to `CombatAI-NG.ini` (remove `.template` extension)
+1. Copy `EnhancedCombatAI.ini.template` to your Skyrim `Data/SKSE/Plugins/` directory
+2. Rename it to `EnhancedCombatAI.ini` (remove `.template` extension)
 3. Edit the file with your preferred settings
 4. Restart Skyrim or reload the plugin
 

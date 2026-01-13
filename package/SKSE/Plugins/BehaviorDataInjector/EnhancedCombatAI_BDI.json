@@ -2,7 +2,7 @@
     {
         "projectPath": "Actors",
         "type": "kBool",
-        "name": "CombatAI_NG_Jump",
+        "name": "EnhancedCombatAI_Jump",
         "value": false
     }
 ]

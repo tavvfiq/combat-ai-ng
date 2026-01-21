@@ -14,12 +14,14 @@ namespace CombatAI
     public:
         struct Config
         {
-            float baseReactionDelayMs = 150.0f;
+            float baseReactionDelayMs = 200.0f; // Base delay at level 1
+            float reactionDelayReductionPerLevelMs = 2.0f; // Reduce delay by 2ms per level
+            float minReactionDelayMs = 50.0f; // Minimum possible delay
             float reactionVarianceMs = 100.0f;
-            float level1ReactionDelayMs = 200.0f; // Level 1 NPCs react slower
-            float level50ReactionDelayMs = 100.0f; // Level 50 NPCs react faster
-            float level1MistakeChance = 0.4f; // 40% at level 1
-            float level50MistakeChance = 0.0f; // 0% at level 50
+            
+            float baseMistakeChance = 0.5f; // 50% chance at level 1
+            float mistakeChanceReductionPerLevel = 0.01f; // Reduce chance by 1% per level
+            float minMistakeChance = 0.0f; // Minimum mistake chance
             float bashCooldownSeconds = 3.0f;
             float dodgeCooldownSeconds = 2.0f;
             float jumpCooldownSeconds = 3.0f;

@@ -321,14 +321,9 @@ namespace CombatAI
     float Humanizer::CalculateMistakeChance(std::uint16_t a_level, ActionType a_action) const
     {
         // Calculate base mistake chance based on level
-        float baseMistakeChance;
-        if (a_level >= 50) {
-            baseMistakeChance = m_config.level50MistakeChance;
-        } else {
-            // Linear interpolation between level 1 and 50
-            float t = static_cast<float>(a_level - 1) / 49.0f;
-            baseMistakeChance = m_config.level1MistakeChance * (1.0f - t) + m_config.level50MistakeChance * t;
-        }
+        // Calculate base mistake chance using linear reduction
+        float reduction = static_cast<float>(a_level) * m_config.mistakeChanceReductionPerLevel;
+        float baseMistakeChance = (std::max)(m_config.minMistakeChance, m_config.baseMistakeChance - reduction);
 
         // Apply action-specific multiplier
         float multiplier = GetMistakeMultiplierForAction(a_action);
@@ -337,13 +332,9 @@ namespace CombatAI
 
     float Humanizer::CalculateReactionDelay(std::uint16_t a_level) const
     {
-        if (a_level >= 50) {
-            return m_config.level50ReactionDelayMs;
-        }
-
-        // Linear interpolation between level 1 and 50
-        float t = static_cast<float>(a_level - 1) / 49.0f;
-        return m_config.level1ReactionDelayMs * (1.0f - t) + m_config.level50ReactionDelayMs * t;
+        // Calculate reaction delay using linear reduction
+        float reduction = static_cast<float>(a_level) * m_config.reactionDelayReductionPerLevelMs;
+        return (std::max)(m_config.minReactionDelayMs, m_config.baseReactionDelayMs - reduction);
     }
 
     void Humanizer::InitializeReactionDelay(RE::Actor* a_actor)

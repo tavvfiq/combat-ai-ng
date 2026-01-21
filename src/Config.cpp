@@ -63,11 +63,13 @@ namespace CombatAI
     void Config::ReadHumanizerSettings(CSimpleIniA& a_ini)
     {
         m_humanizer.baseReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BaseReactionDelayMs", m_humanizer.baseReactionDelayMs));
+        m_humanizer.reactionDelayReductionPerLevelMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "ReactionDelayReductionPerLevelMs", m_humanizer.reactionDelayReductionPerLevelMs));
+        m_humanizer.minReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "MinReactionDelayMs", m_humanizer.minReactionDelayMs));
         m_humanizer.reactionVarianceMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "ReactionVarianceMs", m_humanizer.reactionVarianceMs));
-        m_humanizer.level1ReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level1ReactionDelayMs", m_humanizer.level1ReactionDelayMs));
-        m_humanizer.level50ReactionDelayMs = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level50ReactionDelayMs", m_humanizer.level50ReactionDelayMs));
-        m_humanizer.level1MistakeChance = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level1MistakeChance", m_humanizer.level1MistakeChance));
-        m_humanizer.level50MistakeChance = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "Level50MistakeChance", m_humanizer.level50MistakeChance));
+        
+        m_humanizer.baseMistakeChance = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BaseMistakeChance", m_humanizer.baseMistakeChance));
+        m_humanizer.mistakeChanceReductionPerLevel = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "MistakeChanceReductionPerLevel", m_humanizer.mistakeChanceReductionPerLevel));
+        m_humanizer.minMistakeChance = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "MinMistakeChance", m_humanizer.minMistakeChance));
         m_humanizer.bashCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "BashCooldownSeconds", m_humanizer.bashCooldownSeconds));
         m_humanizer.dodgeCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "DodgeCooldownSeconds", m_humanizer.dodgeCooldownSeconds));
         m_humanizer.jumpCooldownSeconds = static_cast<float>(a_ini.GetDoubleValue("Humanizer", "JumpCooldownSeconds", m_humanizer.jumpCooldownSeconds));
@@ -87,11 +89,13 @@ namespace CombatAI
 
         // Clamp values to valid ranges
         m_humanizer.baseReactionDelayMs = (std::max)(0.0f, m_humanizer.baseReactionDelayMs);
+        m_humanizer.reactionDelayReductionPerLevelMs = (std::max)(0.0f, m_humanizer.reactionDelayReductionPerLevelMs);
+        m_humanizer.minReactionDelayMs = (std::max)(0.0f, m_humanizer.minReactionDelayMs);
         m_humanizer.reactionVarianceMs = (std::max)(0.0f, m_humanizer.reactionVarianceMs);
-        m_humanizer.level1ReactionDelayMs = (std::max)(0.0f, m_humanizer.level1ReactionDelayMs);
-        m_humanizer.level50ReactionDelayMs = (std::max)(0.0f, m_humanizer.level50ReactionDelayMs);
-        m_humanizer.level1MistakeChance = ClampValue(m_humanizer.level1MistakeChance, 0.0f, 1.0f);
-        m_humanizer.level50MistakeChance = ClampValue(m_humanizer.level50MistakeChance, 0.0f, 1.0f);
+        
+        m_humanizer.baseMistakeChance = ClampValue(m_humanizer.baseMistakeChance, 0.0f, 1.0f);
+        m_humanizer.mistakeChanceReductionPerLevel = (std::max)(0.0f, m_humanizer.mistakeChanceReductionPerLevel);
+        m_humanizer.minMistakeChance = ClampValue(m_humanizer.minMistakeChance, 0.0f, 1.0f);
         m_humanizer.bashCooldownSeconds = (std::max)(0.0f, m_humanizer.bashCooldownSeconds);
         m_humanizer.dodgeCooldownSeconds = (std::max)(0.0f, m_humanizer.dodgeCooldownSeconds);
         m_humanizer.jumpCooldownSeconds = (std::max)(0.0f, m_humanizer.jumpCooldownSeconds);
@@ -166,9 +170,18 @@ namespace CombatAI
         m_performance.onlyProcessCombatActors = a_ini.GetBoolValue("Performance", "OnlyProcessCombatActors", m_performance.onlyProcessCombatActors);
         m_performance.cleanupInterval = static_cast<float>(a_ini.GetDoubleValue("Performance", "CleanupInterval", m_performance.cleanupInterval));
         m_performance.maxActorsPerFrame = static_cast<std::uint32_t>(a_ini.GetLongValue("Performance", "MaxActorsPerFrame", m_performance.maxActorsPerFrame));
+        
+        m_performance.processingIntervalMid = static_cast<float>(a_ini.GetDoubleValue("Performance", "ProcessingIntervalMid", m_performance.processingIntervalMid));
+        m_performance.processingIntervalFar = static_cast<float>(a_ini.GetDoubleValue("Performance", "ProcessingIntervalFar", m_performance.processingIntervalFar));
+        m_performance.distanceNear = static_cast<float>(a_ini.GetDoubleValue("Performance", "DistanceNear", m_performance.distanceNear));
+        m_performance.distanceMid = static_cast<float>(a_ini.GetDoubleValue("Performance", "DistanceMid", m_performance.distanceMid));
 
         // Clamp values
         m_performance.cleanupInterval = (std::max)(0.1f, m_performance.cleanupInterval);
+        m_performance.processingIntervalMid = (std::max)(0.01f, m_performance.processingIntervalMid);
+        m_performance.processingIntervalFar = (std::max)(0.01f, m_performance.processingIntervalFar);
+        m_performance.distanceNear = (std::max)(0.0f, m_performance.distanceNear);
+        m_performance.distanceMid = (std::max)(m_performance.distanceNear, m_performance.distanceMid);
     }
 
     void Config::ReadModIntegrationSettings(CSimpleIniA& a_ini)

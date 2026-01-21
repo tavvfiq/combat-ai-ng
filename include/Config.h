@@ -18,12 +18,14 @@ namespace CombatAI
 
         struct HumanizerSettings
         {
-            float baseReactionDelayMs = 150.0f;
+            float baseReactionDelayMs = 200.0f; // Base delay at level 1
+            float reactionDelayReductionPerLevelMs = 2.0f; // Reduce delay by 2ms per level
+            float minReactionDelayMs = 50.0f; // Minimum possible delay
             float reactionVarianceMs = 100.0f;
-            float level1ReactionDelayMs = 200.0f;
-            float level50ReactionDelayMs = 100.0f;
-            float level1MistakeChance = 0.4f;
-            float level50MistakeChance = 0.0f;
+            
+            float baseMistakeChance = 0.5f; // 50% chance at level 1
+            float mistakeChanceReductionPerLevel = 0.01f; // Reduce chance by 1% per level
+            float minMistakeChance = 0.0f; // Minimum mistake chance
             float bashCooldownSeconds = 3.0f;
             float dodgeCooldownSeconds = 2.0f;
             float jumpCooldownSeconds = 3.0f;
@@ -80,6 +82,12 @@ namespace CombatAI
             bool onlyProcessCombatActors = true;
             float cleanupInterval = 5.0f;
             std::uint32_t maxActorsPerFrame = 0;
+            
+            // Adaptive Processing Interval (LOD) settings
+            float processingIntervalMid = 0.2f; // Slower updates for mid-range (1000-3000 units)
+            float processingIntervalFar = 0.5f; // Slowest updates for far range (>3000 units)
+            float distanceNear = 1000.0f; // Distance threshold for "Near" (uses processingInterval)
+            float distanceMid = 3000.0f; // Distance threshold for "Mid" (uses processingIntervalMid)
         };
 
         struct ModIntegrationSettings

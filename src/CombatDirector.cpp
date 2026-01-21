@@ -359,8 +359,32 @@ namespace CombatAI
         // Update timer
         *timerPtr += a_deltaTime;
         
+        // Determine processing interval based on distance to player (LOD)
+        // Get player position - safely
+        auto player = RE::PlayerCharacter::GetSingleton();
+        float targetInterval = m_processInterval; // Default to near interval
+        
+        if (player) {
+            auto playerPos = player->GetPosition();
+            auto actorPosOpt = ActorUtils::SafeGetPosition(a_actor);
+            
+            if (actorPosOpt.has_value()) {
+                float distSq = playerPos.GetSquaredDistance(actorPosOpt.value());
+                float nearDistSq = config.GetPerformance().distanceNear * config.GetPerformance().distanceNear;
+                float midDistSq = config.GetPerformance().distanceMid * config.GetPerformance().distanceMid;
+                
+                if (distSq > midDistSq) {
+                    // Far distance - slowest updates
+                    targetInterval = config.GetPerformance().processingIntervalFar;
+                } else if (distSq > nearDistSq) {
+                    // Mid distance - medium updates
+                    targetInterval = config.GetPerformance().processingIntervalMid;
+                }
+            }
+        }
+        
         // Only process if interval has passed
-        if (*timerPtr < m_processInterval) {
+        if (*timerPtr < targetInterval) {
             return false; // Skip processing this frame
         }
         

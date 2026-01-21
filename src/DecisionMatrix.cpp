@@ -1891,6 +1891,26 @@ namespace CombatAI
         // We'll use right strafe by default
         RE::NiPoint3 strafeDir(-toTarget.y, toTarget.x, 0.0f);
         strafeDir.Unitize();
+        
+        // Group Tactics: Wolf Pack
+        // If we have an ally nearby, check if strafing right moves us closer to them
+        // If so, strafe left instead to spread out/encircle the target
+        if (a_state.combatContext.hasNearbyAlly && a_state.combatContext.closestAllyDistance > 0.0f) {
+            RE::NiPoint3 toAlly = a_state.combatContext.closestAllyPosition - a_state.self.position;
+            toAlly.z = 0.0f;
+            toAlly.Unitize();
+            
+            // specific debug logging for development
+            // float dot = strafeDir.Dot(toAlly);
+            
+            // Dot > 0 means vectors point in similar direction (angle < 90)
+            // If strafing right points towards ally, strafe left instead
+            if (strafeDir.Dot(toAlly) > 0.2f) { // 0.2 buffer to prevent jitter when ally is perpendicular
+                // Switch to left strafe: (y, -x)
+                strafeDir = RE::NiPoint3(toTarget.y, -toTarget.x, 0.0f);
+                strafeDir.Unitize();
+            }
+        }
 
         return strafeDir;
     }

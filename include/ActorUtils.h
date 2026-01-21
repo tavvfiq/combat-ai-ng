@@ -2,6 +2,8 @@
 
 #include "RE/A/Actor.h"
 #include "RE/A/ActorState.h"
+#include "RE/B/bhkCharacterController.h"
+#include "RE/H/hkVector4.h"
 #include "RE/B/BSTSmartPointer.h"
 #include <optional>
 
@@ -461,6 +463,25 @@ namespace CombatAI
                 return a_actor->GetHeading(a_absolute);
             } catch (...) {
                 return std::nullopt;
+            }
+        }
+
+        // Safe ApplyVelocity - Direct Physics Control
+        inline void SafeApplyVelocity(RE::Actor* a_actor, const RE::NiPoint3& a_velocity)
+        {
+            if (!a_actor) {
+                return;
+            }
+            try {
+                RE::bhkCharacterController* charController = a_actor->GetCharController();
+                if (charController) {
+                    // Convert NiPoint3 to hkVector4 (Skyrim uses Havok physics)
+                    // Quads must be 16-byte aligned, hkVector4 handles this
+                    RE::hkVector4 hkVel(a_velocity.x, a_velocity.y, a_velocity.z, 0.0f);
+                    charController->SetLinearVelocityImpl(hkVel);
+                }
+            } catch (...) {
+                // Physics access failed
             }
         }
     }

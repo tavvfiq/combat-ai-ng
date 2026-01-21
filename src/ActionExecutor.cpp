@@ -446,6 +446,16 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputDirection", angle);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputMagnitude", speed);
 
+        // Direct Physics Control: Apply velocity directly to character controller
+        // This ensures the actor moves even if the animation graph doesn't have root motion
+        // Base run speed in Skyrim is ~370.0 units/sec, Walk is ~80.0 units/sec
+        // We use a base speed of 300.0f * intensity for a good balance
+        float physicsSpeed = 300.0f * speed;
+        RE::NiPoint3 velocity = worldDir * physicsSpeed;
+        
+        // Apply velocity (this overrides vanilla pathfinding velocity for this frame)
+        ActorUtils::SafeApplyVelocity(a_actor, velocity);
+
         return true;
     }
 

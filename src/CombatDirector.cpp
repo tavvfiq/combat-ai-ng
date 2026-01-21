@@ -9,6 +9,7 @@
 #include "TimedBlockFeedbackTracker.h"
 #include "AttackDefenseFeedbackTracker.h"
 #include "GuardCounterFeedbackTracker.h"
+#include "APIManager.h"
 #include "Logger.h"
 #include <sstream>
 #include <cstring>
@@ -199,6 +200,9 @@ namespace CombatAI
 
                 // Notify temporal state tracker that action was executed
                 m_observer.NotifyActionExecuted(a_actor, decision.action);
+
+                // Notify Public API listeners
+                APIManager::GetSingleton()->NotifyDecision(a_actor, decision);
             }
         }
     }

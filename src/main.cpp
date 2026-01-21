@@ -3,6 +3,19 @@
 #include "CombatDirector.h"
 #include "Config.h"
 #include "Logger.h"
+#include "CombatAIAPI.h"
+#include "APIManager.h"
+
+extern "C" DLLEXPORT void* SKSEAPI RequestPluginAPI(ECA_API::InterfaceVersion a_interfaceVersion)
+{
+    auto api = CombatAI::APIManager::GetSingleton();
+    switch (a_interfaceVersion) {
+    case ECA_API::InterfaceVersion::V1:
+        // APIManager implements IVCombatAI1
+        return static_cast<ECA_API::IVCombatAI1*>(api);
+    }
+    return nullptr;
+}
 
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_skse)
 {

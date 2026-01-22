@@ -433,27 +433,37 @@ namespace CombatAI
         RE::NiPoint3 localDir = invActorRot * worldDir;
         localDir.Unitize();
 
-        // Angle of movement in radians. atan2(x, y) because y is forward in Skyrim's local space.
-        float angle = atan2(localDir.x, localDir.y);
-        float speed = std::min(a_intensity, 1.0f);
+        // Calculate angle (Radians) and Speed (Normalized 0-1)
+        float angleRad = atan2(localDir.x, localDir.y);
+        float speedNorm = std::min(a_intensity, 1.0f);
 
-        // Set standard movement graph variables.
-        // The animation graph must support these for the movement to work.
-        ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementDirection", angle);
-        ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementSpeed", speed);
+        // Convert to Degrees for Animation Graph (-180 to 180)
+        constexpr float R2D = 57.2957795131f; // 180 / PI
+        float angleDeg = angleRad * R2D;
+
+        // Set Standard/Mod scale variables
+        // Vanilla 'Speed' is usually ~0-400 (Walk ~80, Run ~370)
+        // We set it to trigger the transition from Idle -> Locomotion
+        float animSpeed = speedNorm * 370.0f; // Default to Run speed at max intensity
+
+        // Vanilla Variables
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "Speed", animSpeed);
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "Direction", angleDeg);
+
+        // Modern Movement / Mod Variables
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementDirection", angleDeg); // Usually expects Degrees
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementSpeed", speedNorm);
         
-        // Also set InputDirection and InputMagnitude for compatibility with other animation setups (e.g. DAR)
-        ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputDirection", angle);
-        ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputMagnitude", speed);
+        // InputDirection/Magnitude (TDM/MCO often use these)
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputDirection", angleDeg); // TDM expects Degrees
+        ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputMagnitude", speedNorm);
 
-        // Direct Physics Control: Apply velocity directly to character controller
-        // This ensures the actor moves even if the animation graph doesn't have root motion
-        // Base run speed in Skyrim is ~370.0 units/sec, Walk is ~80.0 units/sec
-        // We use a base speed of 300.0f * intensity for a good balance
-        float physicsSpeed = 300.0f * speed;
+        // Direct Physics Control
+        // Apply velocity (this overrides vanilla pathfinding velocity for this frame)
+        // Physics Speed needs to match Animation Speed to look natural
+        float physicsSpeed = 300.0f * speedNorm;
         RE::NiPoint3 velocity = worldDir * physicsSpeed;
         
-        // Apply velocity (this overrides vanilla pathfinding velocity for this frame)
         ActorUtils::SafeApplyVelocity(a_actor, velocity);
 
         return true;

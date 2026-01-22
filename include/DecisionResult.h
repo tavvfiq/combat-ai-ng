@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RE/N/NiPoint3.h"
+#include "pch.h"
 
 namespace CombatAI
 {

@@ -1,10 +1,6 @@
 #pragma once
 
-#include "RE/A/Actor.h"
-#include "RE/B/BGSPerk.h"
-#include "RE/M/MagicItem.h"
-#include "RE/M/MagicTarget.h"
-#include "RE/E/EffectSetting.h"
+#include "pch.h"
 
 namespace CombatAI
 {

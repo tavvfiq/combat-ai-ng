@@ -1,7 +1,6 @@
 #pragma once
 
-#include "RE/A/Actor.h"
-#include "RE/C/CombatController.h"
+#include "pch.h"
 #include "DecisionResult.h"
 #include "ActorStateData.h"
 

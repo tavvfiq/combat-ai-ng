@@ -7,7 +7,7 @@
 #include "ParryFeedbackTracker.h"
 #include "ThreadSafeMap.h"
 #include "DecisionResult.h"
-#include "RE/A/Actor.h"
+#include "pch.h"
 
 namespace CombatAI
 {

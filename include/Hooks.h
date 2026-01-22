@@ -1,7 +1,5 @@
 #pragma once
 
-#include "RE/A/Actor.h"
-
 namespace CombatAI
 {
     namespace Hooks

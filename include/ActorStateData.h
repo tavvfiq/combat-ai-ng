@@ -1,7 +1,6 @@
 #pragma once
 
-#include "RE/A/Actor.h"
-#include "RE/N/NiPoint3.h"
+#include "pch.h"
 #include "ActorUtils.h"
 
 namespace CombatAI

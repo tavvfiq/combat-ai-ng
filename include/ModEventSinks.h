@@ -1,8 +1,6 @@
 #pragma once
 
-#include "RE/B/BSTEvent.h"
-#include "SKSE/SKSE.h"
-#include "RE/T/TESHitEvent.h"
+#include "pch.h"
 
 namespace CombatAI
 {

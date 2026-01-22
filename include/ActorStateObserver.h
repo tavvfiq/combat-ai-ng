@@ -3,7 +3,7 @@
 #include "ActorStateData.h"
 #include "DecisionResult.h"
 #include "ThreadSafeMap.h"
-#include "RE/A/Actor.h"
+#include "pch.h"
 
 // Forward declaration
 namespace CombatAI { class PrecisionIntegration; }

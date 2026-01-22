@@ -1,9 +1,9 @@
 #pragma once
 
+#include "pch.h"
 #include "DecisionResult.h"
 #include "ActorStateData.h"
 #include "DodgeSystem.h"
-#include "RE/A/Actor.h"
 
 namespace CombatAI
 {

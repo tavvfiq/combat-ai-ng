@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RE/A/Actor.h"
+#include "pch.h"
 #include "ActorStateData.h"
 
 namespace CombatAI

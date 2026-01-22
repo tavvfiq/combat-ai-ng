@@ -55,10 +55,6 @@ namespace CombatAI
         Humanizer::Config humanizerConfig;
         humanizerConfig.baseReactionDelayMs = config.GetHumanizer().baseReactionDelayMs;
         humanizerConfig.reactionVarianceMs = config.GetHumanizer().reactionVarianceMs;
-        humanizerConfig.level1ReactionDelayMs = config.GetHumanizer().level1ReactionDelayMs;
-        humanizerConfig.level50ReactionDelayMs = config.GetHumanizer().level50ReactionDelayMs;
-        humanizerConfig.level1MistakeChance = config.GetHumanizer().level1MistakeChance;
-        humanizerConfig.level50MistakeChance = config.GetHumanizer().level50MistakeChance;
         humanizerConfig.bashCooldownSeconds = config.GetHumanizer().bashCooldownSeconds;
         humanizerConfig.dodgeCooldownSeconds = config.GetHumanizer().dodgeCooldownSeconds;
         humanizerConfig.jumpCooldownSeconds = config.GetHumanizer().jumpCooldownSeconds;

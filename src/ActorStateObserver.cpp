@@ -115,6 +115,10 @@ namespace CombatAI
         // Movement state - sprinting/walking - use safe wrappers
         state.isSprinting = ActorUtils::SafeIsSprinting(a_actor);
         state.isWalking = ActorUtils::SafeIsWalking(a_actor);
+        
+        // Check casting state
+        std::uint32_t castingState = ActorUtils::SafeWhoIsCasting(a_actor);
+        state.isCasting = (castingState != 0);
 
         // Position - use safe wrapper
         auto posOpt = ActorUtils::SafeGetPosition(a_actor);
@@ -227,6 +231,9 @@ namespace CombatAI
             state.orientationDot = 0.0f;
         }
 
+        // Line of Sight - use safe wrapper
+        state.hasLineOfSight = ActorUtils::SafeHasLineOfSight(a_self, a_target);
+        
         // equipped weapons - use safe wrapper
         state.equippedRightHand = ActorUtils::SafeGetEquippedObject(a_target, false);
 

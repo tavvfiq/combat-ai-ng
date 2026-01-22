@@ -26,9 +26,29 @@ namespace CombatAI
             possibleDecisions.push_back(survivalResult);
         }
 
-        DecisionResult interruptResult = EvaluateInterrupt(a_actor, a_state);
-        if (interruptResult.action != ActionType::None) {
-            possibleDecisions.push_back(interruptResult);
+        // Check weapon types for logic branching
+        bool isMage = (a_state.self.weaponType == WeaponType::Spell || a_state.self.weaponType == WeaponType::Staff);
+        // Special case: Spellsword (Melee + Spell) should use melee logic but minimal magic
+        // For now, if they have any melee weapon, treat as warrior
+        if (a_state.self.isMelee && a_state.self.weaponType != WeaponType::Staff) {
+            isMage = false;
+        }
+
+        // Interrupt Logic: Skip if we are a dual-caster (cannot bash)
+        bool canBash = true;
+        if (isMage && !a_state.self.isMelee) {
+            // Pure mage (Spell/Spell or Staff/Spell or Staff/Staff) can't bash reliably unless using behavior graph hacks
+            // Vanilla behavior: Left/Right trigger spells. No bash button.
+            // Exception: Staff bash is possible if blocking? But mages usually cast.
+            // Let's be safe: restrict interrupt to those who can definitely bash.
+            canBash = false; 
+        }
+
+        if (canBash) {
+            DecisionResult interruptResult = EvaluateInterrupt(a_actor, a_state);
+            if (interruptResult.action != ActionType::None) {
+                possibleDecisions.push_back(interruptResult);
+            }
         }
 
         DecisionResult evasionResult = EvaluateEvasion(a_actor, a_state);
@@ -51,9 +71,17 @@ namespace CombatAI
             possibleDecisions.push_back(feintingResult);
         }
 
-        DecisionResult offenseResult = EvaluateOffense(a_actor, a_state);
-        if (offenseResult.action != ActionType::None) {
-            possibleDecisions.push_back(offenseResult);
+        // OFFENSE / MAGIC FORK
+        if (isMage) {
+            DecisionResult magicResult = EvaluateMagic(a_actor, a_state);
+            if (magicResult.action != ActionType::None) {
+                possibleDecisions.push_back(magicResult);
+            }
+        } else {
+            DecisionResult offenseResult = EvaluateOffense(a_actor, a_state);
+            if (offenseResult.action != ActionType::None) {
+                possibleDecisions.push_back(offenseResult);
+            }
         }
 
         // If no decisions, return None
@@ -2675,5 +2703,106 @@ namespace CombatAI
 
         // Misc
         LOG_DEBUG("Misc: WeaponReach={:.1f} DeltaTime={:.4f}s", a_state.weaponReach, a_state.deltaTime);
+    }
+    
+    DecisionResult DecisionMatrix::EvaluateMagic(RE::Actor* a_actor, const ActorStateData& a_state)
+    {
+        DecisionResult result;
+
+        // 1. Check if we are actually a mage
+        bool hasMagic = (a_state.self.weaponType == WeaponType::Spell || a_state.self.weaponType == WeaponType::Staff);
+        if (!hasMagic) {
+            return result;
+        }
+
+        // 2. TURRET MODE: If we are actively casting, prioritize STABILITY over crazy movement
+        // Unless enemy is very close (danger)
+        if (a_state.self.isCasting) {
+             if (a_state.target.distance > 400.0f) {
+                 // Safe to turret
+                 // Return a low-intensity strafe to keep target in view without moving feet too much
+                 result.action = ActionType::Strafe;
+                 result.priority = 2.0f; // High priority to override other movement
+                 result.intensity = 0.0f; // Stand still to aim
+                 result.direction = CalculateStrafeDirection(a_state);
+                 return result;
+             }
+        }
+
+        // 3. OFFENSE (Casting Spells)
+        // Mages need to attack too! 
+        // Logic: specific distance check for casting vs moving
+        
+        // Don't cast if we are already casting (and haven't finished)
+        // Unless we are chain casting? For now, let's respect the cast.
+        if (!a_state.self.isCasting) {
+             float optimalMageRange = 800.0f;
+             bool inCastingRange = a_state.target.distance < 1500.0f; // Spells usually go far
+             bool hasLineOfSight = a_state.target.hasLineOfSight;
+             
+             // If we have a shot, take it
+             if (inCastingRange && hasLineOfSight) {
+                 result.action = ActionType::Attack;
+                 result.priority = 1.1f; // Higher priority than just moving up (1.0)
+                 result.intensity = 1.0f;
+                 
+                 // Facing check: only attack if facing target roughly
+                 if (a_state.target.orientationDot > 0.5f) {
+                     return result;
+                 } else {
+                     // Need to turn to face target first
+                     // The movement logic below handles turning, but we can boost priority of "Advancing" (which turns)
+                     // or add a "FaceTarget" action.
+                     // For now, let movement logic handle turning.
+                 }
+             }
+        }
+
+        // 4. KITING (Maintain Distance)
+        // Mages want to be at ~800-1000 units, not 150.
+        float optimalMageRange = 800.0f;
+        float dangerZone = 400.0f;
+
+        if (a_state.target.distance < dangerZone) {
+            // TOO CLOSE! Retreat!
+            result.action = ActionType::Retreat; 
+            result.priority = 1.5f; // Higher than normal offense
+            result.intensity = 1.0f; // Run away!
+            
+            // Calculate retreat direction (away from target)
+            RE::NiPoint3 fromTarget = a_state.self.position - a_state.target.position;
+            fromTarget.z = 0.0f;
+            fromTarget.Unitize();
+            result.direction = fromTarget;
+            return result;
+        }
+        else if (a_state.target.distance < optimalMageRange) {
+             // In range, but maybe back up slowly while casting
+             result.action = ActionType::Strafe;
+             result.priority = 1.2f;
+             result.intensity = 0.5f; // Slow movement
+             result.direction = CalculateStrafeDirection(a_state);
+             
+             // Add slight backward bias to strafe
+             RE::NiPoint3 backDir = a_state.self.position - a_state.target.position;
+             backDir.z = 0.0f;
+             backDir.Unitize();
+             result.direction = result.direction * 0.7f + backDir * 0.3f;
+             result.direction.Unitize();
+             return result;
+        }
+        else {
+             // Too far, close distance (but stop at optimal range)
+             result.action = ActionType::Advancing;
+             result.priority = 1.0f;
+             result.intensity = 0.8f;
+             RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
+             toTarget.z = 0.0f;
+             toTarget.Unitize();
+             result.direction = toTarget;
+             return result;
+        }
+
+        return result;
     }
 }

@@ -33,6 +33,7 @@ namespace CombatAI
         bool isIdle = false;
         bool isSprinting = false; // Movement state: sprinting
         bool isWalking = false; // Movement state: walking
+        bool isCasting = false; // Is currently casting a spell
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
         WeaponType weaponType = WeaponType::None; // Weapon type equipped
@@ -60,6 +61,7 @@ namespace CombatAI
         RE::KNOCK_STATE_ENUM knockState = RE::KNOCK_STATE_ENUM::kNormal;
         float distance = 0.0f;
         float orientationDot = 0.0f; // Dot product: 1.0 = facing directly at me, -1.0 = facing away
+        bool hasLineOfSight = false; // Can we see the target?
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
 

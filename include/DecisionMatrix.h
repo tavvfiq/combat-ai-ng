@@ -29,6 +29,9 @@ namespace CombatAI
         // Offense
         DecisionResult EvaluateOffense(RE::Actor* a_actor, const ActorStateData& a_state);
 
+        // Magic Tactics (Mage/Spellsword specific)
+        DecisionResult EvaluateMagic(RE::Actor* a_actor, const ActorStateData& a_state);
+
         // Backoff (when target is casting/drawing bow)
         DecisionResult EvaluateBackoff(RE::Actor* a_actor, const ActorStateData& a_state);
 

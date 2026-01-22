@@ -453,5 +453,21 @@ namespace CombatAI {
                 // Physics access failed
             }
         }
+
+        // Safe HasLineOfSight
+        inline bool SafeHasLineOfSight(RE::Actor *a_actor, RE::Actor *a_target) {
+            if (!a_actor || !a_target) {
+                return false;
+            }
+            try {
+                bool hasLoS = false;
+                // HasLineOfSight takes target handle and bool reference
+                // Note: The signature in CommonLibSSE might vary slightly, but usually it's (handle, bool&)
+                // We cast target to TESObjectREFR* just to be safe if overload exists
+                return a_actor->HasLineOfSight(a_target, hasLoS) && hasLoS;
+            } catch (...) {
+                return false;
+            }
+        }
     } // namespace ActorUtils
 } // namespace CombatAI

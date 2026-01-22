@@ -697,6 +697,30 @@ namespace CombatAI
         // This allows OAR to detect it and replace the dodge animation with a jump animation
         ActorUtils::SafeSetGraphVariableBool(a_actor, "EnhancedCombatAI_Jump", true);
         
+        // PHYSICS JUMP IMPULSE
+        // Since we are hacking dodge to look like a jump, we need to provide the vertical movement manually.
+        // SkyRim gravity is roughly -2000 units/sec^2.
+        // A velocity of 600.0f gives a jump height of roughly h = v^2 / 2g ~= 360000 / 4000 = 90 units (approx player jump height)
+        // We also add forward momentum to make it a "leap".
+        
+        // 1. Calculate jump direction (same as dodge direction)
+        RE::NiPoint3 jumpDir = a_state.actorPos - a_state.targetPos;
+        if (a_state.targetPos == RE::NiPoint3(0,0,0)) { // Fallback if no target
+            // Use actor forward
+            RE::NiPoint3 forwardDir; 
+            a_actor->GetForwardVector(forwardDir.x, forwardDir.y, forwardDir.z); // Not safe?
+            // Actually, let's just jump strictly UP if we can't determine direction, 
+            // relying on the dodge event to handle lateral move if any.
+            // But usually we want to back-step or side-step jump.
+        }
+        
+        // For now, let's keep it simple: Just UP. The Dodge animation has root motion for X/Y.
+        // If we add X/Y velocity here, it might compound with root motion and launch them into orbit.
+        // Let's rely on the anim for horizontal, and us for vertical.
+        
+        RE::NiPoint3 jumpVelocity(0.0f, 0.0f, 600.0f); // Vertical impulse only
+        ActorUtils::SafeApplyVelocity(a_actor, jumpVelocity);
+
         return ExecuteDodge(a_actor, a_state);
     }
 

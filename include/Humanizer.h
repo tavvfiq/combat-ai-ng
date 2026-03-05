@@ -1,8 +1,8 @@
 #pragma once
 
-#include "pch.h"
 #include "DecisionResult.h"
 #include "ThreadSafeMap.h"
+#include "pch.h"
 #include <chrono>
 #include <unordered_map>
 
@@ -11,51 +11,51 @@ namespace CombatAI
     // Manages organic feel: reaction latency, mistakes, cooldowns
     class Humanizer
     {
-    public:
+      public:
         struct Config
         {
-            float baseReactionDelayMs = 200.0f; // Base delay at level 1
+            float baseReactionDelayMs = 200.0f;            // Base delay at level 1
             float reactionDelayReductionPerLevelMs = 2.0f; // Reduce delay by 2ms per level
-            float minReactionDelayMs = 50.0f; // Minimum possible delay
+            float minReactionDelayMs = 50.0f;              // Minimum possible delay
             float reactionVarianceMs = 100.0f;
-            
-            float baseMistakeChance = 0.5f; // 50% chance at level 1
+
+            float baseMistakeChance = 0.5f;               // 50% chance at level 1
             float mistakeChanceReductionPerLevel = 0.01f; // Reduce chance by 1% per level
-            float minMistakeChance = 0.0f; // Minimum mistake chance
+            float minMistakeChance = 0.0f;                // Minimum mistake chance
             float bashCooldownSeconds = 3.0f;
             float dodgeCooldownSeconds = 2.0f;
             float jumpCooldownSeconds = 3.0f;
             // Action-specific mistake chance multipliers (applied to base mistake chance)
-            float bashMistakeMultiplier = 0.5f; // Bash is easier, lower mistake chance
-            float dodgeMistakeMultiplier = 1.5f; // Dodge requires timing, higher mistake chance
-            float jumpMistakeMultiplier = 1.5f; // Jump requires timing, higher mistake chance
-            float strafeMistakeMultiplier = 1.2f; // Strafe is moderately difficult
-            float powerAttackMistakeMultiplier = 1.0f; // Power attack is standard difficulty
-            float attackMistakeMultiplier = 0.8f; // Regular attack is easier
+            float bashMistakeMultiplier = 0.5f;         // Bash is easier, lower mistake chance
+            float dodgeMistakeMultiplier = 1.5f;        // Dodge requires timing, higher mistake chance
+            float jumpMistakeMultiplier = 1.5f;         // Jump requires timing, higher mistake chance
+            float strafeMistakeMultiplier = 1.2f;       // Strafe is moderately difficult
+            float powerAttackMistakeMultiplier = 1.0f;  // Power attack is standard difficulty
+            float attackMistakeMultiplier = 0.8f;       // Regular attack is easier
             float sprintAttackMistakeMultiplier = 1.2f; // Sprint attack requires timing
-            float retreatMistakeMultiplier = 0.3f; // Retreat is easy, very low mistake chance
-            float backoffMistakeMultiplier = 0.5f; // Backoff is relatively easy
-            float advancingMistakeMultiplier = 0.7f; // Advancing is moderately easy
-            float flankingMistakeMultiplier = 1.0f; // Flanking is tactical but requires coordination
+            float retreatMistakeMultiplier = 0.3f;      // Retreat is easy, very low mistake chance
+            float backoffMistakeMultiplier = 0.5f;      // Backoff is relatively easy
+            float advancingMistakeMultiplier = 0.7f;    // Advancing is moderately easy
+            float flankingMistakeMultiplier = 1.0f;     // Flanking is tactical but requires coordination
         };
 
         Humanizer() = default;
         ~Humanizer() = default;
 
         // Check if actor can react (reaction delay)
-        bool CanReact(RE::Actor* a_actor, float a_deltaTime);
+        bool CanReact(RE::Actor *a_actor, float a_deltaTime);
 
         // Check if actor should make a mistake (based on level and action type)
-        bool ShouldMakeMistake(RE::Actor* a_actor, ActionType a_action);
+        bool ShouldMakeMistake(RE::Actor *a_actor, ActionType a_action);
 
         // Check if action is on cooldown
-        bool IsOnCooldown(RE::Actor* a_actor, ActionType a_action);
+        bool IsOnCooldown(RE::Actor *a_actor, ActionType a_action);
 
         // Mark action as used (start cooldown)
-        void MarkActionUsed(RE::Actor* a_actor, ActionType a_action);
+        void MarkActionUsed(RE::Actor *a_actor, ActionType a_action);
 
         // Reset reaction state (call after action is executed)
-        void ResetReactionState(RE::Actor* a_actor);
+        void ResetReactionState(RE::Actor *a_actor);
 
         // Update internal state (call per frame)
         void Update(float a_deltaTime);
@@ -67,10 +67,10 @@ namespace CombatAI
         void RecoverFromCorruption();
 
         // Configuration
-        void SetConfig(const Config& a_config) { m_config = a_config; }
-        const Config& GetConfig() const { return m_config; }
+        void SetConfig(const Config &a_config) { m_config = a_config; }
+        const Config &GetConfig() const { return m_config; }
 
-    private:
+      private:
         struct ActorReactionState
         {
             float reactionTimer = 0.0f;
@@ -81,17 +81,17 @@ namespace CombatAI
         struct ActorCooldownState
         {
             ThreadSafeMap<ActionType, float> cooldowns;
-            
+
             // Default constructor
             ActorCooldownState() = default;
-            
+
             // Move constructor (needed because ThreadSafeMap is non-copyable)
-            ActorCooldownState(ActorCooldownState&&) = default;
-            ActorCooldownState& operator=(ActorCooldownState&&) = default;
-            
+            ActorCooldownState(ActorCooldownState &&) = default;
+            ActorCooldownState &operator=(ActorCooldownState &&) = default;
+
             // Delete copy constructor (ThreadSafeMap is non-copyable)
-            ActorCooldownState(const ActorCooldownState&) = delete;
-            ActorCooldownState& operator=(const ActorCooldownState&) = delete;
+            ActorCooldownState(const ActorCooldownState &) = delete;
+            ActorCooldownState &operator=(const ActorCooldownState &) = delete;
         };
 
         Config m_config;
@@ -108,7 +108,7 @@ namespace CombatAI
         float CalculateMistakeChance(std::uint16_t a_level, ActionType a_action) const;
 
         // Initialize reaction delay for actor (scales with level)
-        void InitializeReactionDelay(RE::Actor* a_actor);
+        void InitializeReactionDelay(RE::Actor *a_actor);
 
         // Calculate reaction delay based on actor level
         float CalculateReactionDelay(std::uint16_t a_level) const;
@@ -119,4 +119,4 @@ namespace CombatAI
         // Get mistake chance multiplier for an action type
         float GetMistakeMultiplierForAction(ActionType a_action) const;
     };
-}
+} // namespace CombatAI

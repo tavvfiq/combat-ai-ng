@@ -6,5 +6,5 @@ namespace CombatAI
     {
         // Install all hooks
         void Install();
-    }
-}
+    } // namespace Hooks
+} // namespace CombatAI

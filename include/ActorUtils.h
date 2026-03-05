@@ -3,14 +3,17 @@
 #include "pch.h"
 #include <optional>
 
-namespace CombatAI {
-// Utility functions for safe actor access with built-in error handling
-// These functions wrap actor property access in try-catch to prevent crashes
-// from stale actors
+namespace CombatAI
+{
+    // Utility functions for safe actor access with built-in error handling
+    // These functions wrap actor property access in try-catch to prevent crashes
+    // from stale actors
 
-    namespace ActorUtils {
+    namespace ActorUtils
+    {
         // Check if actor is valid and accessible
-        inline bool IsValid(RE::Actor *a_actor) {
+        inline bool IsValid(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -22,7 +25,8 @@ namespace CombatAI {
         }
 
         // Safe GetFormID - returns optional to handle failures
-        inline std::optional<RE::FormID> SafeGetFormID(RE::Actor *a_actor) {
+        inline std::optional<RE::FormID> SafeGetFormID(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return std::nullopt;
             }
@@ -34,7 +38,8 @@ namespace CombatAI {
         }
 
         // Safe GetEquippedObject
-        inline RE::TESForm *SafeGetEquippedObject(RE::Actor *a_actor, bool a_leftHand) {
+        inline RE::TESForm *SafeGetEquippedObject(RE::Actor *a_actor, bool a_leftHand)
+        {
             if (!a_actor) {
                 return nullptr;
             }
@@ -48,7 +53,8 @@ namespace CombatAI {
         // Safe AsActorState
         // In CommonLibSSE, Actor inherits from ActorState, so we can cast directly
         // Since Actor IS an ActorState (inheritance), static_cast is safe
-        inline RE::ActorState *SafeAsActorState(RE::Actor *a_actor) {
+        inline RE::ActorState *SafeAsActorState(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return nullptr;
             }
@@ -62,7 +68,8 @@ namespace CombatAI {
 
         // Safe AsActorValueOwner
         // In CommonLibSSE, Actor inherits from ActorValueOwner, so we can cast directly
-        inline RE::ActorValueOwner *SafeAsActorValueOwner(RE::Actor *a_actor) {
+        inline RE::ActorValueOwner *SafeAsActorValueOwner(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return nullptr;
             }
@@ -76,7 +83,8 @@ namespace CombatAI {
         }
 
         // Safe GetActorBase
-        inline RE::TESNPC *SafeGetActorBase(RE::Actor *a_actor) {
+        inline RE::TESNPC *SafeGetActorBase(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return nullptr;
             }
@@ -88,7 +96,8 @@ namespace CombatAI {
         }
 
         // Safe Get3D
-        inline RE::NiAVObject *SafeGet3D(RE::Actor *a_actor) {
+        inline RE::NiAVObject *SafeGet3D(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return nullptr;
             }
@@ -100,7 +109,8 @@ namespace CombatAI {
         }
 
         // Safe WhoIsCasting
-        inline std::uint32_t SafeWhoIsCasting(RE::Actor *a_actor) {
+        inline std::uint32_t SafeWhoIsCasting(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return 0;
             }
@@ -112,8 +122,8 @@ namespace CombatAI {
         }
 
         // Safe SetGraphVariableBool
-        inline bool SafeSetGraphVariableBool(RE::Actor *a_actor, const char *a_varName,
-                                            bool a_value) {
+        inline bool SafeSetGraphVariableBool(RE::Actor *a_actor, const char *a_varName, bool a_value)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -125,8 +135,8 @@ namespace CombatAI {
         }
 
         // Safe SetGraphVariableFloat
-        inline bool SafeSetGraphVariableFloat(RE::Actor *a_actor, const char *a_varName,
-                                            float a_value) {
+        inline bool SafeSetGraphVariableFloat(RE::Actor *a_actor, const char *a_varName, float a_value)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -138,8 +148,8 @@ namespace CombatAI {
         }
 
         // Safe SetGraphVariableInt
-        inline bool SafeSetGraphVariableInt(RE::Actor *a_actor, const char *a_varName,
-                                            int32_t a_value) {
+        inline bool SafeSetGraphVariableInt(RE::Actor *a_actor, const char *a_varName, int32_t a_value)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -151,8 +161,8 @@ namespace CombatAI {
         }
 
         // Safe GetGraphVariableBool
-        inline bool SafeGetGraphVariableBool(RE::Actor *a_actor, const char *a_varName,
-                                            bool &a_outValue) {
+        inline bool SafeGetGraphVariableBool(RE::Actor *a_actor, const char *a_varName, bool &a_outValue)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -164,8 +174,8 @@ namespace CombatAI {
         }
 
         // Safe NotifyAnimationGraph
-        inline bool SafeNotifyAnimationGraph(RE::Actor *a_actor,
-                                            const char *a_eventName) {
+        inline bool SafeNotifyAnimationGraph(RE::Actor *a_actor, const char *a_eventName)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -178,14 +188,15 @@ namespace CombatAI {
         }
 
         // Safe GetAttackState
-        inline RE::ATTACK_STATE_ENUM SafeGetAttackState(RE::Actor *a_actor) {
+        inline RE::ATTACK_STATE_ENUM SafeGetAttackState(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return RE::ATTACK_STATE_ENUM::kNone;
             }
             try {
                 RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
                 if (state) {
-                return state->GetAttackState();
+                    return state->GetAttackState();
                 }
             } catch (...) {
                 // Actor access failed
@@ -194,14 +205,15 @@ namespace CombatAI {
         }
 
         // Safe IsSprinting
-        inline bool SafeIsSprinting(RE::Actor *a_actor) {
+        inline bool SafeIsSprinting(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
             try {
                 RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
                 if (state) {
-                return state->IsSprinting();
+                    return state->IsSprinting();
                 }
             } catch (...) {
                 // Actor access failed
@@ -210,14 +222,15 @@ namespace CombatAI {
         }
 
         // Safe SetSprinting
-        inline void SafeSetSprinting(RE::Actor *a_actor, bool a_sprinting) {
-                if (!a_actor) {
-                    return;
-                }
-                try {
-                    RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
-                    if (state) {
-                state->actorState1.sprinting = a_sprinting ? 1 : 0;
+        inline void SafeSetSprinting(RE::Actor *a_actor, bool a_sprinting)
+        {
+            if (!a_actor) {
+                return;
+            }
+            try {
+                RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
+                if (state) {
+                    state->actorState1.sprinting = a_sprinting ? 1 : 0;
                 }
             } catch (...) {
                 // Actor access failed
@@ -225,7 +238,8 @@ namespace CombatAI {
         }
 
         // Safe GetPosition
-        inline std::optional<RE::NiPoint3> SafeGetPosition(RE::Actor *a_actor) {
+        inline std::optional<RE::NiPoint3> SafeGetPosition(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return std::nullopt;
             }
@@ -237,7 +251,8 @@ namespace CombatAI {
         }
 
         // Safe IsDead
-        inline bool SafeIsDead(RE::Actor *a_actor) {
+        inline bool SafeIsDead(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return true; // Consider null as dead
             }
@@ -249,7 +264,8 @@ namespace CombatAI {
         }
 
         // Safe IsInCombat
-        inline bool SafeIsInCombat(RE::Actor *a_actor) {
+        inline bool SafeIsInCombat(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -261,7 +277,8 @@ namespace CombatAI {
         }
 
         // Safe IsHostileToActor
-        inline bool SafeIsHostileToActor(RE::Actor *a_actor, RE::Actor *a_target) {
+        inline bool SafeIsHostileToActor(RE::Actor *a_actor, RE::Actor *a_target)
+        {
             if (!a_actor || !a_target) {
                 return false;
             }
@@ -273,7 +290,8 @@ namespace CombatAI {
         }
 
         // Safe GetLevel
-        inline std::uint16_t SafeGetLevel(RE::Actor *a_actor) {
+        inline std::uint16_t SafeGetLevel(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return 1; // Default level
             }
@@ -285,7 +303,8 @@ namespace CombatAI {
         }
 
         // Safe IsPlayerRef
-        inline bool SafeIsPlayerRef(RE::Actor *a_actor) {
+        inline bool SafeIsPlayerRef(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -297,7 +316,8 @@ namespace CombatAI {
         }
 
         // Safe HasKeywordString
-        inline bool SafeHasKeywordString(RE::Actor *a_actor, const char *a_keyword) {
+        inline bool SafeHasKeywordString(RE::Actor *a_actor, const char *a_keyword)
+        {
             if (!a_actor || !a_keyword) {
                 return false;
             }
@@ -309,7 +329,8 @@ namespace CombatAI {
         }
 
         // Safe CalculateCachedOwnerIsNPC
-        inline bool SafeCalculateCachedOwnerIsNPC(RE::Actor *a_actor) {
+        inline bool SafeCalculateCachedOwnerIsNPC(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -321,7 +342,8 @@ namespace CombatAI {
         }
 
         // Safe IsAIEnabled
-        inline bool SafeIsAIEnabled(RE::Actor *a_actor) {
+        inline bool SafeIsAIEnabled(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -333,8 +355,8 @@ namespace CombatAI {
         }
 
         // Safe HasMagicEffect - Check if actor has a specific magic effect active
-        inline bool SafeHasMagicEffect(RE::Actor *a_actor,
-                                    RE::EffectSetting *a_effect) {
+        inline bool SafeHasMagicEffect(RE::Actor *a_actor, RE::EffectSetting *a_effect)
+        {
             if (!a_actor || !a_effect) {
                 return false;
             }
@@ -350,7 +372,8 @@ namespace CombatAI {
         }
 
         // Safe IsBlocking
-        inline bool SafeIsBlocking(RE::Actor *a_actor) {
+        inline bool SafeIsBlocking(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -362,7 +385,8 @@ namespace CombatAI {
         }
 
         // Safe IsAttacking
-        inline bool SafeIsAttacking(RE::Actor *a_actor) {
+        inline bool SafeIsAttacking(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -374,7 +398,8 @@ namespace CombatAI {
         }
 
         // Safe IsWalking
-        inline bool SafeIsWalking(RE::Actor *a_actor) {
+        inline bool SafeIsWalking(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
@@ -390,7 +415,8 @@ namespace CombatAI {
         }
 
         // Safe GetKnockState
-        inline RE::KNOCK_STATE_ENUM SafeGetKnockState(RE::Actor *a_actor) {
+        inline RE::KNOCK_STATE_ENUM SafeGetKnockState(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return RE::KNOCK_STATE_ENUM::kNormal;
             }
@@ -407,24 +433,25 @@ namespace CombatAI {
 
         // Safe IsFleeing (from CombatController)
         // In CommonLibSSE, combatController is a direct member of Actor
-        inline bool SafeIsFleeing(RE::Actor *a_actor) {
+        inline bool SafeIsFleeing(RE::Actor *a_actor)
+        {
             if (!a_actor) {
                 return false;
             }
             try {
                 RE::CombatController *combatController = a_actor->combatController;
                 if (combatController) {
-            return combatController->IsFleeing();
+                    return combatController->IsFleeing();
+                }
+            } catch (...) {
+                // Combat controller access failed
             }
-        } catch (...) {
-            // Combat controller access failed
-        }
-        return false;
+            return false;
         }
 
         // Safe GetHeading
-        inline std::optional<float> SafeGetHeading(RE::Actor *a_actor,
-                                                bool a_absolute) {
+        inline std::optional<float> SafeGetHeading(RE::Actor *a_actor, bool a_absolute)
+        {
             if (!a_actor) {
                 return std::nullopt;
             }
@@ -436,8 +463,8 @@ namespace CombatAI {
         }
 
         // Safe ApplyVelocity - Direct Physics Control
-        inline void SafeApplyVelocity(RE::Actor *a_actor,
-                                    const RE::NiPoint3 &a_velocity) {
+        inline void SafeApplyVelocity(RE::Actor *a_actor, const RE::NiPoint3 &a_velocity)
+        {
             if (!a_actor) {
                 return;
             }

@@ -4,7 +4,8 @@
 
 namespace CombatAI
 {
-    void ConsolePrint(const char *a_fmt, ...) {
+    void ConsolePrint(const char *a_fmt, ...)
+    {
         auto console = RE::ConsoleLog::GetSingleton();
         if (console) {
             std::va_list args;
@@ -13,4 +14,4 @@ namespace CombatAI
             va_end(args);
         }
     }
-}
+} // namespace CombatAI

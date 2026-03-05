@@ -1,11 +1,11 @@
-#include "pch.h"
 #include "ModEventSinks.h"
-#include "ParryFeedbackTracker.h"
-#include "TimedBlockFeedbackTracker.h"
+#include "ActorUtils.h"
 #include "AttackDefenseFeedbackTracker.h"
 #include "GuardCounterFeedbackTracker.h"
-#include "ActorUtils.h"
 #include "Logger.h"
+#include "ParryFeedbackTracker.h"
+#include "TimedBlockFeedbackTracker.h"
+#include "pch.h"
 
 namespace CombatAI
 {
@@ -14,7 +14,9 @@ namespace CombatAI
     extern bool s_receivedParryModEvent;
     extern bool s_receivedTimedBlockModEvent;
 
-    RE::BSEventNotifyControl EldenParryEventSink::ProcessEvent(const SKSE::ModCallbackEvent* a_event, [[maybe_unused]] RE::BSTEventSource<SKSE::ModCallbackEvent>* a_eventSource)
+    RE::BSEventNotifyControl
+    EldenParryEventSink::ProcessEvent(const SKSE::ModCallbackEvent *a_event,
+                                      [[maybe_unused]] RE::BSTEventSource<SKSE::ModCallbackEvent> *a_eventSource)
     {
         if (!a_event) {
             return RE::BSEventNotifyControl::kContinue;
@@ -23,11 +25,11 @@ namespace CombatAI
         // Check for melee parry event
         if (a_event->eventName == "EP_MeleeParryEvent") {
             // The sender is the attacker (who got parried) according to EldenParry code
-            RE::Actor* attacker = nullptr;
+            RE::Actor *attacker = nullptr;
             if (a_event->sender) {
                 attacker = a_event->sender->As<RE::Actor>();
             }
-            
+
             if (attacker) {
                 // Mark that we received a mod callback event
                 s_receivedParryModEvent = true;
@@ -43,7 +45,9 @@ namespace CombatAI
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    RE::BSEventNotifyControl TimedBlockEventSink::ProcessEvent(const SKSE::ModCallbackEvent* a_event, [[maybe_unused]] RE::BSTEventSource<SKSE::ModCallbackEvent>* a_eventSource)
+    RE::BSEventNotifyControl
+    TimedBlockEventSink::ProcessEvent(const SKSE::ModCallbackEvent *a_event,
+                                      [[maybe_unused]] RE::BSTEventSource<SKSE::ModCallbackEvent> *a_eventSource)
     {
         if (!a_event) {
             return RE::BSEventNotifyControl::kContinue;
@@ -52,7 +56,7 @@ namespace CombatAI
         // Check if this is a Simple Timed Block event
         // STBL_OnTimedBlockDefender - sender is the defender (who successfully timed blocked)
         if (a_event->eventName == "STBL_OnTimedBlockDefender") {
-            RE::Actor* defender = nullptr;
+            RE::Actor *defender = nullptr;
             if (a_event->sender) {
                 defender = a_event->sender->As<RE::Actor>();
             }
@@ -65,7 +69,7 @@ namespace CombatAI
 
         // STBL_OnTimedBlockAttacker - sender is the attacker (whose attack got timed blocked)
         if (a_event->eventName == "STBL_OnTimedBlockAttacker") {
-            RE::Actor* attacker = nullptr;
+            RE::Actor *attacker = nullptr;
             if (a_event->sender) {
                 attacker = a_event->sender->As<RE::Actor>();
             }
@@ -81,15 +85,17 @@ namespace CombatAI
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    RE::BSEventNotifyControl AttackHitEventSink::ProcessEvent(const RE::TESHitEvent* a_event, [[maybe_unused]] RE::BSTEventSource<RE::TESHitEvent>* a_eventSource)
+    RE::BSEventNotifyControl
+    AttackHitEventSink::ProcessEvent(const RE::TESHitEvent *a_event,
+                                     [[maybe_unused]] RE::BSTEventSource<RE::TESHitEvent> *a_eventSource)
     {
         if (!a_event || !a_event->cause || !a_event->target) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
         // Get attacker and target
-        RE::Actor* attacker = a_event->cause->As<RE::Actor>();
-        RE::Actor* target = a_event->target->As<RE::Actor>();
+        RE::Actor *attacker = a_event->cause->As<RE::Actor>();
+        RE::Actor *target = a_event->target->As<RE::Actor>();
 
         if (!attacker || !target) {
             return RE::BSEventNotifyControl::kContinue;
@@ -110,11 +116,11 @@ namespace CombatAI
 
         // This is a successful hit - notify the tracker
         AttackDefenseFeedbackTracker::GetInstance().OnAttackHit(attacker, target);
-        
+
         // Also check if this was a guard counter attempt (power attack during guard counter window)
         // The guard counter tracker will match this hit with the recorded attempt
         GuardCounterFeedbackTracker::GetInstance().OnGuardCounterHit(attacker);
 
         return RE::BSEventNotifyControl::kContinue;
     }
-}
+} // namespace CombatAI

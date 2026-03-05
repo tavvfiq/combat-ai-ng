@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pch.h"
 #include "ActorUtils.h"
+#include "pch.h"
 
 namespace CombatAI
 {
@@ -19,7 +19,7 @@ namespace CombatAI
         Bow,
         Crossbow,
         Staff, // Magic staff
-        Spell // Magic/spell (no weapon)
+        Spell  // Magic/spell (no weapon)
     };
 
     // Self state information
@@ -32,14 +32,14 @@ namespace CombatAI
         bool isGuardCounterActive = false; // Guard counter window is active (from EldenCounter mod)
         bool isIdle = false;
         bool isSprinting = false; // Movement state: sprinting
-        bool isWalking = false; // Movement state: walking
+        bool isWalking = false;   // Movement state: walking
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
         WeaponType weaponType = WeaponType::None; // Weapon type equipped
-        bool isOneHanded = false; // True if one-handed weapon
-        bool isTwoHanded = false; // True if two-handed weapon
-        bool isRanged = false; // True if ranged weapon (bow/crossbow)
-        bool isMelee = false; // True if melee weapon
+        bool isOneHanded = false;                 // True if one-handed weapon
+        bool isTwoHanded = false;                 // True if two-handed weapon
+        bool isRanged = false;                    // True if ranged weapon (bow/crossbow)
+        bool isMelee = false;                     // True if melee weapon
     };
 
     // Target state information
@@ -52,145 +52,146 @@ namespace CombatAI
         bool isCasting = false;
         bool isDrawingBow = false;
         bool isInAttackRecovery = false; // Target just finished attack (kFollowThrough) - recovery window
-        bool isSprinting = false; // Movement state: sprinting
-        bool isWalking = false; // Movement state: walking
-        bool isFleeing = false; // Target is fleeing/retreating from combat
-        float healthPercent = 0.0f; // Target health percentage
-        float staminaPercent = 0.0f; // Target stamina percentage
+        bool isSprinting = false;        // Movement state: sprinting
+        bool isWalking = false;          // Movement state: walking
+        bool isFleeing = false;          // Target is fleeing/retreating from combat
+        float healthPercent = 0.0f;      // Target health percentage
+        float staminaPercent = 0.0f;     // Target stamina percentage
         RE::KNOCK_STATE_ENUM knockState = RE::KNOCK_STATE_ENUM::kNormal;
         float distance = 0.0f;
         float orientationDot = 0.0f; // Dot product: 1.0 = facing directly at me, -1.0 = facing away
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
 
-        RE::TESForm* equippedRightHand = nullptr;
+        RE::TESForm *equippedRightHand = nullptr;
         WeaponType weaponType = WeaponType::None; // Target weapon type equipped
-        bool isOneHanded = false; // True if target has one-handed weapon
-        bool isTwoHanded = false; // True if target has two-handed weapon
-        bool isRanged = false; // True if target has ranged weapon (bow/crossbow)
-        bool isMelee = false; // True if target has melee weapon
+        bool isOneHanded = false;                 // True if target has one-handed weapon
+        bool isTwoHanded = false;                 // True if target has two-handed weapon
+        bool isRanged = false;                    // True if target has ranged weapon (bow/crossbow)
+        bool isMelee = false;                     // True if target has melee weapon
     };
 
     // Threat level classification
     enum class ThreatLevel : std::uint8_t
     {
-        None = 0,        // No enemies
-        Low = 1,         // 1 enemy
-        Moderate = 2,    // 2 enemies
-        High = 3,        // 3-4 enemies
-        Critical = 4     // 5+ enemies
+        None = 0,     // No enemies
+        Low = 1,      // 1 enemy
+        Moderate = 2, // 2 enemies
+        High = 3,     // 3-4 enemies
+        Critical = 4  // 5+ enemies
     };
 
     // Range classification
     enum class RangeCategory : std::uint8_t
     {
-        OutOfRange = 0,      // Beyond max attack range
-        MaxRange = 1,        // Within max attack range but beyond optimal
-        OptimalRange = 2,    // Within optimal attack range
-        CloseRange = 3       // Very close (within 60% of optimal range)
+        OutOfRange = 0,   // Beyond max attack range
+        MaxRange = 1,     // Within max attack range but beyond optimal
+        OptimalRange = 2, // Within optimal attack range
+        CloseRange = 3    // Very close (within 60% of optimal range)
     };
 
     // Combat context information (multiple enemies, allies, threat assessment)
     struct CombatContext
     {
-        int enemyCount = 0; // Number of enemies in combat
-        int allyCount = 0; // Number of allies in combat (friendly actors)
-        RE::Actor* closestEnemy = nullptr; // Closest enemy (might not be primary target)
+        int enemyCount = 0;                // Number of enemies in combat
+        int allyCount = 0;                 // Number of allies in combat (friendly actors)
+        RE::Actor *closestEnemy = nullptr; // Closest enemy (might not be primary target)
         float closestEnemyDistance = 0.0f;
-        
+
         // Threat level - how many enemies are targeting us
         ThreatLevel threatLevel = ThreatLevel::None;
         int enemiesTargetingUs = 0; // Number of enemies that have us as their target
-        
+
         // Flanking support: track closest ally position relative to target
         RE::NiPoint3 closestAllyPosition = RE::NiPoint3(0.0f, 0.0f, 0.0f);
         float closestAllyDistance = 0.0f;
         bool hasNearbyAlly = false; // True if ally is within flanking range
-        
+
         // Target facing relative to allies - for better flanking coordination
         float targetFacingAllyDot = 0.0f; // Dot product: 1.0 = target facing ally, -1.0 = target facing away from ally
-        bool targetFacingAwayFromAlly = false; // True if target is facing away from closest ally (good flanking opportunity)
+        bool targetFacingAwayFromAlly =
+            false; // True if target is facing away from closest ally (good flanking opportunity)
         bool targetFacingTowardAlly = false; // True if target is facing toward closest ally (we can flank from behind)
-        
+
         // Range granularity - precise range classification
         RangeCategory rangeCategory = RangeCategory::OutOfRange;
-        bool isInAttackRange = false; // True if within max attack range
+        bool isInAttackRange = false;  // True if within max attack range
         bool isInOptimalRange = false; // True if within optimal attack range
-        bool isInCloseRange = false; // True if very close (within 60% of optimal range)
+        bool isInCloseRange = false;   // True if very close (within 60% of optimal range)
     };
 
     // Temporal state information (time-based tracking for decision-making)
     struct SelfTemporalState
     {
-        float timeSinceLastAttack = 999.0f; // Time since last attack (any type)
-        float timeSinceLastDodge = 999.0f; // Time since last dodge/evasion
-        float timeSinceLastAction = 999.0f; // Time since last action (any action type)
-        float blockingDuration = 0.0f; // How long currently blocking
-        float attackingDuration = 0.0f; // How long currently attacking
-        float idleDuration = 0.0f; // How long currently idle
-        float timeSinceLastPowerAttack = 999.0f; // Time since last power attack
+        float timeSinceLastAttack = 999.0f;       // Time since last attack (any type)
+        float timeSinceLastDodge = 999.0f;        // Time since last dodge/evasion
+        float timeSinceLastAction = 999.0f;       // Time since last action (any action type)
+        float blockingDuration = 0.0f;            // How long currently blocking
+        float attackingDuration = 0.0f;           // How long currently attacking
+        float idleDuration = 0.0f;                // How long currently idle
+        float timeSinceLastPowerAttack = 999.0f;  // Time since last power attack
         float timeSinceLastSprintAttack = 999.0f; // Time since last sprint attack
-        float timeSinceLastBash = 999.0f; // Time since last bash
-        float timeSinceLastFeint = 999.0f; // Time since last feint
-        
+        float timeSinceLastBash = 999.0f;         // Time since last bash
+        float timeSinceLastFeint = 999.0f;        // Time since last feint
+
         // Parry feedback data
-        bool lastParrySuccess = false; // Whether last parry attempt was successful
-        float lastParryEstimatedDuration = 0.0f; // Estimated duration used for last parry attempt
+        bool lastParrySuccess = false;            // Whether last parry attempt was successful
+        float lastParryEstimatedDuration = 0.0f;  // Estimated duration used for last parry attempt
         float timeSinceLastParryAttempt = 999.0f; // Time since last parry attempt
-        int parrySuccessCount = 0; // Number of successful parries (for learning)
-        int parryAttemptCount = 0; // Total number of parry attempts (for learning)
-        
+        int parrySuccessCount = 0;                // Number of successful parries (for learning)
+        int parryAttemptCount = 0;                // Total number of parry attempts (for learning)
+
         // Timed Block feedback data
-        bool lastTimedBlockSuccess = false; // Whether last timed block attempt was successful
-        float lastTimedBlockEstimatedDuration = 0.0f; // Estimated duration used for last timed block attempt
+        bool lastTimedBlockSuccess = false;            // Whether last timed block attempt was successful
+        float lastTimedBlockEstimatedDuration = 0.0f;  // Estimated duration used for last timed block attempt
         float timeSinceLastTimedBlockAttempt = 999.0f; // Time since last timed block attempt
-        int timedBlockSuccessCount = 0; // Number of successful timed blocks (for learning)
-        int timedBlockAttemptCount = 0; // Total number of timed block attempts (for learning)
-        
+        int timedBlockSuccessCount = 0;                // Number of successful timed blocks (for learning)
+        int timedBlockAttemptCount = 0;                // Total number of timed block attempts (for learning)
+
         // Guard Counter feedback data
-        bool lastGuardCounterSuccess = false; // Whether last guard counter attempt was successful
+        bool lastGuardCounterSuccess = false;            // Whether last guard counter attempt was successful
         float timeSinceLastGuardCounterAttempt = 999.0f; // Time since last guard counter attempt
-        int guardCounterSuccessCount = 0; // Number of successful guard counters (hit)
-        int guardCounterAttemptCount = 0; // Total number of guard counter attempts
-        int guardCounterFailedCount = 0; // Number of failed guard counters (missed/blocked)
-        int guardCounterMissedOpportunityCount = 0; // Number of times guard counter window expired without attempt
-        float guardCounterSuccessRate = 0.0f; // Success rate (0.0-1.0)
-        
+        int guardCounterSuccessCount = 0;                // Number of successful guard counters (hit)
+        int guardCounterAttemptCount = 0;                // Total number of guard counter attempts
+        int guardCounterFailedCount = 0;                 // Number of failed guard counters (missed/blocked)
+        int guardCounterMissedOpportunityCount = 0;      // Number of times guard counter window expired without attempt
+        float guardCounterSuccessRate = 0.0f;            // Success rate (0.0-1.0)
+
         // Attack defense feedback data (when NPC's attacks are parried/timed blocked)
-        bool lastAttackParried = false; // Whether last attack was parried
-        bool lastAttackTimedBlocked = false; // Whether last attack was timed blocked
-        bool lastAttackHit = false; // Whether last attack successfully hit the target
-        bool lastAttackMissed = false; // Whether last attack missed (no hit, not parried/timed blocked)
+        bool lastAttackParried = false;            // Whether last attack was parried
+        bool lastAttackTimedBlocked = false;       // Whether last attack was timed blocked
+        bool lastAttackHit = false;                // Whether last attack successfully hit the target
+        bool lastAttackMissed = false;             // Whether last attack missed (no hit, not parried/timed blocked)
         float timeSinceLastParriedAttack = 999.0f; // Time since last parried attack
         float timeSinceLastTimedBlockedAttack = 999.0f; // Time since last timed blocked attack
-        float timeSinceLastHitAttack = 999.0f; // Time since last successful hit
-        float timeSinceLastMissedAttack = 999.0f; // Time since last missed attack
-        int parriedAttackCount = 0; // Number of attacks that were parried
-        int timedBlockedAttackCount = 0; // Number of attacks that were timed blocked
-        int hitAttackCount = 0; // Number of attacks that successfully hit
-        int missedAttackCount = 0; // Number of attacks that missed
-        int totalAttackCount = 0; // Total number of attacks attempted
-        float parryRate = 0.0f; // Percentage of attacks parried (0.0-1.0)
-        float timedBlockRate = 0.0f; // Percentage of attacks timed blocked (0.0-1.0)
-        float hitRate = 0.0f; // Percentage of attacks that hit (0.0-1.0)
-        float missRate = 0.0f; // Percentage of attacks that missed (0.0-1.0)
-        float totalDefenseRate = 0.0f; // Combined parry + timed block rate
+        float timeSinceLastHitAttack = 999.0f;          // Time since last successful hit
+        float timeSinceLastMissedAttack = 999.0f;       // Time since last missed attack
+        int parriedAttackCount = 0;                     // Number of attacks that were parried
+        int timedBlockedAttackCount = 0;                // Number of attacks that were timed blocked
+        int hitAttackCount = 0;                         // Number of attacks that successfully hit
+        int missedAttackCount = 0;                      // Number of attacks that missed
+        int totalAttackCount = 0;                       // Total number of attacks attempted
+        float parryRate = 0.0f;                         // Percentage of attacks parried (0.0-1.0)
+        float timedBlockRate = 0.0f;                    // Percentage of attacks timed blocked (0.0-1.0)
+        float hitRate = 0.0f;                           // Percentage of attacks that hit (0.0-1.0)
+        float missRate = 0.0f;                          // Percentage of attacks that missed (0.0-1.0)
+        float totalDefenseRate = 0.0f;                  // Combined parry + timed block rate
     };
 
     struct TargetTemporalState
     {
-        float timeSinceLastAttack = 999.0f; // Time since target last attacked
-        float blockingDuration = 0.0f; // How long target has been blocking
-        float castingDuration = 0.0f; // How long target has been casting
-        float drawingDuration = 0.0f; // How long target has been drawing bow
-        float attackingDuration = 0.0f; // How long target has been attacking
-        float idleDuration = 0.0f; // How long target has been idle
+        float timeSinceLastAttack = 999.0f;      // Time since target last attacked
+        float blockingDuration = 0.0f;           // How long target has been blocking
+        float castingDuration = 0.0f;            // How long target has been casting
+        float drawingDuration = 0.0f;            // How long target has been drawing bow
+        float attackingDuration = 0.0f;          // How long target has been attacking
+        float idleDuration = 0.0f;               // How long target has been idle
         float timeSinceLastPowerAttack = 999.0f; // Time since target's last power attack
-        
+
         // Parry timing data
-        float attackStartTime = -1.0f; // When current attack started (relative time, -1 if not attacking)
+        float attackStartTime = -1.0f;        // When current attack started (relative time, -1 if not attacking)
         float estimatedAttackDuration = 0.0f; // Estimated total duration of current attack
-        float timeUntilAttackHits = 999.0f; // Estimated time until attack hits (999 if not attacking or already hit)
+        float timeUntilAttackHits = 999.0f;   // Estimated time until attack hits (999 if not attacking or already hit)
     };
 
     struct TemporalState
@@ -205,7 +206,7 @@ namespace CombatAI
         SelfState self;
         TargetState target;
         CombatContext combatContext; // Combat context (multiple enemies, etc.)
-        TemporalState temporal; // Temporal state (time-based tracking)
+        TemporalState temporal;      // Temporal state (time-based tracking)
         float deltaTime = 0.0f;
         float weaponReach = 150.0f; // Weapon reach (from Precision or fallback)
     };
@@ -214,14 +215,12 @@ namespace CombatAI
     namespace StateHelpers
     {
         // Calculate distance between two positions
-        inline float CalculateDistance(const RE::NiPoint3& a, const RE::NiPoint3& b)
-        {
-            return a.GetDistance(b);
-        }
+        inline float CalculateDistance(const RE::NiPoint3 &a, const RE::NiPoint3 &b) { return a.GetDistance(b); }
 
         // Calculate dot product for orientation check
         // Returns 1.0 if target is directly facing self, -1.0 if facing away
-        inline float CalculateOrientationDot(const RE::NiPoint3& selfPos, const RE::NiPoint3& targetPos, const RE::NiPoint3& targetForward)
+        inline float CalculateOrientationDot(const RE::NiPoint3 &selfPos, const RE::NiPoint3 &targetPos,
+                                             const RE::NiPoint3 &targetForward)
         {
             RE::NiPoint3 toSelf = (selfPos - targetPos);
             toSelf.Unitize();
@@ -229,7 +228,7 @@ namespace CombatAI
         }
 
         // Get forward vector from actor (approximation using heading) - uses safe wrapper
-        inline RE::NiPoint3 GetActorForwardVector(RE::Actor* a_actor)
+        inline RE::NiPoint3 GetActorForwardVector(RE::Actor *a_actor)
         {
             if (!a_actor) {
                 return RE::NiPoint3(0.0f, 1.0f, 0.0f);
@@ -243,13 +242,13 @@ namespace CombatAI
                 float sinH = std::sin(heading);
                 return RE::NiPoint3(sinH, cosH, 0.0f);
             }
-            
+
             // Fallback if heading access failed
             return RE::NiPoint3(0.0f, 1.0f, 0.0f);
         }
 
         // Identify weapon type from TESObjectWEAP
-        inline WeaponType IdentifyWeaponType(RE::TESObjectWEAP* a_weapon)
+        inline WeaponType IdentifyWeaponType(RE::TESObjectWEAP *a_weapon)
         {
             if (!a_weapon) {
                 return WeaponType::None;
@@ -266,38 +265,38 @@ namespace CombatAI
             // Check weapon type using weaponData.animationType
             // RE::WEAPON_TYPE is an enumeration wrapper, need to get underlying value
             auto weaponTypeValue = a_weapon->weaponData.animationType.underlying();
-            
+
             // RE::WEAPON_TYPE enum values:
             // kHandToHand = 0, kOneHandSword = 1, kOneHandDagger = 2, kOneHandAxe = 3,
             // kOneHandMace = 4, kTwoHandSword = 5, kTwoHandAxe = 6, kBow = 7, kCrossbow = 8, kStaff = 9
             switch (weaponTypeValue) {
-                case 0: // kHandToHand
-                    return WeaponType::Unarmed;
-                case 1: // kOneHandSword
-                    return WeaponType::OneHandedSword;
-                case 2: // kOneHandDagger
-                    return WeaponType::OneHandedDagger;
-                case 3: // kOneHandAxe
-                    return WeaponType::OneHandedAxe;
-                case 4: // kOneHandMace
-                    return WeaponType::OneHandedMace;
-                case 5: // kTwoHandSword
-                    return WeaponType::TwoHandedSword;
-                case 6: // kTwoHandAxe
-                    return WeaponType::TwoHandedAxe;
-                case 7: // kBow
-                    return WeaponType::Bow;
-                case 8: // kCrossbow
-                    return WeaponType::Crossbow;
-                case 9: // kStaff
-                    return WeaponType::Staff;
-                default:
-                    return WeaponType::None;
+            case 0: // kHandToHand
+                return WeaponType::Unarmed;
+            case 1: // kOneHandSword
+                return WeaponType::OneHandedSword;
+            case 2: // kOneHandDagger
+                return WeaponType::OneHandedDagger;
+            case 3: // kOneHandAxe
+                return WeaponType::OneHandedAxe;
+            case 4: // kOneHandMace
+                return WeaponType::OneHandedMace;
+            case 5: // kTwoHandSword
+                return WeaponType::TwoHandedSword;
+            case 6: // kTwoHandAxe
+                return WeaponType::TwoHandedAxe;
+            case 7: // kBow
+                return WeaponType::Bow;
+            case 8: // kCrossbow
+                return WeaponType::Crossbow;
+            case 9: // kStaff
+                return WeaponType::Staff;
+            default:
+                return WeaponType::None;
             }
         }
 
         // Get weapon type from actor (checks equipped weapon)
-        inline WeaponType GetActorWeaponType(RE::Actor* a_actor)
+        inline WeaponType GetActorWeaponType(RE::Actor *a_actor)
         {
             if (!a_actor) {
                 return WeaponType::None;
@@ -334,5 +333,5 @@ namespace CombatAI
             // No weapon equipped - unarmed
             return WeaponType::Unarmed;
         }
-    }
-}
+    } // namespace StateHelpers
+} // namespace CombatAI

@@ -1,11 +1,11 @@
-#include "pch.h"
 #include "ActionExecutor.h"
-#include "Config.h"
 #include "ActorUtils.h"
-#include "ParryFeedbackTracker.h"
-#include "TimedBlockIntegration.h"
-#include "TimedBlockFeedbackTracker.h"
+#include "Config.h"
 #include "GuardCounterFeedbackTracker.h"
+#include "ParryFeedbackTracker.h"
+#include "TimedBlockFeedbackTracker.h"
+#include "TimedBlockIntegration.h"
+#include "pch.h"
 
 #ifdef min
 #undef min
@@ -16,15 +16,18 @@
 
 namespace CombatAI
 {
-    void ActionExecutor::EnableBFCO(bool isEnabled) {
+    void ActionExecutor::EnableBFCO(bool isEnabled)
+    {
         if (isEnabled) {
             LOG_INFO("BFCO integration enabled");
         } else {
             LOG_INFO("integration with BFCO disabled");
         }
+
+        m_isBFCOEnabled = isEnabled;
     }
 
-    bool ActionExecutor::Execute(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    bool ActionExecutor::Execute(RE::Actor *a_actor, const DecisionResult &a_decision, const ActorStateData &a_state)
     {
         if (!a_actor || a_decision.action == ActionType::None) {
             return false;
@@ -42,7 +45,7 @@ namespace CombatAI
         case ActionType::Attack:
             success = ExecuteAttack(a_actor);
             break;
-            
+
         case ActionType::PowerAttack:
             success = ExecutePowerAttack(a_actor, a_state);
             break;
@@ -82,11 +85,11 @@ namespace CombatAI
         case ActionType::Dodge:
             success = ExecuteDodge(a_actor, a_state);
             break;
-        
+
         case ActionType::Backoff:
             success = ExecuteBackoff(a_actor, a_decision, a_state);
             break;
-        
+
         case ActionType::Advancing:
             success = ExecuteAdvancing(a_actor, a_decision, a_state);
             break;
@@ -102,7 +105,7 @@ namespace CombatAI
         return success;
     }
 
-    bool ActionExecutor::ExecuteBash(RE::Actor* a_actor, const ActorStateData* a_state)
+    bool ActionExecutor::ExecuteBash(RE::Actor *a_actor, const ActorStateData *a_state)
     {
         if (!a_actor) {
             return false;
@@ -110,8 +113,7 @@ namespace CombatAI
 
         // Check if already bashing/attacking (don't interrupt)
         RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
-        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && attackState != RE::ATTACK_STATE_ENUM::kDraw) {
             // Already in an attack, don't interrupt
             return false;
         }
@@ -125,7 +127,7 @@ namespace CombatAI
         return NotifyAnimation(a_actor, "bashStart");
     }
 
-    bool ActionExecutor::ExecuteParry(RE::Actor* a_actor, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteParry(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -133,8 +135,7 @@ namespace CombatAI
 
         // Check if already bashing/attacking (don't interrupt)
         RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
-        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && attackState != RE::ATTACK_STATE_ENUM::kDraw) {
             // Already in an attack, don't interrupt
             return false;
         }
@@ -145,14 +146,13 @@ namespace CombatAI
         }
 
         // Always record parry attempt - this is specifically a parry action
-        if (a_state.target.isValid && 
-            (a_state.target.isAttacking || a_state.target.isPowerAttacking) &&
+        if (a_state.target.isValid && (a_state.target.isAttacking || a_state.target.isPowerAttacking) &&
             a_state.temporal.target.timeUntilAttackHits < 999.0f) {
             // Get target actor
-            RE::Actor* target = nullptr;
+            RE::Actor *target = nullptr;
             try {
                 // In CommonLibSSE, combatController is a direct member of Actor
-                RE::CombatController* combatController = a_actor->combatController;
+                RE::CombatController *combatController = a_actor->combatController;
                 if (combatController) {
                     RE::ActorHandle targetHandle = combatController->targetHandle;
                     RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -165,12 +165,9 @@ namespace CombatAI
             }
 
             if (target) {
-                ParryFeedbackTracker::GetInstance().RecordParryAttempt(
-                    a_actor,
-                    target,
-                    a_state.temporal.target.estimatedAttackDuration,
-                    a_state.temporal.target.timeUntilAttackHits
-                );
+                ParryFeedbackTracker::GetInstance().RecordParryAttempt(a_actor, target,
+                                                                       a_state.temporal.target.estimatedAttackDuration,
+                                                                       a_state.temporal.target.timeUntilAttackHits);
             }
         }
 
@@ -181,7 +178,7 @@ namespace CombatAI
         return NotifyAnimation(a_actor, "bashStart");
     }
 
-    bool ActionExecutor::ExecuteTimedBlock(RE::Actor* a_actor, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteTimedBlock(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -189,8 +186,7 @@ namespace CombatAI
 
         // Check if already blocking/attacking (don't interrupt)
         RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
-        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && attackState != RE::ATTACK_STATE_ENUM::kDraw) {
             // Already in an attack, don't interrupt
             return false;
         }
@@ -208,14 +204,13 @@ namespace CombatAI
         }
 
         // Record timed block attempt for feedback tracking
-        if (a_state.target.isValid && 
-            (a_state.target.isAttacking || a_state.target.isPowerAttacking) &&
+        if (a_state.target.isValid && (a_state.target.isAttacking || a_state.target.isPowerAttacking) &&
             a_state.temporal.target.timeUntilAttackHits < 999.0f) {
             // Get target actor
-            RE::Actor* target = nullptr;
+            RE::Actor *target = nullptr;
             try {
                 // In CommonLibSSE, combatController is a direct member of Actor
-                RE::CombatController* combatController = a_actor->combatController;
+                RE::CombatController *combatController = a_actor->combatController;
                 if (combatController) {
                     RE::ActorHandle targetHandle = combatController->targetHandle;
                     RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -229,11 +224,8 @@ namespace CombatAI
 
             if (target) {
                 TimedBlockFeedbackTracker::GetInstance().RecordTimedBlockAttempt(
-                    a_actor,
-                    target,
-                    a_state.temporal.target.estimatedAttackDuration,
-                    a_state.temporal.target.timeUntilAttackHits
-                );
+                    a_actor, target, a_state.temporal.target.estimatedAttackDuration,
+                    a_state.temporal.target.timeUntilAttackHits);
             }
         }
 
@@ -243,14 +235,14 @@ namespace CombatAI
         return NotifyAnimation(a_actor, "blockStart");
     }
 
-    bool ActionExecutor::ExecuteDodge(RE::Actor* a_actor, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteDodge(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
         }
 
         // Load dodge system config
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
         DodgeSystem::Config dodgeConfig;
         dodgeConfig.dodgeStaminaCost = config.GetDodgeSystem().dodgeStaminaCost;
         dodgeConfig.iFrameDuration = config.GetDodgeSystem().iFrameDuration;
@@ -262,7 +254,8 @@ namespace CombatAI
         return m_dodgeSystem.ExecuteEvasionDodge(a_actor, a_state);
     }
 
-    bool ActionExecutor::ExecuteStrafe(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteStrafe(RE::Actor *a_actor, const DecisionResult &a_decision,
+                                       const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -284,15 +277,15 @@ namespace CombatAI
             // Calculate circling parameters based on distance and direction
             // Make ranges more aggressive to ensure circling triggers
             float minDist = (std::max)(50.0f, a_state.target.distance * 0.7f); // More aggressive min distance
-            float maxDist = a_state.target.distance * 1.3f; // Wider max distance for better circling
-            
+            float maxDist = a_state.target.distance * 1.3f;                    // Wider max distance for better circling
+
             // Calculate circling angles based on strafe direction
             // CPR angles are relative to target's facing direction (0° = front, 90° = side, 180° = back)
             float minAngle, maxAngle;
             CalculateCPRCirclingAngles(movementDir, a_state, minAngle, maxAngle);
-            
+
             SetCPRCircling(a_actor, minDist, maxDist, minAngle, maxAngle);
-            
+
             // Set movement direction to guide CPR circling (works for both normal strafe and flanking)
             if (movementDir.x != 0.0f || movementDir.y != 0.0f) {
                 SetMovementDirection(a_actor, movementDir, a_decision.intensity);
@@ -305,7 +298,8 @@ namespace CombatAI
         return SetMovementDirection(a_actor, movementDir, a_decision.intensity);
     }
 
-    bool ActionExecutor::ExecuteFlanking(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteFlanking(RE::Actor *a_actor, const DecisionResult &a_decision,
+                                         const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -319,20 +313,20 @@ namespace CombatAI
         // Flanking is similar to strafe but with tactical positioning
         // Use the calculated flanking direction from decision (perpendicular to target, away from ally)
         RE::NiPoint3 flankDir = a_decision.direction;
-        
+
         // Try CPR circling if available and actor is melee-only
         bool isMeleeOnly = IsMeleeOnlyActor(a_actor);
         if (IsCPRAvailable(a_actor) && isMeleeOnly) {
             // Calculate circling parameters for flanking movement
             float minDist = (std::max)(50.0f, a_state.target.distance * 0.7f);
             float maxDist = a_state.target.distance * 1.3f;
-            
+
             // Calculate circling angles based on flanking direction
             float minAngle, maxAngle;
             CalculateCPRCirclingAngles(flankDir, a_state, minAngle, maxAngle);
-            
+
             SetCPRCircling(a_actor, minDist, maxDist, minAngle, maxAngle);
-            
+
             // Apply flanking direction to guide CPR circling (creates pincer movement)
             if (flankDir.x != 0.0f || flankDir.y != 0.0f) {
                 SetMovementDirection(a_actor, flankDir, a_decision.intensity);
@@ -350,11 +344,12 @@ namespace CombatAI
             flankDir = RE::NiPoint3(-toTarget.y, toTarget.x, 0.0f);
             flankDir.Unitize();
         }
-        
+
         return SetMovementDirection(a_actor, flankDir, a_decision.intensity);
     }
 
-    bool ActionExecutor::ExecuteRetreat(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteRetreat(RE::Actor *a_actor, const DecisionResult &a_decision,
+                                        const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -364,12 +359,13 @@ namespace CombatAI
         // NOTE: CPR fallback works for all actors (not just melee-only)
         if (IsCPRAvailable(a_actor)) {
             // Calculate fallback parameters
-            float retreatDistance = a_state.target.isValid ? a_state.target.distance : 600.0f; // Default if no valid target
+            float retreatDistance =
+                a_state.target.isValid ? a_state.target.distance : 600.0f; // Default if no valid target
             float minDist = retreatDistance;
             float maxDist = retreatDistance * 1.5f;
             float minWait = 1.5f; // TODO: make configurable
             float maxWait = 3.0f; // TODO: make configurable
-            
+
             SetCPRFallback(a_actor, minDist, maxDist, minWait, maxWait);
             return true;
         }
@@ -378,7 +374,7 @@ namespace CombatAI
         return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
     }
 
-    bool ActionExecutor::ExecuteSprintAttack(RE::Actor* a_actor)
+    bool ActionExecutor::ExecuteSprintAttack(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return false;
@@ -403,8 +399,7 @@ namespace CombatAI
         return true;
     }
 
-
-    bool ActionExecutor::NotifyAnimation(RE::Actor* a_actor, const char* a_eventName)
+    bool ActionExecutor::NotifyAnimation(RE::Actor *a_actor, const char *a_eventName)
     {
         if (!a_actor) {
             return false;
@@ -412,13 +407,13 @@ namespace CombatAI
         return ActorUtils::SafeNotifyAnimationGraph(a_actor, a_eventName);
     }
 
-    bool ActionExecutor::SetMovementDirection(RE::Actor* a_actor, const RE::NiPoint3& a_direction, float a_intensity)
+    bool ActionExecutor::SetMovementDirection(RE::Actor *a_actor, const RE::NiPoint3 &a_direction, float a_intensity)
     {
         if (!a_actor) {
             return false;
         }
 
-        RE::NiAVObject* actor3d = ActorUtils::SafeGet3D(a_actor);
+        RE::NiAVObject *actor3d = ActorUtils::SafeGet3D(a_actor);
         if (!actor3d) {
             return false;
         }
@@ -453,7 +448,7 @@ namespace CombatAI
         // Modern Movement / Mod Variables
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementDirection", angleDeg); // Usually expects Degrees
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "movementSpeed", speedNorm);
-        
+
         // InputDirection/Magnitude (TDM/MCO often use these)
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputDirection", angleDeg); // TDM expects Degrees
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "InputMagnitude", speedNorm);
@@ -463,20 +458,20 @@ namespace CombatAI
         // Physics Speed needs to match Animation Speed to look natural
         float physicsSpeed = 300.0f * speedNorm;
         RE::NiPoint3 velocity = worldDir * physicsSpeed;
-        
+
         ActorUtils::SafeApplyVelocity(a_actor, velocity);
 
         return true;
     }
 
-    bool ActionExecutor::IsCPRAvailable(RE::Actor* a_actor) const
+    bool ActionExecutor::IsCPRAvailable(RE::Actor *a_actor) const
     {
         if (!a_actor) {
             return false;
         }
 
         // Check config first
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
         if (!config.GetModIntegrations().enableCPRIntegration) {
             return false;
         }
@@ -487,7 +482,7 @@ namespace CombatAI
         return ActorUtils::SafeGetGraphVariableBool(a_actor, "CPR_EnableCircling", enableCircling);
     }
 
-    bool ActionExecutor::IsMeleeOnlyActor(RE::Actor* a_actor) const
+    bool ActionExecutor::IsMeleeOnlyActor(RE::Actor *a_actor) const
     {
         if (!a_actor) {
             return false;
@@ -498,7 +493,7 @@ namespace CombatAI
         // Wrap all checks in try-catch to prevent crashes from stale form pointers
         try {
             auto rightHand = ActorUtils::SafeGetEquippedObject(a_actor, false);
-            
+
             // Check right hand for ranged weapon
             if (rightHand) {
                 try {
@@ -518,13 +513,13 @@ namespace CombatAI
                     // Form access failed - assume melee to be safe
                 }
             }
-            
+
             // Check if actor is currently casting magic
             // This is more reliable than checking left hand (which could be shield)
             if (ActorUtils::SafeWhoIsCasting(a_actor) != 0) {
                 return false; // Actor is casting magic
             }
-            
+
             return true; // Melee-only actor
         } catch (...) {
             // Actor access failed - return false to be safe (skip CPR)
@@ -532,7 +527,7 @@ namespace CombatAI
         }
     }
 
-    void ActionExecutor::ResetBFCOAttackState(RE::Actor* a_actor)
+    void ActionExecutor::ResetBFCOAttackState(RE::Actor *a_actor)
     {
         if (!a_actor || !m_isBFCOEnabled) {
             return;
@@ -545,7 +540,8 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableInt(a_actor, "NEW_BFCO_DisablePALMB", 0);
     }
 
-    void ActionExecutor::SetCPRCircling(RE::Actor* a_actor, float a_minDist, float a_maxDist, float a_minAngle, float a_maxAngle)
+    void ActionExecutor::SetCPRCircling(RE::Actor *a_actor, float a_minDist, float a_maxDist, float a_minAngle,
+                                        float a_maxAngle)
     {
         if (!a_actor) {
             return;
@@ -565,7 +561,8 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_CirclingViewConeAngle", 360.0f); // Full view cone
     }
 
-    void ActionExecutor::SetCPRFallback(RE::Actor* a_actor, float a_minDist, float a_maxDist, float a_minWait, float a_maxWait)
+    void ActionExecutor::SetCPRFallback(RE::Actor *a_actor, float a_minDist, float a_maxDist, float a_minWait,
+                                        float a_maxWait)
     {
         if (!a_actor) {
             return;
@@ -585,7 +582,7 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_FallbackWaitTimeMax", a_maxWait * 0.5f); // Faster recovery
     }
 
-    void ActionExecutor::SetCPRBackoff(RE::Actor* a_actor, float a_minDistMult)
+    void ActionExecutor::SetCPRBackoff(RE::Actor *a_actor, float a_minDistMult)
     {
         if (!a_actor) {
             return;
@@ -595,14 +592,14 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableCircling", false);
         ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableAdvanceRadius", false);
         ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", false);
-        
+
         // Enable CPR backoff
         ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableBackoff", true);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_BackoffMinDistMult", a_minDistMult);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_BackoffChance", 1.0f); // Always backoff when triggered
     }
 
-    void ActionExecutor::DisableCPR(RE::Actor* a_actor)
+    void ActionExecutor::DisableCPR(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return;
@@ -615,7 +612,7 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableBool(a_actor, "CPR_EnableFallback", false);
     }
 
-    bool ActionExecutor::ExecuteAttack(RE::Actor* a_actor)
+    bool ActionExecutor::ExecuteAttack(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return false;
@@ -623,8 +620,7 @@ namespace CombatAI
 
         // Check if already attacking
         RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
-        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && attackState != RE::ATTACK_STATE_ENUM::kDraw) {
             return false;
         }
 
@@ -636,7 +632,7 @@ namespace CombatAI
         return NotifyAnimation(a_actor, "attackStart");
     }
 
-    bool ActionExecutor::ExecutePowerAttack(RE::Actor* a_actor, const ActorStateData& a_state)
+    bool ActionExecutor::ExecutePowerAttack(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -644,17 +640,16 @@ namespace CombatAI
 
         // Check if already attacking
         RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
-        if (attackState != RE::ATTACK_STATE_ENUM::kNone && 
-            attackState != RE::ATTACK_STATE_ENUM::kDraw) {
+        if (attackState != RE::ATTACK_STATE_ENUM::kNone && attackState != RE::ATTACK_STATE_ENUM::kDraw) {
             return false;
         }
 
         // Track guard counter attempt if guard counter window is active
         if (a_state.self.isGuardCounterActive && a_state.target.isValid) {
             // Get target actor
-            RE::Actor* target = nullptr;
+            RE::Actor *target = nullptr;
             try {
-                RE::CombatController* combatController = a_actor->combatController;
+                RE::CombatController *combatController = a_actor->combatController;
                 if (combatController) {
                     RE::ActorHandle targetHandle = combatController->targetHandle;
                     RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -681,55 +676,44 @@ namespace CombatAI
         return NotifyAnimation(a_actor, "powerAttack");
     }
 
-    bool ActionExecutor::ExecuteJump(RE::Actor* a_actor, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteJump(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
         }
-        
+
         // Check if already dodging/jumping - don't trigger another dodge
         bool isJumping = false;
         if (ActorUtils::SafeGetGraphVariableBool(a_actor, "EnhancedCombatAI_Jump", isJumping) && isJumping) {
             return false; // Already in jump state, don't trigger again
         }
-        
+
         // Set EnhancedCombatAI_Jump to true BEFORE executing dodge
         // This allows OAR to detect it and replace the dodge animation with a jump animation
         ActorUtils::SafeSetGraphVariableBool(a_actor, "EnhancedCombatAI_Jump", true);
-        
+
         // PHYSICS JUMP IMPULSE
         // Since we are hacking dodge to look like a jump, we need to provide the vertical movement manually.
         // SkyRim gravity is roughly -2000 units/sec^2.
-        // A velocity of 600.0f gives a jump height of roughly h = v^2 / 2g ~= 360000 / 4000 = 90 units (approx player jump height)
-        // We also add forward momentum to make it a "leap".
-        
-        // 1. Calculate jump direction (same as dodge direction)
-        RE::NiPoint3 jumpDir = a_state.actorPos - a_state.targetPos;
-        if (a_state.targetPos == RE::NiPoint3(0,0,0)) { // Fallback if no target
-            // Use actor forward
-            RE::NiPoint3 forwardDir; 
-            a_actor->GetForwardVector(forwardDir.x, forwardDir.y, forwardDir.z); // Not safe?
-            // Actually, let's just jump strictly UP if we can't determine direction, 
-            // relying on the dodge event to handle lateral move if any.
-            // But usually we want to back-step or side-step jump.
-        }
-        
+        // A velocity of 600.0f gives a jump height of roughly h = v^2 / 2g ~= 360000 / 4000 = 90 units (approx player
+        // jump height) We also add forward momentum to make it a "leap".
+
         // For now, let's keep it simple: Just UP. The Dodge animation has root motion for X/Y.
         // If we add X/Y velocity here, it might compound with root motion and launch them into orbit.
         // Let's rely on the anim for horizontal, and us for vertical.
-        
+
         RE::NiPoint3 jumpVelocity(0.0f, 0.0f, 600.0f); // Vertical impulse only
         ActorUtils::SafeApplyVelocity(a_actor, jumpVelocity);
 
         return ExecuteDodge(a_actor, a_state);
     }
 
-    void ActionExecutor::ResetJumpVariable(RE::Actor* a_actor)
+    void ActionExecutor::ResetJumpVariable(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return;
         }
-        
+
         // Wrap in try-catch to protect against stale actors
         try {
             a_actor->SetGraphVariableBool("EnhancedCombatAI_Jump", false);
@@ -738,7 +722,9 @@ namespace CombatAI
         }
     }
 
-    void ActionExecutor::CalculateCPRCirclingAngles(const RE::NiPoint3& a_strafeDirection, const ActorStateData& a_state, float& a_outMinAngle, float& a_outMaxAngle)
+    void ActionExecutor::CalculateCPRCirclingAngles(const RE::NiPoint3 &a_strafeDirection,
+                                                    const ActorStateData &a_state, float &a_outMinAngle,
+                                                    float &a_outMaxAngle)
     {
         // Default angles (both sides) if we can't determine direction
         a_outMinAngle = 45.0f;
@@ -765,7 +751,7 @@ namespace CombatAI
         // Determine if strafe direction is to the right or left relative to target
         // Dot product with target's right vector: positive = right side, negative = left side
         float strafeDotRight = a_strafeDirection.Dot(targetRight);
-        
+
         // Also check the direction from target to actor to determine which side we're on
         float actorDotRight = toActor.Dot(targetRight);
 
@@ -773,7 +759,7 @@ namespace CombatAI
         // If both indicate same side, use that side; otherwise use wider range
         bool strafeRight = strafeDotRight > 0.0f;
         bool actorRight = actorDotRight > 0.0f;
-        
+
         if (strafeRight && actorRight) {
             // Both indicate right side - circle to the right (30-90 degrees)
             a_outMinAngle = 30.0f;
@@ -796,7 +782,8 @@ namespace CombatAI
         }
     }
 
-    bool ActionExecutor::ExecuteBackoff(RE::Actor* a_actor, const DecisionResult& a_decision, [[maybe_unused]]const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteBackoff(RE::Actor *a_actor, const DecisionResult &a_decision,
+                                        [[maybe_unused]] const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -814,7 +801,8 @@ namespace CombatAI
         return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
     }
 
-    bool ActionExecutor::ExecuteFeint(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteFeint(RE::Actor *a_actor, const DecisionResult &a_decision,
+                                      const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -828,14 +816,14 @@ namespace CombatAI
         // Feinting strategy:
         // 1. Quick forward movement (appear aggressive)
         // 2. Then immediately strafe/dodge to bait enemy response
-        
+
         // Check if we can attack (for the "fake" part)
         RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
         if (attackState == RE::ATTACK_STATE_ENUM::kNone || attackState == RE::ATTACK_STATE_ENUM::kDraw) {
             // Start a quick bash as the "feint" (bash is faster than full attack)
             // This makes it look like we're committing to an attack
             bool bashSuccess = ExecuteBash(a_actor);
-            
+
             // After bash, immediately prepare to strafe/dodge
             // The movement direction from decision should guide the follow-up
             if (bashSuccess) {
@@ -844,11 +832,11 @@ namespace CombatAI
                 RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
                 toTarget.z = 0.0f;
                 toTarget.Unitize();
-                
+
                 // Perpendicular direction (strafe)
                 RE::NiPoint3 feintDir(-toTarget.y, toTarget.x, 0.0f);
                 feintDir.Unitize();
-                
+
                 // Apply movement with moderate intensity (not full commitment)
                 SetMovementDirection(a_actor, feintDir, a_decision.intensity);
                 return true;
@@ -864,17 +852,18 @@ namespace CombatAI
             forwardDir.z = 0.0f;
             forwardDir.Unitize();
         }
-        
+
         // Quick forward movement (appear aggressive)
         SetMovementDirection(a_actor, forwardDir, a_decision.intensity * 0.7f);
-        
+
         // Note: The actual "bait" follow-up (strafe/dodge) will happen in next frame
         // when the decision matrix evaluates again and sees the target's response
         return true;
     }
 
-    void ActionExecutor::SetCPRAdvancing(RE::Actor* a_actor, float a_innerRadiusMin, float a_innerRadiusMid, float a_innerRadiusMax,
-        float a_outerRadiusMin, float a_outerRadiusMid, float a_outerRadiusMax)
+    void ActionExecutor::SetCPRAdvancing(RE::Actor *a_actor, float a_innerRadiusMin, float a_innerRadiusMid,
+                                         float a_innerRadiusMax, float a_outerRadiusMin, float a_outerRadiusMid,
+                                         float a_outerRadiusMax)
     {
         if (!a_actor) {
             return;
@@ -893,13 +882,14 @@ namespace CombatAI
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMin", a_outerRadiusMin);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMid", a_outerRadiusMid);
         ActorUtils::SafeSetGraphVariableFloat(a_actor, "CPR_OuterRadiusMax", a_outerRadiusMax);
-        
+
         // NOTE: CPR_InterruptAction removed temporarily to avoid potential crashes
         // CPR will handle advancing naturally through its behavior tree
         // If needed, we can re-enable this later with proper throttling
     }
 
-    bool ActionExecutor::ExecuteAdvancing(RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state)
+    bool ActionExecutor::ExecuteAdvancing(RE::Actor *a_actor, const DecisionResult &a_decision,
+                                          const ActorStateData &a_state)
     {
         if (!a_actor) {
             return false;
@@ -911,17 +901,17 @@ namespace CombatAI
         if (IsCPRAvailable(a_actor) && isMeleeOnly) {
             // Calculate advancing parameters based on current distance
             float currentDistance = a_state.target.isValid ? a_state.target.distance : 1000.0f;
-            
+
             // Calculate desired engagement distance (sprint attack range)
-            auto& config = Config::GetInstance();
+            auto &config = Config::GetInstance();
             float desiredMinDist = config.GetDecisionMatrix().sprintAttackMinDistance;
             float desiredMaxDist = config.GetDecisionMatrix().sprintAttackMaxDistance;
-            
+
             // Set inner radius (minimum engagement distance)
             float innerRadiusMin = desiredMinDist * 0.8f;
             float innerRadiusMid = desiredMinDist;
             float innerRadiusMax = desiredMinDist * 1.2f;
-            
+
             // Set outer radius (maximum engagement distance - where we want to advance to)
             float outerRadiusMin = desiredMaxDist * 0.9f;
             float outerRadiusMid = desiredMaxDist;
@@ -929,14 +919,14 @@ namespace CombatAI
             float baseOuterRadiusMax = desiredMaxDist * 1.1f;
             // If current distance is beyond the base outer radius, expand it
             float outerRadiusMax = (std::max)(baseOuterRadiusMax, currentDistance * 0.95f);
-            
+
             // Enable CPR advancing
-            SetCPRAdvancing(a_actor, innerRadiusMin, innerRadiusMid, innerRadiusMax,
-                        outerRadiusMin, outerRadiusMid, outerRadiusMax);
+            SetCPRAdvancing(a_actor, innerRadiusMin, innerRadiusMid, innerRadiusMax, outerRadiusMin, outerRadiusMid,
+                            outerRadiusMax);
             return true;
         }
 
         // Fallback to direct movement control (move towards target)
         return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
     }
-}
+} // namespace CombatAI

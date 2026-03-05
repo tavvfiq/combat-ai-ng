@@ -1,7 +1,7 @@
-#include "ActorUtils.h"
-#include "pch.h"
 #include "DodgeSystem.h"
+#include "ActorUtils.h"
 #include "Config.h"
+#include "pch.h"
 #include <cmath>
 
 namespace CombatAI
@@ -10,16 +10,16 @@ namespace CombatAI
     {
         constexpr float PI = 3.14159265f;
         constexpr float PI8 = 0.39269908f; // PI / 8
-    }
+    } // namespace
 
-    bool DodgeSystem::CanDodge(RE::Actor* a_actor)
+    bool DodgeSystem::CanDodge(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return false;
         }
 
         // Check config first
-        auto& config = CombatAI::Config::GetInstance();
+        auto &config = CombatAI::Config::GetInstance();
         if (!config.GetModIntegrations().enableTKDodgeIntegration) {
             return false;
         }
@@ -30,7 +30,7 @@ namespace CombatAI
         }
 
         // Check attack state (can cancel if enabled)
-        RE::ActorState* state = ActorUtils::SafeAsActorState(a_actor);
+        RE::ActorState *state = ActorUtils::SafeAsActorState(a_actor);
         if (state) {
             RE::ATTACK_STATE_ENUM attackState = state->GetAttackState();
             if (attackState != RE::ATTACK_STATE_ENUM::kNone && !m_config.enableDodgeAttackCancel) {
@@ -74,7 +74,7 @@ namespace CombatAI
         return true;
     }
 
-    bool DodgeSystem::ExecuteDodge(RE::Actor* a_actor, const RE::NiPoint3& a_dodgeDirection)
+    bool DodgeSystem::ExecuteDodge(RE::Actor *a_actor, const RE::NiPoint3 &a_dodgeDirection)
     {
         if (!a_actor || !CanDodge(a_actor)) {
             return false;
@@ -103,7 +103,7 @@ namespace CombatAI
         return success;
     }
 
-    bool DodgeSystem::ExecuteEvasionDodge(RE::Actor* a_actor, const ActorStateData& a_state)
+    bool DodgeSystem::ExecuteEvasionDodge(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         if (!a_actor || !a_state.target.isValid) {
             return false;
@@ -118,7 +118,7 @@ namespace CombatAI
         // Calculate perpendicular direction (90 degrees)
         // Choose the direction that moves away from target's forward vector (if target is attacking)
         RE::NiPoint3 dodgeDir;
-        
+
         if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
             // If target is attacking, dodge perpendicular to their attack direction
             // Use target's forward vector to determine best dodge direction
@@ -138,7 +138,7 @@ namespace CombatAI
         return ExecuteDodge(a_actor, dodgeDir);
     }
 
-    std::string DodgeSystem::DetermineDodgeDirection(RE::Actor* a_actor, const RE::NiPoint3& a_dodgeDirection)
+    std::string DodgeSystem::DetermineDodgeDirection(RE::Actor *a_actor, const RE::NiPoint3 &a_dodgeDirection)
     {
         if (!a_actor) {
             return "TKDodgeBack";
@@ -146,7 +146,7 @@ namespace CombatAI
 
         // Get actor's forward vector
         RE::NiPoint3 actorForward = StateHelpers::GetActorForwardVector(a_actor);
-        
+
         // Normalize dodge direction
         RE::NiPoint3 normalizedDodge = a_dodgeDirection;
         normalizedDodge.z = 0.0f;
@@ -163,8 +163,10 @@ namespace CombatAI
         float angleDiff = dodgeAngle - forwardAngle;
 
         // Normalize angle to [-PI, PI]
-        while (angleDiff > PI) angleDiff -= 2.0f * PI;
-        while (angleDiff < -PI) angleDiff += 2.0f * PI;
+        while (angleDiff > PI)
+            angleDiff -= 2.0f * PI;
+        while (angleDiff < -PI)
+            angleDiff += 2.0f * PI;
 
         // Determine dodge direction based on angle
         // Forward: -PI/4 to PI/4
@@ -183,7 +185,7 @@ namespace CombatAI
         }
     }
 
-    bool DodgeSystem::IsDodging(RE::Actor* a_actor)
+    bool DodgeSystem::IsDodging(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return false;
@@ -194,7 +196,7 @@ namespace CombatAI
         return isDodging;
     }
 
-    void DodgeSystem::ApplyDodgeStaminaCost(RE::Actor* a_actor)
+    void DodgeSystem::ApplyDodgeStaminaCost(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return;
@@ -209,4 +211,4 @@ namespace CombatAI
             actorValueOwner->DamageActorValue(RE::ActorValue::kStamina, m_config.dodgeStaminaCost);
         }
     }
-}
+} // namespace CombatAI

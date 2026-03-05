@@ -1,0 +1,20 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+
+# Namespace brace on new line, content indented
+NamespaceIndentation: All
+
+# Functions/classes/structs: brace on new line (Allman)
+# Control flow (if/else/try/catch): brace on same line (K&R)
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterNamespace: true
+  AfterFunction: true
+  AfterClass: true
+  AfterStruct: true
+  AfterEnum: true
+  AfterControlStatement: Never
+  AfterCaseLabel: false
+  BeforeElse: false
+  BeforeCatch: false

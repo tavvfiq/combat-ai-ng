@@ -10,23 +10,24 @@ namespace CombatAI
 {
     class APIManager : public ECA_API::IVCombatAI1
     {
-    public:
-        static APIManager* GetSingleton();
+      public:
+        static APIManager *GetSingleton();
 
         // IVCombatAI1 Implementation
-        ECA_API::APIResult RegisterDecisionCallback(SKSE::PluginHandle a_pluginHandle, ECA_API::DecisionCallback&& a_callback) noexcept override;
+        ECA_API::APIResult RegisterDecisionCallback(SKSE::PluginHandle a_pluginHandle,
+                                                    ECA_API::DecisionCallback &&a_callback) noexcept override;
         ECA_API::APIResult RemoveDecisionCallback(SKSE::PluginHandle a_pluginHandle) noexcept override;
 
         // Internal Interface
-        void NotifyDecision(RE::Actor* a_actor, const DecisionResult& a_result);
+        void NotifyDecision(RE::Actor *a_actor, const DecisionResult &a_result);
 
-    private:
+      private:
         APIManager() = default;
         ~APIManager() = default;
-        APIManager(const APIManager&) = delete;
-        APIManager& operator=(const APIManager&) = delete;
+        APIManager(const APIManager &) = delete;
+        APIManager &operator=(const APIManager &) = delete;
 
         mutable std::shared_mutex m_mutex;
         std::unordered_map<SKSE::PluginHandle, ECA_API::DecisionCallback> m_callbacks;
     };
-}
+} // namespace CombatAI

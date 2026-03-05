@@ -1,18 +1,17 @@
-#include "pch.h"
 #include "CombatDirector.h"
-#include "ModEventSinks.h"
-#include "Config.h"
-#include "PrecisionIntegration.h"
-#include "TimedBlockIntegration.h"
-#include "ActorUtils.h"
-#include "ParryFeedbackTracker.h"
-#include "TimedBlockFeedbackTracker.h"
-#include "AttackDefenseFeedbackTracker.h"
-#include "GuardCounterFeedbackTracker.h"
 #include "APIManager.h"
+#include "ActorUtils.h"
+#include "AttackDefenseFeedbackTracker.h"
+#include "Config.h"
+#include "GuardCounterFeedbackTracker.h"
 #include "Logger.h"
+#include "ModEventSinks.h"
+#include "ParryFeedbackTracker.h"
+#include "PrecisionIntegration.h"
+#include "TimedBlockFeedbackTracker.h"
+#include "TimedBlockIntegration.h"
+#include "pch.h"
 #include <sstream>
-#include <cstring>
 
 namespace CombatAI
 {
@@ -23,9 +22,9 @@ namespace CombatAI
     void CombatDirector::Initialize()
     {
         LOG_INFO("CombatDirector initialized");
-        
+
         // Initialize Precision integration (if enabled in config)
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
         if (config.GetModIntegrations().enablePrecisionIntegration) {
             PrecisionIntegration::GetInstance().Initialize();
         }
@@ -47,10 +46,10 @@ namespace CombatAI
                 m_executor.EnableBFCO(false);
             }
         }
-        
+
         // Set processing interval
         m_processInterval = config.GetGeneral().processingInterval;
-        
+
         // Initialize humanizer with config values
         Humanizer::Config humanizerConfig;
         humanizerConfig.baseReactionDelayMs = config.GetHumanizer().baseReactionDelayMs;
@@ -83,7 +82,7 @@ namespace CombatAI
             return;
         }
 
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
 
         // Register parry callbacks if parry is enabled
         if (config.GetParry().enableParry) {
@@ -100,11 +99,12 @@ namespace CombatAI
             modCallbackEventSource->AddEventSink(&timedBlockEventSink);
             LOG_INFO("Registered mod callback listeners for Simple Timed Block integration");
         } else {
-            LOG_INFO("Timed Block is disabled, skipping Simple Timed Block callback registration");
+            LOG_INFO("Timed Block is disabled, skipping Simple Timed Block callback "
+                     "registration");
         }
 
-        // Register TESHitEvent sink to detect when NPC attacks successfully hit the player
-        // This is always enabled as it's needed for hit/miss tracking
+        // Register TESHitEvent sink to detect when NPC attacks successfully hit the
+        // player This is always enabled as it's needed for hit/miss tracking
         auto eventSourceHolder = RE::ScriptEventSourceHolder::GetSingleton();
         if (eventSourceHolder) {
             static AttackHitEventSink hitEventSink;
@@ -115,15 +115,15 @@ namespace CombatAI
         }
     }
 
-    void CombatDirector::ProcessActor(RE::Actor* a_actor, float a_deltaTime)
+    void CombatDirector::ProcessActor(RE::Actor *a_actor, float a_deltaTime)
     {
         // Debug logging - log ProcessActor calls occasionally
         static std::uint32_t processActorCallCount = 0;
         processActorCallCount++;
 
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
         bool debugEnabled = config.GetGeneral().enableDebugLog;
-        
+
         if (!ShouldProcessActor(a_actor, a_deltaTime)) {
             return;
         }
@@ -136,34 +136,15 @@ namespace CombatAI
             }
         }
 
-        // Update humanizer
-        m_humanizer.Update(a_deltaTime);
-
-        // Update parry feedback tracker (only if parry is enabled)
-        if (config.GetParry().enableParry) {
-            ParryFeedbackTracker::GetInstance().Update(a_deltaTime);
-        }
-
-        // Update timed block feedback tracker (only if timed block is enabled)
-        if (config.GetTimedBlock().enableTimedBlock) {
-            TimedBlockFeedbackTracker::GetInstance().Update(a_deltaTime);
-        }
-
-        // Update attack defense feedback tracker (always update, as attacks can be parried/timed blocked regardless of settings)
-        AttackDefenseFeedbackTracker::GetInstance().Update(a_deltaTime);
-
-        // Update guard counter feedback tracker (always update, guard counter is handled by EldenCounter mod)
-        GuardCounterFeedbackTracker::GetInstance().Update(a_deltaTime);
-
         // Check if actor can react (reaction delay)
         // For movement actions, allow continuous execution even during reaction delay
         // (we check this after getting the decision to see if it's a movement action)
         bool canReact = m_humanizer.CanReact(a_actor, a_deltaTime);
-        
+
         // Gather state first to check decision type
         ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
         DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
-        
+
         if (!canReact) {
             return; // can't react yet
         }
@@ -205,26 +186,51 @@ namespace CombatAI
 
     void CombatDirector::Update(float a_deltaTime)
     {
+        // Update per-frame systems (must be called once per frame, not per actor)
+        m_humanizer.Update(a_deltaTime);
+        m_observer.Update(a_deltaTime);
+
+        auto &config = Config::GetInstance();
+
+        // Update parry feedback tracker (only if parry is enabled)
+        if (config.GetParry().enableParry) {
+            ParryFeedbackTracker::GetInstance().Update(a_deltaTime);
+        }
+
+        // Update timed block feedback tracker (only if timed block is enabled)
+        if (config.GetTimedBlock().enableTimedBlock) {
+            TimedBlockFeedbackTracker::GetInstance().Update(a_deltaTime);
+        }
+
+        // Update attack defense feedback tracker (always update)
+        AttackDefenseFeedbackTracker::GetInstance().Update(a_deltaTime);
+
+        // Update guard counter feedback tracker (always update)
+        GuardCounterFeedbackTracker::GetInstance().Update(a_deltaTime);
+
         // Clean up spawn time entries:
-        // 1. Remove entries for actors that have been processed for a while (after warmup period)
-        // 2. This also catches actors that left combat (their spawn times stop incrementing)
-        m_actorSpawnTimes.WithWriteLock([&](auto& spawnTimesMap) {
+        // 1. Remove entries for actors that have been processed for a while (after
+        // warmup period)
+        // 2. This also catches actors that left combat (their spawn times stop
+        // incrementing)
+        m_actorSpawnTimes.WithWriteLock([&](auto &spawnTimesMap) {
             auto spawnIt = spawnTimesMap.begin();
             while (spawnIt != spawnTimesMap.end()) {
-                // Clean up old spawn times (actors that have been processed for a while or left combat)
+                // Clean up old spawn times (actors that have been processed for a while
+                // or left combat)
                 if (spawnIt->second > SPAWN_WARMUP_DELAY + 5.0f) {
-                    // Actor has been processed for 5+ seconds after warmup, remove spawn time entry
-                    // This also cleans up entries for actors that left combat (their times stop incrementing)
+                    // Actor has been processed for 5+ seconds after warmup, remove spawn
+                    // time entry This also cleans up entries for actors that left combat
+                    // (their times stop incrementing)
                     spawnIt = spawnTimesMap.erase(spawnIt);
                 } else {
                     ++spawnIt;
                 }
             }
         });
-        
+
         // Periodic cleanup (from config)
         static float cleanupTimer = 0.0f;
-        auto& config = Config::GetInstance();
         float cleanupInterval = config.GetPerformance().cleanupInterval;
         cleanupTimer += a_deltaTime;
         if (cleanupTimer > cleanupInterval) {
@@ -240,24 +246,25 @@ namespace CombatAI
         // We rely on lazy cleanup: entries are removed when actors leave combat
         // (checked in ProcessActor when actor is not in combat)
         // This avoids expensive LookupByID() calls that could crash
-        
+
         // Note: We don't need to do aggressive cleanup here since:
         // 1. FormIDs don't become invalid (unlike pointers)
         // 2. Entries are cleaned up lazily when actors leave combat
-        // 3. Avoiding LookupByID() prevents crashes from invalid FormIDs or deleted forms
-        
+        // 3. Avoiding LookupByID() prevents crashes from invalid FormIDs or deleted
+        // forms
+
         // Clean up Humanizer state (it also uses lazy cleanup)
         m_humanizer.Cleanup();
-        
+
         // Clean up spawn times for actors no longer in combat
         // This is done lazily in Update(), but we can also clean up here if needed
         // (Spawn times are cleaned up automatically in Update() after warmup period)
-        
-        // If we want to be more aggressive, we could add a size limit and remove oldest entries
-        // But for now, lazy cleanup is safer and more efficient
+
+        // If we want to be more aggressive, we could add a size limit and remove
+        // oldest entries But for now, lazy cleanup is safer and more efficient
     }
 
-    bool CombatDirector::ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime)
+    bool CombatDirector::ShouldProcessActor(RE::Actor *a_actor, float a_deltaTime)
     {
         if (!a_actor) {
             return false;
@@ -273,7 +280,7 @@ namespace CombatAI
 
         // Validate actor using safe wrappers - protects against transitional states
         // Actor is passed directly from hook, but could become invalid at any time
-        
+
         // Quick validation - if actor is dead or not in combat, skip early
         bool isDead = ActorUtils::SafeIsDead(a_actor);
         bool inCombat = ActorUtils::SafeIsInCombat(a_actor);
@@ -305,9 +312,10 @@ namespace CombatAI
         }
 
         // Check if we should only process combat actors
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
         if (config.GetPerformance().onlyProcessCombatActors) {
-            // Only process actors in combat (already checked above, but check again for consistency)
+            // Only process actors in combat (already checked above, but check again for
+            // consistency)
             if (!ActorUtils::SafeIsInCombat(a_actor)) {
                 return false;
             }
@@ -319,7 +327,7 @@ namespace CombatAI
         }
 
         RE::FormID formID = formIDOpt.value();
-        
+
         // Check spawn warmup delay for newly spawned actors
         // This prevents processing actors before they're fully initialized
         auto spawnTimeOpt = m_actorSpawnTimes.Find(formID);
@@ -330,23 +338,24 @@ namespace CombatAI
             // Don't process newly spawned actors immediately
             return false;
         }
-        
+
         // Increment spawn time using the deltaTime for this actor
-        // This ensures spawn times are updated even if Update() hasn't been called yet
-        auto* spawnTimePtr = m_actorSpawnTimes.GetMutable(formID);
+        // This ensures spawn times are updated even if Update() hasn't been called
+        // yet
+        auto *spawnTimePtr = m_actorSpawnTimes.GetMutable(formID);
         if (spawnTimePtr) {
             *spawnTimePtr += a_deltaTime;
         }
-        
+
         // Check if actor is still in warmup period
         auto currentSpawnTimeOpt = m_actorSpawnTimes.Find(formID);
         if (currentSpawnTimeOpt.has_value() && currentSpawnTimeOpt.value() < SPAWN_WARMUP_DELAY) {
             // Actor is still warming up, don't process yet
             return false;
         }
-        
+
         // Use thread-safe map operations for timer
-        auto* timerPtr = m_actorProcessTimers.GetMutable(formID);
+        auto *timerPtr = m_actorProcessTimers.GetMutable(formID);
         if (!timerPtr) {
             // First time processing this actor, initialize timer
             auto [inserted, newTimerPtr] = m_actorProcessTimers.Emplace(formID, 0.0f);
@@ -355,24 +364,24 @@ namespace CombatAI
             }
             return true; // First time, allow processing
         }
-        
+
         // Update timer
         *timerPtr += a_deltaTime;
-        
+
         // Determine processing interval based on distance to player (LOD)
         // Get player position - safely
         auto player = RE::PlayerCharacter::GetSingleton();
         float targetInterval = m_processInterval; // Default to near interval
-        
+
         if (player) {
             auto playerPos = player->GetPosition();
             auto actorPosOpt = ActorUtils::SafeGetPosition(a_actor);
-            
+
             if (actorPosOpt.has_value()) {
                 float distSq = playerPos.GetSquaredDistance(actorPosOpt.value());
                 float nearDistSq = config.GetPerformance().distanceNear * config.GetPerformance().distanceNear;
                 float midDistSq = config.GetPerformance().distanceMid * config.GetPerformance().distanceMid;
-                
+
                 if (distSq > midDistSq) {
                     // Far distance - slowest updates
                     targetInterval = config.GetPerformance().processingIntervalFar;
@@ -382,15 +391,15 @@ namespace CombatAI
                 }
             }
         }
-        
+
         // Only process if interval has passed
         if (*timerPtr < targetInterval) {
             return false; // Skip processing this frame
         }
-        
+
         // Reset timer for next interval
         *timerPtr = 0.0f;
 
         return true;
     }
-}
+} // namespace CombatAI

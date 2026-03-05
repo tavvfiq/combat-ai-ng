@@ -1,9 +1,9 @@
 #pragma once
 
 #if defined(_WIN32) || defined(_WIN64)
-    #define DLLEXPORT __declspec(dllexport)
+#define DLLEXPORT __declspec(dllexport)
 #else
-    #define DLLEXPORT
+#define DLLEXPORT
 #endif
 
 // Standard Library
@@ -28,5 +28,5 @@
 #include "Logger.h"
 
 // Third-party
-#include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/spdlog.h>

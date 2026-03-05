@@ -1,6 +1,6 @@
-#include "pch.h"
 #include "CombatStyleEnhancer.h"
 #include "ActorUtils.h"
+#include "pch.h"
 
 // Undefine Windows macros that conflict with std functions
 #ifdef min
@@ -16,12 +16,11 @@
 namespace CombatAI
 {
     // Helper function to clamp values (avoids Windows macro issues)
-    template<typename T>
-    constexpr T ClampValue(const T& value, const T& minVal, const T& maxVal)
+    template <typename T> constexpr T ClampValue(const T &value, const T &minVal, const T &maxVal)
     {
         return (value < minVal) ? minVal : ((value > maxVal) ? maxVal : value);
     }
-    RE::TESCombatStyle* CombatStyleEnhancer::GetCombatStyle(RE::Actor* a_actor)
+    RE::TESCombatStyle *CombatStyleEnhancer::GetCombatStyle(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return nullptr;
@@ -30,7 +29,7 @@ namespace CombatAI
         // Get from combat controller first (runtime)
         try {
             // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController* controller = a_actor->combatController;
+            RE::CombatController *controller = a_actor->combatController;
             if (controller && controller->combatStyle) {
                 return controller->combatStyle;
             }
@@ -39,7 +38,7 @@ namespace CombatAI
         }
 
         // Fallback to actor base
-        RE::TESNPC* base = ActorUtils::SafeGetActorBase(a_actor);
+        RE::TESNPC *base = ActorUtils::SafeGetActorBase(a_actor);
         if (base) {
             return base->GetCombatStyle();
         }
@@ -47,13 +46,14 @@ namespace CombatAI
         return nullptr;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceDecision(RE::Actor* a_actor, const DecisionResult& a_baseDecision, const ActorStateData& a_state)
+    DecisionResult CombatStyleEnhancer::EnhanceDecision(RE::Actor *a_actor, const DecisionResult &a_baseDecision,
+                                                        const ActorStateData &a_state)
     {
         if (!a_actor || a_baseDecision.action == ActionType::None) {
             return a_baseDecision;
         }
 
-        RE::TESCombatStyle* style = GetCombatStyle(a_actor);
+        RE::TESCombatStyle *style = GetCombatStyle(a_actor);
         if (!style) {
             return a_baseDecision; // No combat style, use base decision
         }
@@ -89,9 +89,10 @@ namespace CombatAI
         return enhanced;
     }
 
-    bool CombatStyleEnhancer::HasMeleeWeapon(RE::Actor* a_actor) const
+    bool CombatStyleEnhancer::HasMeleeWeapon(RE::Actor *a_actor) const
     {
-        if (!a_actor) return false;
+        if (!a_actor)
+            return false;
         auto weapon = ActorUtils::SafeGetEquippedObject(a_actor, false);
         if (weapon && weapon->IsWeapon()) {
             auto weap = weapon->As<RE::TESObjectWEAP>();
@@ -100,9 +101,10 @@ namespace CombatAI
         return false;
     }
 
-    bool CombatStyleEnhancer::HasRangedWeapon(RE::Actor* a_actor) const
+    bool CombatStyleEnhancer::HasRangedWeapon(RE::Actor *a_actor) const
     {
-        if (!a_actor) return false;
+        if (!a_actor)
+            return false;
         auto weapon = ActorUtils::SafeGetEquippedObject(a_actor, false);
         if (weapon && weapon->IsWeapon()) {
             auto weap = weapon->As<RE::TESObjectWEAP>();
@@ -111,15 +113,19 @@ namespace CombatAI
         return false;
     }
 
-    bool CombatStyleEnhancer::HasMagicEquipped(RE::Actor* a_actor) const
+    bool CombatStyleEnhancer::HasMagicEquipped(RE::Actor *a_actor) const
     {
-        if (!a_actor) return false;
+        if (!a_actor)
+            return false;
         // Check if casting or has spell equipped
-        return ActorUtils::SafeWhoIsCasting(a_actor) != 0 || 
+        return ActorUtils::SafeWhoIsCasting(a_actor) != 0 ||
                ActorUtils::SafeGetEquippedObject(a_actor, true) != nullptr;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceForDuelingStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state, RE::TESCombatStyle* a_style)
+    DecisionResult CombatStyleEnhancer::EnhanceForDuelingStyle([[maybe_unused]] RE::Actor *a_actor,
+                                                               const DecisionResult &a_decision,
+                                                               const ActorStateData &a_state,
+                                                               RE::TESCombatStyle *a_style)
     {
         DecisionResult result = a_decision;
 
@@ -158,7 +164,10 @@ namespace CombatAI
         return result;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceForFlankingStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state, RE::TESCombatStyle* a_style)
+    DecisionResult CombatStyleEnhancer::EnhanceForFlankingStyle([[maybe_unused]] RE::Actor *a_actor,
+                                                                const DecisionResult &a_decision,
+                                                                const ActorStateData &a_state,
+                                                                RE::TESCombatStyle *a_style)
     {
         DecisionResult result = a_decision;
 
@@ -192,7 +201,7 @@ namespace CombatAI
         return result;
     }
 
-    RE::NiPoint3 CombatStyleEnhancer::CalculateStrafeDirection(const ActorStateData& a_state)
+    RE::NiPoint3 CombatStyleEnhancer::CalculateStrafeDirection(const ActorStateData &a_state)
     {
         if (!a_state.target.isValid) {
             return RE::NiPoint3(1.0f, 0.0f, 0.0f);
@@ -205,7 +214,10 @@ namespace CombatAI
         return strafeDir;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceForAggressiveStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state, RE::TESCombatStyle* a_style)
+    DecisionResult CombatStyleEnhancer::EnhanceForAggressiveStyle([[maybe_unused]] RE::Actor *a_actor,
+                                                                  const DecisionResult &a_decision,
+                                                                  const ActorStateData &a_state,
+                                                                  RE::TESCombatStyle *a_style)
     {
         DecisionResult result = a_decision;
 
@@ -234,7 +246,8 @@ namespace CombatAI
         }
 
         // Boost offensive actions - subtle nudge only (vanilla AI already handles combat style)
-        if (result.action == ActionType::Bash || result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
+        if (result.action == ActionType::Bash || result.action == ActionType::Attack ||
+            result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
             result.priority += 0.1f; // Subtle boost - vanilla AI already respects combat style
         }
 
@@ -251,7 +264,10 @@ namespace CombatAI
         return result;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceForDefensiveStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state, RE::TESCombatStyle* a_style)
+    DecisionResult CombatStyleEnhancer::EnhanceForDefensiveStyle([[maybe_unused]] RE::Actor *a_actor,
+                                                                 const DecisionResult &a_decision,
+                                                                 const ActorStateData &a_state,
+                                                                 RE::TESCombatStyle *a_style)
     {
         DecisionResult result = a_decision;
 
@@ -260,7 +276,8 @@ namespace CombatAI
             result.priority += 0.15f; // Subtle boost - vanilla AI already handles defensive style
         }
 
-        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump) {
+        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge ||
+            result.action == ActionType::Jump) {
             result.priority += 0.1f; // Subtle boost
         }
 
@@ -272,7 +289,9 @@ namespace CombatAI
         return result;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceForMagicStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, const ActorStateData& a_state, RE::TESCombatStyle* a_style)
+    DecisionResult CombatStyleEnhancer::EnhanceForMagicStyle([[maybe_unused]] RE::Actor *a_actor,
+                                                             const DecisionResult &a_decision,
+                                                             const ActorStateData &a_state, RE::TESCombatStyle *a_style)
     {
         DecisionResult result = a_decision;
 
@@ -292,14 +311,18 @@ namespace CombatAI
         }
 
         // Prefer strafe/dodge/backoff to maintain range - subtle nudge
-        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
+        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge ||
+            result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
             result.priority += 0.15f; // Subtle boost
         }
 
         return result;
     }
 
-    DecisionResult CombatStyleEnhancer::EnhanceForRangedStyle([[maybe_unused]]RE::Actor* a_actor, const DecisionResult& a_decision, [[maybe_unused]]const ActorStateData& a_state, RE::TESCombatStyle* a_style)
+    DecisionResult CombatStyleEnhancer::EnhanceForRangedStyle([[maybe_unused]] RE::Actor *a_actor,
+                                                              const DecisionResult &a_decision,
+                                                              [[maybe_unused]] const ActorStateData &a_state,
+                                                              RE::TESCombatStyle *a_style)
     {
         DecisionResult result = a_decision;
 
@@ -314,19 +337,23 @@ namespace CombatAI
         }
 
         // Discourage melee attacks
-        if (result.action == ActionType::Attack || result.action == ActionType::PowerAttack || result.action == ActionType::SprintAttack) {
+        if (result.action == ActionType::Attack || result.action == ActionType::PowerAttack ||
+            result.action == ActionType::SprintAttack) {
             result.priority = (std::max)(0.0f, result.priority - 0.3f);
         }
 
         // Prefer strafe, dodge, jump, or backoff to maintain optimal range - subtle nudge
-        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge || result.action == ActionType::Jump || result.action == ActionType::Retreat || result.action == ActionType::Backoff) {
+        if (result.action == ActionType::Strafe || result.action == ActionType::Dodge ||
+            result.action == ActionType::Jump || result.action == ActionType::Retreat ||
+            result.action == ActionType::Backoff) {
             result.priority += 0.15f; // Subtle boost
         }
 
         return result;
     }
 
-    void CombatStyleEnhancer::ApplyStyleMultipliers(RE::TESCombatStyle* a_style, DecisionResult& a_decision, const ActorStateData& a_state)
+    void CombatStyleEnhancer::ApplyStyleMultipliers(RE::TESCombatStyle *a_style, DecisionResult &a_decision,
+                                                    const ActorStateData &a_state)
     {
         if (!a_style) {
             return;
@@ -353,7 +380,8 @@ namespace CombatAI
         }
 
         // Apply close range multipliers (affects movement actions)
-        if ((a_decision.action == ActionType::Strafe || a_decision.action == ActionType::Dodge) && a_state.target.distance < 200.0f) {
+        if ((a_decision.action == ActionType::Strafe || a_decision.action == ActionType::Dodge) &&
+            a_state.target.distance < 200.0f) {
             float circleMult = a_style->closeRangeData.circleMult;
             a_decision.intensity *= circleMult;
             a_decision.intensity = ClampValue(a_decision.intensity, 0.0f, 1.0f);
@@ -367,15 +395,15 @@ namespace CombatAI
             } else if (fallbackMult < 0.5f) {
                 a_decision.priority = (std::max)(0.0f, a_decision.priority - 0.1f); // Reduced from 0.2f
             }
-            
+
             // Personality/trait-based adjustments for retreat
             // DecisionMatrix handles outnumbering logic, here we adjust based on combat style traits
             // Check if NPC has defensive/cowardly traits based on combat style
             // High defensiveMult, high fallbackMult, or high avoidThreatChance indicate defensive/cowardly behavior
-            bool isDefensiveOrCowardly = (a_style->generalData.defensiveMult > a_style->generalData.offensiveMult * 1.5f) ||
-                                        (fallbackMult > 1.2f) ||
-                                        (a_style->generalData.avoidThreatChance > 0.6f);
-            
+            bool isDefensiveOrCowardly =
+                (a_style->generalData.defensiveMult > a_style->generalData.offensiveMult * 1.5f) ||
+                (fallbackMult > 1.2f) || (a_style->generalData.avoidThreatChance > 0.6f);
+
             // Apply trait-based adjustments (regardless of outnumbering - DecisionMatrix handles that)
             if (isDefensiveOrCowardly) {
                 // Defensive/cowardly NPCs - boost retreat priority (they're naturally more cautious)
@@ -387,7 +415,8 @@ namespace CombatAI
         }
 
         // Apply avoid threat chance (affects all evasion actions) - subtle adjustments
-        if (a_decision.action == ActionType::Strafe || a_decision.action == ActionType::Dodge || a_decision.action == ActionType::Jump) {
+        if (a_decision.action == ActionType::Strafe || a_decision.action == ActionType::Dodge ||
+            a_decision.action == ActionType::Jump) {
             float avoidThreat = a_style->generalData.avoidThreatChance;
             if (avoidThreat > 0.5f) {
                 a_decision.priority += 0.1f; // Reduced from 0.2f
@@ -413,4 +442,4 @@ namespace CombatAI
             }
         }
     }
-}
+} // namespace CombatAI

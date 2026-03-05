@@ -1,15 +1,16 @@
-#include "pch.h"
 #include "APIManager.h"
+#include "pch.h"
 
 namespace CombatAI
 {
-    APIManager* APIManager::GetSingleton()
+    APIManager *APIManager::GetSingleton()
     {
         static APIManager singleton;
         return &singleton;
     }
 
-    ECA_API::APIResult APIManager::RegisterDecisionCallback(SKSE::PluginHandle a_pluginHandle, ECA_API::DecisionCallback&& a_callback) noexcept
+    ECA_API::APIResult APIManager::RegisterDecisionCallback(SKSE::PluginHandle a_pluginHandle,
+                                                            ECA_API::DecisionCallback &&a_callback) noexcept
     {
         std::unique_lock lock(m_mutex);
         if (m_callbacks.find(a_pluginHandle) != m_callbacks.end()) {
@@ -29,7 +30,7 @@ namespace CombatAI
         return ECA_API::APIResult::OK;
     }
 
-    void APIManager::NotifyDecision(RE::Actor* a_actor, const DecisionResult& a_result)
+    void APIManager::NotifyDecision(RE::Actor *a_actor, const DecisionResult &a_result)
     {
         if (m_callbacks.empty()) {
             return;
@@ -39,13 +40,13 @@ namespace CombatAI
         ECA_API::DecisionData data;
         data.action = static_cast<ECA_API::ActionType>(a_result.action);
         data.priority = a_result.priority;
-        data.direction = { a_result.direction.x, a_result.direction.y, a_result.direction.z };
+        data.direction = {a_result.direction.x, a_result.direction.y, a_result.direction.z};
         data.intensity = a_result.intensity;
 
         // Broadcast to all listeners
         // Use shared lock for reading the map
         std::shared_lock lock(m_mutex);
-        for (const auto& [handle, callback] : m_callbacks) {
+        for (const auto &[handle, callback] : m_callbacks) {
             if (callback) {
                 // Wrap in try-catch to protect against external crashes
                 try {
@@ -56,4 +57,4 @@ namespace CombatAI
             }
         }
     }
-}
+} // namespace CombatAI

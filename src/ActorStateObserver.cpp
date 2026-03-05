@@ -1,7 +1,8 @@
 #include "pch.h"
 
 // Undefine Windows macros that conflict with std functions
-// Must be done after pch.h (which includes RE/Skyrim.h that may include Windows headers)
+// Must be done after pch.h (which includes RE/Skyrim.h that may include Windows
+// headers)
 #ifdef min
 #undef min
 #endif
@@ -13,23 +14,22 @@
 #endif
 
 #include "ActorStateObserver.h"
-#include "PrecisionIntegration.h"
-#include "Config.h"
 #include "ActorUtils.h"
-#include "ParryFeedbackTracker.h"
-#include "TimedBlockFeedbackTracker.h"
 #include "AttackDefenseFeedbackTracker.h"
+#include "Config.h"
 #include "GuardCounterFeedbackTracker.h"
+#include "ParryFeedbackTracker.h"
+#include "PrecisionIntegration.h"
+#include "TimedBlockFeedbackTracker.h"
 
 namespace CombatAI
 {
     // Helper function to clamp values (avoids Windows macro issues)
-    template<typename T>
-    constexpr T ClampValue(const T& value, const T& minVal, const T& maxVal)
+    template <typename T> constexpr T ClampValue(const T &value, const T &minVal, const T &maxVal)
     {
         return (value < minVal) ? minVal : ((value > maxVal) ? maxVal : value);
     }
-    ActorStateData ActorStateObserver::GatherState(RE::Actor* a_actor, float a_deltaTime)
+    ActorStateData ActorStateObserver::GatherState(RE::Actor *a_actor, float a_deltaTime)
     {
         ActorStateData data;
         data.deltaTime = a_deltaTime;
@@ -44,10 +44,11 @@ namespace CombatAI
         // Get weapon reach
         data.weaponReach = GetWeaponReach(a_actor);
 
-        // Gather target state - wrap in try-catch to protect against invalid actor access
+        // Gather target state - wrap in try-catch to protect against invalid actor
+        // access
         try {
             // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController* combatController = a_actor->combatController;
+            RE::CombatController *combatController = a_actor->combatController;
 
             if (combatController) {
                 RE::ActorHandle targetHandle = combatController->targetHandle;
@@ -62,15 +63,13 @@ namespace CombatAI
         }
 
         // Gather combat context (multiple enemies, etc.) - cached for performance
-        static float currentTime = 0.0f;
-        currentTime += a_deltaTime;
-        data.combatContext = GatherCombatContext(a_actor, currentTime);
+        data.combatContext = GatherCombatContext(a_actor, m_currentTime);
 
         // Gather temporal state (time-based tracking)
-        RE::Actor* target = nullptr;
+        RE::Actor *target = nullptr;
         try {
             // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController* combatController = a_actor->combatController;
+            RE::CombatController *combatController = a_actor->combatController;
             if (combatController) {
                 RE::ActorHandle targetHandle = combatController->targetHandle;
                 RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -86,7 +85,9 @@ namespace CombatAI
         return data;
     }
 
-    SelfState ActorStateObserver::GatherSelfState(RE::Actor* a_actor)
+    void ActorStateObserver::Update(float a_deltaTime) { m_currentTime += a_deltaTime; }
+
+    SelfState ActorStateObserver::GatherSelfState(RE::Actor *a_actor)
     {
         SelfState state;
 
@@ -129,24 +130,21 @@ namespace CombatAI
 
         // Weapon type information
         state.weaponType = StateHelpers::GetActorWeaponType(a_actor);
-        
+
         // Set weapon category flags
-        state.isOneHanded = (state.weaponType == WeaponType::OneHandedSword ||
-                             state.weaponType == WeaponType::OneHandedDagger ||
-                             state.weaponType == WeaponType::OneHandedMace ||
-                             state.weaponType == WeaponType::OneHandedAxe);
-        state.isTwoHanded = (state.weaponType == WeaponType::TwoHandedSword ||
-                             state.weaponType == WeaponType::TwoHandedAxe);
-        state.isRanged = (state.weaponType == WeaponType::Bow ||
-                         state.weaponType == WeaponType::Crossbow);
-        state.isMelee = (state.isOneHanded || state.isTwoHanded ||
-                        state.weaponType == WeaponType::Unarmed ||
-                        state.weaponType == WeaponType::Staff);
+        state.isOneHanded =
+            (state.weaponType == WeaponType::OneHandedSword || state.weaponType == WeaponType::OneHandedDagger ||
+             state.weaponType == WeaponType::OneHandedMace || state.weaponType == WeaponType::OneHandedAxe);
+        state.isTwoHanded =
+            (state.weaponType == WeaponType::TwoHandedSword || state.weaponType == WeaponType::TwoHandedAxe);
+        state.isRanged = (state.weaponType == WeaponType::Bow || state.weaponType == WeaponType::Crossbow);
+        state.isMelee = (state.isOneHanded || state.isTwoHanded || state.weaponType == WeaponType::Unarmed ||
+                         state.weaponType == WeaponType::Staff);
 
         return state;
     }
 
-    TargetState ActorStateObserver::GatherTargetState(RE::Actor* a_self, RE::Actor* a_target)
+    TargetState ActorStateObserver::GatherTargetState(RE::Actor *a_self, RE::Actor *a_target)
     {
         TargetState state;
 
@@ -156,8 +154,8 @@ namespace CombatAI
 
         state.isValid = true;
 
-        // Use safe wrappers for all target property access - target can be knocked down/deleted
-        // Blocking state - use safe wrapper
+        // Use safe wrappers for all target property access - target can be knocked
+        // down/deleted Blocking state - use safe wrapper
         state.isBlocking = ActorUtils::SafeIsBlocking(a_target);
 
         // Attacking state - use safe wrapper
@@ -169,7 +167,8 @@ namespace CombatAI
         // Casting - use safe wrapper
         state.isCasting = (ActorUtils::SafeWhoIsCasting(a_target) != 0);
 
-        // Drawing bow - check if target has bow/crossbow and is in draw state - use safe wrappers
+        // Drawing bow - check if target has bow/crossbow and is in draw state - use
+        // safe wrappers
         state.isDrawingBow = false;
         auto equippedWeapon = ActorUtils::SafeGetEquippedObject(a_target, false);
         if (equippedWeapon && equippedWeapon->IsWeapon()) {
@@ -181,7 +180,8 @@ namespace CombatAI
             }
         }
 
-        // Attack recovery state - check if target just finished attack (kFollowThrough) - use safe wrapper
+        // Attack recovery state - check if target just finished attack
+        // (kFollowThrough) - use safe wrapper
         RE::ATTACK_STATE_ENUM targetAttackState = ActorUtils::SafeGetAttackState(a_target);
         state.isInAttackRecovery = (targetAttackState == RE::ATTACK_STATE_ENUM::kFollowThrough);
 
@@ -193,10 +193,12 @@ namespace CombatAI
         state.isSprinting = ActorUtils::SafeIsSprinting(a_target);
         state.isWalking = ActorUtils::SafeIsWalking(a_target);
 
-        // Target fleeing state - check if target is fleeing from combat - use safe wrapper
+        // Target fleeing state - check if target is fleeing from combat - use safe
+        // wrapper
         state.isFleeing = ActorUtils::SafeIsFleeing(a_target);
 
-        // Knock state (stagger/recoil) - use safe wrapper (can crash when actor is knocked down)
+        // Knock state (stagger/recoil) - use safe wrapper (can crash when actor is
+        // knocked down)
         state.knockState = ActorUtils::SafeGetKnockState(a_target);
 
         // Position - use safe wrapper
@@ -218,11 +220,12 @@ namespace CombatAI
             state.distance = 0.0f;
         }
 
-        // Orientation dot product (is target looking at me?) - use safe wrapper for self position
+        // Orientation dot product (is target looking at me?) - use safe wrapper for
+        // self position
         auto selfPosOpt2 = ActorUtils::SafeGetPosition(a_self);
         if (selfPosOpt2.has_value()) {
-            state.orientationDot = StateHelpers::CalculateOrientationDot(
-                selfPosOpt2.value(), state.position, state.forwardVector);
+            state.orientationDot =
+                StateHelpers::CalculateOrientationDot(selfPosOpt2.value(), state.position, state.forwardVector);
         } else {
             state.orientationDot = 0.0f;
         }
@@ -232,24 +235,21 @@ namespace CombatAI
 
         // Weapon type information
         state.weaponType = StateHelpers::GetActorWeaponType(a_target);
-        
+
         // Set weapon category flags
-        state.isOneHanded = (state.weaponType == WeaponType::OneHandedSword ||
-                             state.weaponType == WeaponType::OneHandedDagger ||
-                             state.weaponType == WeaponType::OneHandedMace ||
-                             state.weaponType == WeaponType::OneHandedAxe);
-        state.isTwoHanded = (state.weaponType == WeaponType::TwoHandedSword ||
-                             state.weaponType == WeaponType::TwoHandedAxe);
-        state.isRanged = (state.weaponType == WeaponType::Bow ||
-                         state.weaponType == WeaponType::Crossbow);
-        state.isMelee = (state.isOneHanded || state.isTwoHanded ||
-                        state.weaponType == WeaponType::Unarmed ||
-                        state.weaponType == WeaponType::Staff);
+        state.isOneHanded =
+            (state.weaponType == WeaponType::OneHandedSword || state.weaponType == WeaponType::OneHandedDagger ||
+             state.weaponType == WeaponType::OneHandedMace || state.weaponType == WeaponType::OneHandedAxe);
+        state.isTwoHanded =
+            (state.weaponType == WeaponType::TwoHandedSword || state.weaponType == WeaponType::TwoHandedAxe);
+        state.isRanged = (state.weaponType == WeaponType::Bow || state.weaponType == WeaponType::Crossbow);
+        state.isMelee = (state.isOneHanded || state.isTwoHanded || state.weaponType == WeaponType::Unarmed ||
+                         state.weaponType == WeaponType::Staff);
 
         return state;
     }
 
-    float ActorStateObserver::GetActorValuePercent(RE::Actor* a_actor, RE::ActorValue a_value)
+    float ActorStateObserver::GetActorValuePercent(RE::Actor *a_actor, RE::ActorValue a_value)
     {
         if (!a_actor) {
             return 0.0f;
@@ -263,8 +263,9 @@ namespace CombatAI
         }
 
         float current = actorValueOwner->GetActorValue(a_value);
-        
-        // Calculate maximum value - use GetActorValueMax which includes permanent + temporary modifiers
+
+        // Calculate maximum value - use GetActorValueMax which includes permanent +
+        // temporary modifiers
         float max = 0.0f;
         try {
             // Try GetActorValueMax first (includes permanent + temporary modifiers)
@@ -272,7 +273,7 @@ namespace CombatAI
         } catch (...) {
             // GetActorValueMax failed, try alternatives
         }
-        
+
         // If GetActorValueMax returned 0 or failed, try manual calculation
         // GetPermanentActorValue + GetActorValueModifier(kTemporary)
         if (max <= 0.0f) {
@@ -284,7 +285,7 @@ namespace CombatAI
                 // Manual calculation failed
             }
         }
-        
+
         // Final fallback: Just use GetPermanentActorValue
         if (max <= 0.0f) {
             try {
@@ -293,7 +294,7 @@ namespace CombatAI
                 // GetPermanentActorValue failed
             }
         }
-        
+
         // Last resort: GetBaseActorValue
         if (max <= 0.0f) {
             try {
@@ -310,7 +311,7 @@ namespace CombatAI
         return ClampValue(current / max, 0.0f, 1.0f);
     }
 
-    bool ActorStateObserver::IsPowerAttacking(RE::Actor* a_target)
+    bool ActorStateObserver::IsPowerAttacking(RE::Actor *a_target)
     {
         if (!a_target) {
             return false;
@@ -318,7 +319,8 @@ namespace CombatAI
 
         // Proper power attack detection using AttackData from HighProcessData
         // Based on ProjectGapClose implementation
-        // Wrap in try-catch as process data access can crash when actor is in transitional states
+        // Wrap in try-catch as process data access can crash when actor is in
+        // transitional states
         try {
             // In CommonLibSSE, currentProcess is a direct member of Actor
             auto currentProcess = a_target->currentProcess;
@@ -340,14 +342,14 @@ namespace CombatAI
         return false;
     }
 
-    float ActorStateObserver::EstimateAttackDuration(RE::Actor* a_target, bool a_isPowerAttack)
+    float ActorStateObserver::EstimateAttackDuration(RE::Actor *a_target, bool a_isPowerAttack)
     {
         if (!a_target) {
             return 0.5f; // Default attack duration
         }
 
         float baseDuration = 0.5f; // Base attack duration in seconds
-        
+
         // Get weapon speed if available
         auto equippedWeapon = ActorUtils::SafeGetEquippedObject(a_target, false);
         if (equippedWeapon && equippedWeapon->IsWeapon()) {
@@ -359,29 +361,29 @@ namespace CombatAI
                 baseDuration = 0.6f / (std::max)(weaponSpeed, 0.1f);
             }
         }
-        
+
         // Apply power attack multiplier (power attacks are slower)
         if (a_isPowerAttack) {
             baseDuration *= 1.5f;
         }
-        
+
         // Apply weapon type multipliers
         WeaponType weaponType = StateHelpers::GetActorWeaponType(a_target);
         switch (weaponType) {
-            case WeaponType::TwoHandedSword:
-            case WeaponType::TwoHandedAxe:
-                baseDuration *= 1.2f; // Two-handed weapons are slower
-                break;
-            case WeaponType::OneHandedDagger:
-                baseDuration *= 0.8f; // Daggers are faster
-                break;
-            case WeaponType::Unarmed:
-                baseDuration *= 0.9f; // Unarmed is fast
-                break;
-            default:
-                break;
+        case WeaponType::TwoHandedSword:
+        case WeaponType::TwoHandedAxe:
+            baseDuration *= 1.2f; // Two-handed weapons are slower
+            break;
+        case WeaponType::OneHandedDagger:
+            baseDuration *= 0.8f; // Daggers are faster
+            break;
+        case WeaponType::Unarmed:
+            baseDuration *= 0.9f; // Unarmed is fast
+            break;
+        default:
+            break;
         }
-        
+
         // Apply actor speed multiplier
         try {
             // Use safe wrapper to access ActorValueOwner
@@ -395,22 +397,24 @@ namespace CombatAI
         } catch (...) {
             // Speed access failed, use base duration
         }
-        
+
         // Use feedback from previous parry attempts to improve estimation
         // Get feedback for this target (they were parried by someone)
         // We'll use feedback from any actor who parried this target
-        // For now, we'll use a simple approach: if we have recent feedback, adjust slightly
+        // For now, we'll use a simple approach: if we have recent feedback, adjust
+        // slightly
         auto parryFeedback = ParryFeedbackTracker::GetInstance().GetFeedback(a_target);
         if (parryFeedback.parryAttemptCount > 0 && parryFeedback.lastParryEstimatedDuration > 0.0f) {
             // We have feedback - use it to adjust estimation
             // If last parry was successful, our estimation was good (or close)
             // If last parry failed, our estimation might be off
             float feedbackAdjustment = 1.0f;
-            
+
             if (parryFeedback.lastParrySuccess) {
                 // Successful parry - our estimation was good, but we can still refine
                 // Use weighted average: 70% current estimate, 30% successful estimate
-                float successRate = parryFeedback.parrySuccessCount / static_cast<float>(parryFeedback.parryAttemptCount);
+                float successRate =
+                    parryFeedback.parrySuccessCount / static_cast<float>(parryFeedback.parryAttemptCount);
                 if (successRate > 0.5f) {
                     // High success rate - trust the feedback more
                     baseDuration = baseDuration * 0.7f + parryFeedback.lastParryEstimatedDuration * 0.3f;
@@ -421,20 +425,22 @@ namespace CombatAI
                 // For now, just use a small adjustment
                 feedbackAdjustment = 1.05f; // Slightly increase duration estimate
             }
-            
+
             baseDuration *= feedbackAdjustment;
         }
 
         // Use feedback from previous timed block attempts to improve estimation
         // Similar to parry feedback, but for timed blocks
         auto timedBlockFeedback = TimedBlockFeedbackTracker::GetInstance().GetFeedback(a_target);
-        if (timedBlockFeedback.timedBlockAttemptCount > 0 && timedBlockFeedback.lastTimedBlockEstimatedDuration > 0.0f) {
+        if (timedBlockFeedback.timedBlockAttemptCount > 0 &&
+            timedBlockFeedback.lastTimedBlockEstimatedDuration > 0.0f) {
             // We have feedback - use it to adjust estimation
             float feedbackAdjustment = 1.0f;
-            
+
             if (timedBlockFeedback.lastTimedBlockSuccess) {
                 // Successful timed block - our estimation was good
-                float successRate = timedBlockFeedback.timedBlockSuccessCount / static_cast<float>(timedBlockFeedback.timedBlockAttemptCount);
+                float successRate = timedBlockFeedback.timedBlockSuccessCount /
+                                    static_cast<float>(timedBlockFeedback.timedBlockAttemptCount);
                 if (successRate > 0.5f) {
                     // High success rate - trust the feedback more
                     baseDuration = baseDuration * 0.7f + timedBlockFeedback.lastTimedBlockEstimatedDuration * 0.3f;
@@ -443,26 +449,26 @@ namespace CombatAI
                 // Failed timed block - our estimation might be off
                 feedbackAdjustment = 1.05f; // Slightly increase duration estimate
             }
-            
+
             baseDuration *= feedbackAdjustment;
         }
-        
+
         // Clamp to reasonable range (0.2s to 2.0s)
         return ClampValue(baseDuration, 0.2f, 2.0f);
     }
 
-    float ActorStateObserver::GetWeaponReach(RE::Actor* a_actor)
+    float ActorStateObserver::GetWeaponReach(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return 150.0f; // Default reach in game units
         }
 
         // Use Precision integration if available and enabled
-        auto& config = Config::GetInstance();
+        auto &config = Config::GetInstance();
         if (config.GetModIntegrations().enablePrecisionIntegration) {
             return PrecisionIntegration::GetInstance().GetWeaponReach(a_actor);
         }
-        
+
         // Fallback: use weapon stat or default - use safe wrapper
         auto weapon = ActorUtils::SafeGetEquippedObject(a_actor, false);
         if (weapon && weapon->IsWeapon()) {
@@ -471,11 +477,11 @@ namespace CombatAI
                 return weaponForm->GetReach() * 100.0f; // Convert to game units
             }
         }
-        
+
         return 150.0f; // Default fallback
     }
 
-    CombatContext ActorStateObserver::GatherCombatContext(RE::Actor* a_actor, float a_currentTime)
+    CombatContext ActorStateObserver::GatherCombatContext(RE::Actor *a_actor, float a_currentTime)
     {
         CombatContext context;
 
@@ -501,7 +507,7 @@ namespace CombatAI
         auto cachedContextOpt = m_combatContextCache.Find(formID);
         if (cachedContextOpt.has_value()) {
             // Check if cache is still valid
-            const auto& cached = cachedContextOpt.value();
+            const auto &cached = cachedContextOpt.value();
             if (a_currentTime - cached.lastUpdateTime < COMBAT_CONTEXT_UPDATE_INTERVAL) {
                 context = cached.context;
                 // Ensure raw pointer is cleared (it was cleared when cached)
@@ -513,7 +519,7 @@ namespace CombatAI
         // Not in cache or expired, gather fresh data - wrap in try-catch
         try {
             // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController* combatController = a_actor->combatController;
+            RE::CombatController *combatController = a_actor->combatController;
 
             if (!combatController) {
                 return context;
@@ -530,33 +536,32 @@ namespace CombatAI
                     context.enemyCount = 1;
                     // Don't store raw pointer - it becomes invalid
                     context.closestEnemy = nullptr;
-                    context.closestEnemyDistance = StateHelpers::CalculateDistance(
-                        selfPosOpt.value(),
-                        targetPosOpt.value()
-                    );
+                    context.closestEnemyDistance =
+                        StateHelpers::CalculateDistance(selfPosOpt.value(), targetPosOpt.value());
                 }
             }
 
-            // Scan for nearby actors (enemies and allies) - expensive operation, done in one pass
+            // Scan for nearby actors (enemies and allies) - expensive operation, done
+            // in one pass
             try {
                 ScanForNearbyActors(a_actor, context, target.get());
             } catch (...) {
                 // Scan failed, continue with whatever we have
             }
-            
+
             // Calculate range granularity based on target distance and weapon reach
             if (target && target.get()) {
                 float weaponReach = GetWeaponReach(a_actor);
                 if (weaponReach <= 0.0f) {
                     weaponReach = 150.0f; // Fallback
                 }
-                
-                float maxAttackRange = weaponReach * 1.5f; // Max attack range (with multiplier)
+
+                float maxAttackRange = weaponReach * 1.5f;     // Max attack range (with multiplier)
                 float optimalAttackRange = weaponReach * 0.9f; // Optimal attack range
-                float closeRange = optimalAttackRange * 0.6f; // Close range threshold
-                
+                float closeRange = optimalAttackRange * 0.6f;  // Close range threshold
+
                 float targetDistance = context.closestEnemyDistance;
-                
+
                 if (targetDistance <= closeRange) {
                     context.rangeCategory = RangeCategory::CloseRange;
                     context.isInCloseRange = true;
@@ -573,7 +578,7 @@ namespace CombatAI
                     context.rangeCategory = RangeCategory::OutOfRange;
                 }
             }
-            
+
             // Calculate threat level based on enemy count
             if (context.enemyCount == 0) {
                 context.threatLevel = ThreatLevel::None;
@@ -603,7 +608,8 @@ namespace CombatAI
         return context;
     }
 
-    void ActorStateObserver::ScanForNearbyActors(RE::Actor* a_actor, CombatContext& a_context, RE::Actor* a_primaryTarget)
+    void ActorStateObserver::ScanForNearbyActors(RE::Actor *a_actor, CombatContext &a_context,
+                                                 RE::Actor *a_primaryTarget)
     {
         if (!a_actor) {
             return;
@@ -626,10 +632,10 @@ namespace CombatAI
         int allies = 0;
         int enemiesTargetingUs = 0; // Count enemies that have us as their target
         float closestDistance = a_context.closestEnemyDistance > 0.0f ? a_context.closestEnemyDistance : scanRange;
-        
+
         // Get self forward vector for threat assessment
         RE::NiPoint3 selfForward = StateHelpers::GetActorForwardVector(a_actor);
-        
+
         // Get primary target position and forward vector for flanking calculations
         RE::NiPoint3 targetPos = RE::NiPoint3(0.0f, 0.0f, 0.0f);
         RE::NiPoint3 targetForward = RE::NiPoint3(0.0f, 1.0f, 0.0f);
@@ -644,7 +650,7 @@ namespace CombatAI
         }
 
         // Get current cell to scan actors in loaded area
-        RE::TESObjectCELL* currentCell = nullptr;
+        RE::TESObjectCELL *currentCell = nullptr;
         try {
             currentCell = a_actor->GetParentCell();
         } catch (...) {
@@ -659,38 +665,39 @@ namespace CombatAI
         // Wrap entire scan in try-catch to handle iterator invalidation
         try {
             // In CommonLibSSE, references is a direct member of TESObjectCELL
-            auto& references = currentCell->references;
-            
+            auto &references = currentCell->references;
+
             // Get size first to detect container modification during iteration
             size_t initialSize = references.size();
             size_t processedCount = 0;
-            
-            for (auto& ref : references) {
+
+            for (auto &ref : references) {
                 processedCount++;
-                
-                // Safety check: if container size changed, abort to avoid iterator invalidation
+
+                // Safety check: if container size changed, abort to avoid iterator
+                // invalidation
                 if (references.size() != initialSize) {
                     break; // Container was modified, abort scan
                 }
-                
-                RE::TESObjectREFR* refr = nullptr;
+
+                RE::TESObjectREFR *refr = nullptr;
                 try {
                     refr = ref.get();
                 } catch (...) {
                     continue; // Reference access failed
                 }
-                
+
                 if (!refr) {
                     continue;
                 }
 
-                RE::Actor* nearbyActor = nullptr;
+                RE::Actor *nearbyActor = nullptr;
                 try {
                     nearbyActor = refr->As<RE::Actor>();
                 } catch (...) {
                     continue; // Cast failed
                 }
-                
+
                 if (!nearbyActor) {
                     continue;
                 }
@@ -722,31 +729,32 @@ namespace CombatAI
                     continue; // Position access failed
                 }
                 RE::NiPoint3 actorPos = actorPosOpt.value();
-                
+
                 float distance = StateHelpers::CalculateDistance(selfPos, actorPos);
                 if (distance > scanRange) {
                     continue;
                 }
 
-                // Re-validate actors before hostility check (they might have become invalid)
-                // Use wrapper for safe access
+                // Re-validate actors before hostility check (they might have become
+                // invalid) Use wrapper for safe access
                 if (ActorUtils::SafeIsDead(a_actor) || ActorUtils::SafeIsDead(nearbyActor) ||
                     !ActorUtils::SafeIsInCombat(a_actor) || !ActorUtils::SafeIsInCombat(nearbyActor)) {
                     continue; // Actor validation failed
                 }
-                
+
                 // Determine if enemy or ally - use wrapper for safe hostility check
                 // Check if nearbyActor is hostile to a_actor (not the other way around)
                 // IsHostileToActor(a, b) checks if 'a' is hostile to 'b'
-                // So we want: is nearbyActor hostile to a_actor? -> IsHostileToActor(nearbyActor, a_actor)
+                // So we want: is nearbyActor hostile to a_actor? ->
+                // IsHostileToActor(nearbyActor, a_actor)
                 bool isHostile = ActorUtils::SafeIsHostileToActor(nearbyActor, a_actor);
-                
+
                 // Re-validate actors one more time before using distance/position data
                 // Actors can become invalid during the loop
                 if (ActorUtils::SafeIsDead(nearbyActor) || !ActorUtils::SafeIsInCombat(nearbyActor)) {
                     continue; // Actor became invalid, skip
                 }
-                
+
                 if (isHostile) {
                     // Found an additional enemy
                     additionalEnemies++;
@@ -755,7 +763,7 @@ namespace CombatAI
                     // This helps determine threat level
                     try {
                         // In CommonLibSSE, combatController is a direct member of Actor
-                        RE::CombatController* enemyCombatController = nearbyActor->combatController;
+                        RE::CombatController *enemyCombatController = nearbyActor->combatController;
                         if (enemyCombatController) {
                             RE::ActorHandle enemyTargetHandle = enemyCombatController->targetHandle;
                             RE::NiPointer<RE::Actor> enemyTarget = enemyTargetHandle.get();
@@ -777,31 +785,38 @@ namespace CombatAI
                 } else {
                     // Found an ally (non-hostile actor in combat)
                     allies++;
-                    
+
                     // Track closest ally position for flanking calculations
                     // Only update if this ally is closer than previous closest
                     if (!a_context.hasNearbyAlly || distance < a_context.closestAllyDistance) {
                         a_context.closestAllyPosition = actorPos;
                         a_context.closestAllyDistance = distance;
                         a_context.hasNearbyAlly = (distance <= 1500.0f); // Flanking range threshold
-                        
-                        // Calculate target facing relative to this ally (for flanking coordination)
+
+                        // Calculate target facing relative to this ally (for flanking
+                        // coordination)
                         if (hasTarget) {
                             RE::NiPoint3 targetToAlly = actorPos - targetPos;
-                            float targetToAllyDistSq = targetToAlly.x * targetToAlly.x + targetToAlly.y * targetToAlly.y + targetToAlly.z * targetToAlly.z;
+                            float targetToAllyDistSq = targetToAlly.x * targetToAlly.x +
+                                                       targetToAlly.y * targetToAlly.y +
+                                                       targetToAlly.z * targetToAlly.z;
                             if (targetToAllyDistSq > 0.01f) {
                                 float targetToAllyDist = std::sqrt(targetToAllyDistSq);
                                 targetToAlly.x /= targetToAllyDist;
                                 targetToAlly.y /= targetToAllyDist;
                                 targetToAlly.z /= targetToAllyDist;
-                                
-                                // Calculate dot product: 1.0 = target facing ally, -1.0 = target facing away from ally
+
+                                // Calculate dot product: 1.0 = target facing ally, -1.0 = target
+                                // facing away from ally
                                 float targetAllyDot = targetForward.Dot(targetToAlly);
                                 a_context.targetFacingAllyDot = targetAllyDot;
-                                
+
                                 // Set flags for easier decision-making
-                                a_context.targetFacingAwayFromAlly = (targetAllyDot < -0.3f); // Target facing away from ally (good flanking opportunity)
-                                a_context.targetFacingTowardAlly = (targetAllyDot > 0.3f); // Target facing toward ally (we can flank from behind)
+                                a_context.targetFacingAwayFromAlly =
+                                    (targetAllyDot < -0.3f); // Target facing away from ally (good
+                                                             // flanking opportunity)
+                                a_context.targetFacingTowardAlly = (targetAllyDot > 0.3f); // Target facing toward ally
+                                                                                           // (we can flank from behind)
                             }
                         }
                     }
@@ -817,17 +832,17 @@ namespace CombatAI
         a_context.enemyCount += additionalEnemies;
         a_context.allyCount = allies;
         a_context.enemiesTargetingUs = enemiesTargetingUs;
-        
+
         // If we have a primary target, they're also targeting us (count them)
         if (a_primaryTarget && a_context.enemyCount > 0) {
             a_context.enemiesTargetingUs++; // Primary target is targeting us
         }
     }
 
-    TemporalState ActorStateObserver::GatherTemporalState(RE::Actor* a_actor, RE::Actor* a_target, float a_deltaTime)
+    TemporalState ActorStateObserver::GatherTemporalState(RE::Actor *a_actor, RE::Actor *a_target, float a_deltaTime)
     {
         TemporalState temporal;
-        
+
         if (!a_actor) {
             return temporal;
         }
@@ -839,11 +854,11 @@ namespace CombatAI
         RE::FormID formID = formIDOpt.value();
 
         // Get or create actor temporal data
-        auto* actorTemporalPtr = m_actorTemporalData.GetOrCreateDefault(formID);
+        auto *actorTemporalPtr = m_actorTemporalData.GetOrCreateDefault(formID);
         if (!actorTemporalPtr) {
             return temporal;
         }
-        ActorTemporalData& actorTemporal = *actorTemporalPtr;
+        ActorTemporalData &actorTemporal = *actorTemporalPtr;
 
         // Update timers
         actorTemporal.timeSinceLastAttack += a_deltaTime;
@@ -930,21 +945,21 @@ namespace CombatAI
         // Copy attack defense feedback
         temporal.self.lastAttackParried = actorTemporal.lastAttackParried;
         temporal.self.lastAttackTimedBlocked = actorTemporal.lastAttackTimedBlocked;
-		temporal.self.lastAttackHit = actorTemporal.lastAttackHit;
-		temporal.self.lastAttackMissed = actorTemporal.lastAttackMissed;
+        temporal.self.lastAttackHit = actorTemporal.lastAttackHit;
+        temporal.self.lastAttackMissed = actorTemporal.lastAttackMissed;
         temporal.self.timeSinceLastParriedAttack = actorTemporal.timeSinceLastParriedAttack;
         temporal.self.timeSinceLastTimedBlockedAttack = actorTemporal.timeSinceLastTimedBlockedAttack;
-		temporal.self.timeSinceLastHitAttack = actorTemporal.timeSinceLastHitAttack;
-		temporal.self.timeSinceLastMissedAttack = actorTemporal.timeSinceLastMissedAttack;
+        temporal.self.timeSinceLastHitAttack = actorTemporal.timeSinceLastHitAttack;
+        temporal.self.timeSinceLastMissedAttack = actorTemporal.timeSinceLastMissedAttack;
         temporal.self.parriedAttackCount = actorTemporal.parriedAttackCount;
         temporal.self.timedBlockedAttackCount = actorTemporal.timedBlockedAttackCount;
-		temporal.self.hitAttackCount = actorTemporal.hitAttackCount;
-		temporal.self.missedAttackCount = actorTemporal.missedAttackCount;
+        temporal.self.hitAttackCount = actorTemporal.hitAttackCount;
+        temporal.self.missedAttackCount = actorTemporal.missedAttackCount;
         temporal.self.totalAttackCount = actorTemporal.totalAttackCount;
         temporal.self.parryRate = actorTemporal.parryRate;
         temporal.self.timedBlockRate = actorTemporal.timedBlockRate;
-		temporal.self.hitRate = actorTemporal.hitRate;
-		temporal.self.missRate = actorTemporal.missRate;
+        temporal.self.hitRate = actorTemporal.hitRate;
+        temporal.self.missRate = actorTemporal.missRate;
         temporal.self.totalDefenseRate = actorTemporal.totalDefenseRate;
 
         // Update parry feedback from ParryFeedbackTracker
@@ -999,18 +1014,18 @@ namespace CombatAI
             auto targetFormIDOpt = ActorUtils::SafeGetFormID(a_target);
             if (targetFormIDOpt.has_value()) {
                 RE::FormID targetFormID = targetFormIDOpt.value();
-                
+
                 // Use a composite key: actorFormID + targetFormID for target tracking
-                // For simplicity, we'll use targetFormID and track per actor's perspective
-                // Actually, let's use a simple approach: track target state per actor
-                // We'll use formID (actor) as key, but store target-specific data
-                // For now, let's track target state separately per actor-target pair
+                // For simplicity, we'll use targetFormID and track per actor's
+                // perspective Actually, let's use a simple approach: track target state
+                // per actor We'll use formID (actor) as key, but store target-specific
+                // data For now, let's track target state separately per actor-target pair
                 // We'll use a hash of both FormIDs as the key
                 RE::FormID targetKey = formID; // Use actor's FormID as base key
-                
-                auto* targetTemporalPtr = m_targetTemporalData.GetOrCreateDefault(targetKey);
+
+                auto *targetTemporalPtr = m_targetTemporalData.GetOrCreateDefault(targetKey);
                 if (targetTemporalPtr) {
-                    TargetTemporalData& targetTemporal = *targetTemporalPtr;
+                    TargetTemporalData &targetTemporal = *targetTemporalPtr;
 
                     // Update timers
                     targetTemporal.timeSinceLastAttack += a_deltaTime;
@@ -1043,7 +1058,8 @@ namespace CombatAI
                     }
 
                     if (targetIsAttacking || targetAttackState != RE::ATTACK_STATE_ENUM::kNone) {
-                        if (targetTemporal.wasAttacking || targetTemporal.previousAttackState != RE::ATTACK_STATE_ENUM::kNone) {
+                        if (targetTemporal.wasAttacking ||
+                            targetTemporal.previousAttackState != RE::ATTACK_STATE_ENUM::kNone) {
                             targetTemporal.attackingDuration += a_deltaTime;
                         } else {
                             targetTemporal.attackingDuration = a_deltaTime;
@@ -1082,33 +1098,34 @@ namespace CombatAI
                         targetTemporal.idleDuration = 0.0f;
                     }
 
-                    // Detect when target attacks (state transition from not attacking to attacking)
-                    if ((targetIsAttacking || targetAttackState == RE::ATTACK_STATE_ENUM::kSwing) && 
-                        !targetTemporal.wasAttacking && 
+                    // Detect when target attacks (state transition from not attacking to
+                    // attacking)
+                    if ((targetIsAttacking || targetAttackState == RE::ATTACK_STATE_ENUM::kSwing) &&
+                        !targetTemporal.wasAttacking &&
                         targetTemporal.previousAttackState != RE::ATTACK_STATE_ENUM::kSwing) {
                         // Target just started attacking
                         targetTemporal.timeSinceLastAttack = 0.0f;
                         targetTemporal.attackStartTime = 0.0f; // Reset attack start time
-                        
+
                         // Check if it's a power attack
                         bool isPowerAttack = IsPowerAttacking(a_target);
                         targetTemporal.isPowerAttack = isPowerAttack;
-                        
+
                         // Estimate attack duration
                         targetTemporal.estimatedAttackDuration = EstimateAttackDuration(a_target, isPowerAttack);
                     }
-                    
+
                     // Update attack timing if currently attacking
                     if (targetIsAttacking || targetAttackState == RE::ATTACK_STATE_ENUM::kSwing) {
                         if (targetTemporal.attackStartTime >= 0.0f) {
                             // Attack is in progress, update elapsed time
                             targetTemporal.attackStartTime += a_deltaTime;
-                            
+
                             // Calculate time until attack hits
                             // Assume attack hits at ~60% of total duration (windup phase)
                             float hitTime = targetTemporal.estimatedAttackDuration * 0.6f;
                             targetTemporal.timeUntilAttackHits = hitTime - targetTemporal.attackStartTime;
-                            
+
                             // Clamp to reasonable range
                             if (targetTemporal.timeUntilAttackHits < 0.0f) {
                                 targetTemporal.timeUntilAttackHits = 0.0f; // Attack already hit or past hit window
@@ -1123,12 +1140,15 @@ namespace CombatAI
 
                     // Detect when target power attacks
                     if (targetAttackState == RE::ATTACK_STATE_ENUM::kSwing) {
-                        // Check if it's a power attack (we'd need to check attack data, but for now we'll detect on follow-through)
-                        // Actually, we'll detect power attack when target finishes attack (kFollowThrough) and was swinging
-                        if (targetTemporal.previousAttackState == RE::ATTACK_STATE_ENUM::kSwing && 
+                        // Check if it's a power attack (we'd need to check attack data, but
+                        // for now we'll detect on follow-through) Actually, we'll detect
+                        // power attack when target finishes attack (kFollowThrough) and was
+                        // swinging
+                        if (targetTemporal.previousAttackState == RE::ATTACK_STATE_ENUM::kSwing &&
                             targetAttackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
-                            // Might be a power attack, but we can't be sure without checking attack data
-                            // For now, we'll track it when we detect a power attack state
+                            // Might be a power attack, but we can't be sure without checking
+                            // attack data For now, we'll track it when we detect a power attack
+                            // state
                         }
                     }
 
@@ -1158,7 +1178,7 @@ namespace CombatAI
         return temporal;
     }
 
-    void ActorStateObserver::NotifyActionExecuted(RE::Actor* a_actor, ActionType a_action)
+    void ActorStateObserver::NotifyActionExecuted(RE::Actor *a_actor, ActionType a_action)
     {
         if (!a_actor) {
             return;
@@ -1170,7 +1190,7 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
-        auto* actorTemporalPtr = m_actorTemporalData.GetMutable(formID);
+        auto *actorTemporalPtr = m_actorTemporalData.GetMutable(formID);
         if (!actorTemporalPtr) {
             return;
         }
@@ -1179,33 +1199,33 @@ namespace CombatAI
         actorTemporalPtr->timeSinceLastAction = 0.0f;
 
         switch (a_action) {
-            case ActionType::Attack:
-            case ActionType::PowerAttack:
-            case ActionType::SprintAttack:
-                actorTemporalPtr->timeSinceLastAttack = 0.0f;
-                if (a_action == ActionType::PowerAttack) {
-                    actorTemporalPtr->timeSinceLastPowerAttack = 0.0f;
-                } else if (a_action == ActionType::SprintAttack) {
-                    actorTemporalPtr->timeSinceLastSprintAttack = 0.0f;
-                }
-                break;
-            case ActionType::Dodge:
-            case ActionType::Jump:
-            case ActionType::Strafe:
-                actorTemporalPtr->timeSinceLastDodge = 0.0f;
-                break;
-            case ActionType::Bash:
-                actorTemporalPtr->timeSinceLastBash = 0.0f;
-                break;
-            case ActionType::Feint:
-                actorTemporalPtr->timeSinceLastFeint = 0.0f;
-                break;
-            default:
-                break;
+        case ActionType::Attack:
+        case ActionType::PowerAttack:
+        case ActionType::SprintAttack:
+            actorTemporalPtr->timeSinceLastAttack = 0.0f;
+            if (a_action == ActionType::PowerAttack) {
+                actorTemporalPtr->timeSinceLastPowerAttack = 0.0f;
+            } else if (a_action == ActionType::SprintAttack) {
+                actorTemporalPtr->timeSinceLastSprintAttack = 0.0f;
+            }
+            break;
+        case ActionType::Dodge:
+        case ActionType::Jump:
+        case ActionType::Strafe:
+            actorTemporalPtr->timeSinceLastDodge = 0.0f;
+            break;
+        case ActionType::Bash:
+            actorTemporalPtr->timeSinceLastBash = 0.0f;
+            break;
+        case ActionType::Feint:
+            actorTemporalPtr->timeSinceLastFeint = 0.0f;
+            break;
+        default:
+            break;
         }
     }
 
-    void ActorStateObserver::Cleanup(RE::Actor* a_actor)
+    void ActorStateObserver::Cleanup(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return;
@@ -1220,9 +1240,9 @@ namespace CombatAI
 
         // Remove cached combat context for this actor
         m_combatContextCache.Erase(formID);
-        
+
         // Remove temporal data for this actor
         m_actorTemporalData.Erase(formID);
         m_targetTemporalData.Erase(formID);
     }
-}
+} // namespace CombatAI

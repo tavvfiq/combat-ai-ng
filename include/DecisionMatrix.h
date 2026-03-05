@@ -1,65 +1,65 @@
 #pragma once
 
 #include "ActorStateData.h"
-#include "DecisionResult.h"
 #include "CombatStyleEnhancer.h"
+#include "DecisionResult.h"
 
 namespace CombatAI
 {
     // Evaluates state data and makes tactical decisions
     class DecisionMatrix
     {
-    public:
+      public:
         DecisionMatrix() = default;
         ~DecisionMatrix() = default;
 
         // Evaluate state and return decision
-        DecisionResult Evaluate(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult Evaluate(RE::Actor *a_actor, const ActorStateData &a_state);
 
-    private:
+      private:
         // Interrupt (Counter-Play)
-        DecisionResult EvaluateInterrupt(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateInterrupt(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Evasion (Tactical)
-        DecisionResult EvaluateEvasion(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateEvasion(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Survival (Fallback)
-        DecisionResult EvaluateSurvival(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateSurvival(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Offense
-        DecisionResult EvaluateOffense(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateOffense(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Backoff (when target is casting/drawing bow)
-        DecisionResult EvaluateBackoff(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateBackoff(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Flanking & Positioning (tactical positioning with allies)
-        DecisionResult EvaluateFlanking(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateFlanking(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Feinting & Baiting (fake attacks to bait enemy response)
-        DecisionResult EvaluateFeinting(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateFeinting(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Parry (timed bash for parrying incoming attacks)
-        DecisionResult EvaluateParry(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateParry(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Timed Block (timed block for blocking incoming attacks)
-        DecisionResult EvaluateTimedBlock(RE::Actor* a_actor, const ActorStateData& a_state);
+        DecisionResult EvaluateTimedBlock(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // Helper: Calculate strafe direction (perpendicular to target)
-        RE::NiPoint3 CalculateStrafeDirection(const ActorStateData& a_state);
+        RE::NiPoint3 CalculateStrafeDirection(const ActorStateData &a_state);
 
         // Helper: Calculate optimal flanking direction based on ally positions
-        RE::NiPoint3 CalculateFlankingDirection(const ActorStateData& a_state);
+        RE::NiPoint3 CalculateFlankingDirection(const ActorStateData &a_state);
 
         // Helper: Select best decision when multiple have same priority
-        DecisionResult SelectBestFromTie(const std::vector<DecisionResult>& a_decisions, const ActorStateData& a_state);
+        DecisionResult SelectBestFromTie(const std::vector<DecisionResult> &a_decisions, const ActorStateData &a_state);
 
         // Helper: Calculate score for tie-breaking
-        float CalculateDecisionScore(const DecisionResult& a_decision, const ActorStateData& a_state);
+        float CalculateDecisionScore(const DecisionResult &a_decision, const ActorStateData &a_state);
 
         // Helper: Log all state data for selected actor (debugging)
-        void LogActorState(RE::Actor* a_actor, const ActorStateData& a_state);
+        void LogActorState(RE::Actor *a_actor, const ActorStateData &a_state);
 
         // CombatStyleEnhancer
         CombatStyleEnhancer m_styleEnhancer;
     };
-}
+} // namespace CombatAI

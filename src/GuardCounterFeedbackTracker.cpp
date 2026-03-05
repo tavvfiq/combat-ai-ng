@@ -1,12 +1,12 @@
-#include "pch.h"
 #include "GuardCounterFeedbackTracker.h"
 #include "ActorUtils.h"
 #include "Logger.h"
+#include "pch.h"
 #include <algorithm>
 
 namespace CombatAI
 {
-    void GuardCounterFeedbackTracker::RecordGuardCounterAttempt(RE::Actor* a_attacker, RE::Actor* a_target)
+    void GuardCounterFeedbackTracker::RecordGuardCounterAttempt(RE::Actor *a_attacker, RE::Actor *a_target)
     {
         if (!a_attacker || !a_target) {
             return;
@@ -14,7 +14,7 @@ namespace CombatAI
 
         auto attackerFormIDOpt = ActorUtils::SafeGetFormID(a_attacker);
         auto targetFormIDOpt = ActorUtils::SafeGetFormID(a_target);
-        
+
         if (!attackerFormIDOpt.has_value() || !targetFormIDOpt.has_value()) {
             return;
         }
@@ -29,10 +29,10 @@ namespace CombatAI
         attempt.matchedHit = false;
 
         // Add to recent attempts (keyed by attacker FormID)
-        m_recentAttempts.WithWriteLock([&](auto& attemptsMap) {
-            auto& attempts = attemptsMap[attackerFormID];
+        m_recentAttempts.WithWriteLock([&](auto &attemptsMap) {
+            auto &attempts = attemptsMap[attackerFormID];
             attempts.push_back(attempt);
-            
+
             // Keep only recent attempts (limit size)
             if (attempts.size() > MAX_ATTEMPTS_PER_ATTACKER) {
                 attempts.erase(attempts.begin());
@@ -40,20 +40,20 @@ namespace CombatAI
         });
 
         // Update attempt count in feedback
-        m_feedbackData.WithWriteLock([&](auto& feedbackMap) {
-            auto& feedback = feedbackMap[attackerFormID];
+        m_feedbackData.WithWriteLock([&](auto &feedbackMap) {
+            auto &feedback = feedbackMap[attackerFormID];
             feedback.guardCounterAttemptCount++;
             feedback.timeSinceLastGuardCounterAttempt = 0.0f;
-            
+
             // Recalculate success rate
             if (feedback.guardCounterAttemptCount > 0) {
-                feedback.guardCounterSuccessRate = static_cast<float>(feedback.guardCounterSuccessCount) / 
+                feedback.guardCounterSuccessRate = static_cast<float>(feedback.guardCounterSuccessCount) /
                                                    static_cast<float>(feedback.guardCounterAttemptCount);
             }
         });
     }
 
-    void GuardCounterFeedbackTracker::OnGuardCounterHit(RE::Actor* a_attacker)
+    void GuardCounterFeedbackTracker::OnGuardCounterHit(RE::Actor *a_attacker)
     {
         if (!a_attacker) {
             return;
@@ -68,14 +68,14 @@ namespace CombatAI
 
         // Find the most recent unmatched guard counter attempt
         bool foundMatch = false;
-        m_recentAttempts.WithWriteLock([&](auto& attemptsMap) {
+        m_recentAttempts.WithWriteLock([&](auto &attemptsMap) {
             auto it = attemptsMap.find(attackerFormID);
             if (it == attemptsMap.end()) {
                 return; // No attempts found for this attacker
             }
 
-            auto& attempts = it->second;
-            
+            auto &attempts = it->second;
+
             // Find most recent unmatched attempt
             for (auto attemptIt = attempts.rbegin(); attemptIt != attempts.rend(); ++attemptIt) {
                 if (!attemptIt->matchedHit) {
@@ -84,15 +84,15 @@ namespace CombatAI
                     foundMatch = true;
 
                     // Update feedback for the attacker
-                    m_feedbackData.WithWriteLock([&](auto& feedbackMap) {
-                        auto& feedback = feedbackMap[attackerFormID];
+                    m_feedbackData.WithWriteLock([&](auto &feedbackMap) {
+                        auto &feedback = feedbackMap[attackerFormID];
                         feedback.lastGuardCounterSuccess = true;
                         feedback.timeSinceLastGuardCounterAttempt = 0.0f;
                         feedback.guardCounterSuccessCount++;
-                        
+
                         // Recalculate success rate
                         if (feedback.guardCounterAttemptCount > 0) {
-                            feedback.guardCounterSuccessRate = static_cast<float>(feedback.guardCounterSuccessCount) / 
+                            feedback.guardCounterSuccessRate = static_cast<float>(feedback.guardCounterSuccessCount) /
                                                                static_cast<float>(feedback.guardCounterAttemptCount);
                         }
                     });
@@ -103,7 +103,7 @@ namespace CombatAI
         });
     }
 
-    void GuardCounterFeedbackTracker::OnGuardCounterExpired(RE::Actor* a_actor)
+    void GuardCounterFeedbackTracker::OnGuardCounterExpired(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return;
@@ -117,8 +117,8 @@ namespace CombatAI
         RE::FormID actorFormID = actorFormIDOpt.value();
 
         // Update feedback - guard counter window expired without attempt
-        m_feedbackData.WithWriteLock([&](auto& feedbackMap) {
-            auto& feedback = feedbackMap[actorFormID];
+        m_feedbackData.WithWriteLock([&](auto &feedbackMap) {
+            auto &feedback = feedbackMap[actorFormID];
             feedback.guardCounterMissedOpportunityCount++;
         });
     }
@@ -126,7 +126,7 @@ namespace CombatAI
     void GuardCounterFeedbackTracker::Update(float a_deltaTime)
     {
         // Update feedback timers
-        m_feedbackData.WithWriteLock([&](auto& feedbackMap) {
+        m_feedbackData.WithWriteLock([&](auto &feedbackMap) {
             for (auto it = feedbackMap.begin(); it != feedbackMap.end(); ++it) {
                 it->second.timeSinceLastGuardCounterAttempt += a_deltaTime;
             }
@@ -134,19 +134,19 @@ namespace CombatAI
 
         // Clean up old attempts
         auto now = std::chrono::steady_clock::now();
-        m_recentAttempts.WithWriteLock([&](auto& attemptsMap) {
+        m_recentAttempts.WithWriteLock([&](auto &attemptsMap) {
             for (auto it = attemptsMap.begin(); it != attemptsMap.end(); ++it) {
-                auto& attempts = it->second;
+                auto &attempts = it->second;
                 // Remove old attempts
-                attempts.erase(
-                    std::remove_if(attempts.begin(), attempts.end(),
-                        [&](const GuardCounterAttempt& attempt) {
-                            auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                now - attempt.attemptTime).count() / 1000.0f;
-                            return age > MAX_ATTEMPT_AGE;
-                        }),
-                    attempts.end()
-                );
+                attempts.erase(std::remove_if(attempts.begin(), attempts.end(),
+                                              [&](const GuardCounterAttempt &attempt) {
+                                                  auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                 now - attempt.attemptTime)
+                                                                 .count() /
+                                                             1000.0f;
+                                                  return age > MAX_ATTEMPT_AGE;
+                                              }),
+                               attempts.end());
             }
 
             // Remove empty entries
@@ -161,7 +161,7 @@ namespace CombatAI
         });
     }
 
-    GuardCounterFeedbackTracker::GuardCounterFeedback GuardCounterFeedbackTracker::GetFeedback(RE::Actor* a_actor)
+    GuardCounterFeedbackTracker::GuardCounterFeedback GuardCounterFeedbackTracker::GetFeedback(RE::Actor *a_actor)
     {
         if (!a_actor) {
             return GuardCounterFeedback();
@@ -179,4 +179,4 @@ namespace CombatAI
 
         return GuardCounterFeedback();
     }
-}
+} // namespace CombatAI

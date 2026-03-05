@@ -1,12 +1,12 @@
 #pragma once
 
+#include "ActionExecutor.h"
 #include "ActorStateObserver.h"
 #include "DecisionMatrix.h"
-#include "ActionExecutor.h"
+#include "DecisionResult.h"
 #include "Humanizer.h"
 #include "ParryFeedbackTracker.h"
 #include "ThreadSafeMap.h"
-#include "DecisionResult.h"
 #include "pch.h"
 
 namespace CombatAI
@@ -14,15 +14,15 @@ namespace CombatAI
     // Singleton manager for all combat AI logic
     class CombatDirector
     {
-    public:
-        static CombatDirector& GetInstance()
+      public:
+        static CombatDirector &GetInstance()
         {
             static CombatDirector instance;
             return instance;
         }
 
-        CombatDirector(const CombatDirector&) = delete;
-        CombatDirector& operator=(const CombatDirector&) = delete;
+        CombatDirector(const CombatDirector &) = delete;
+        CombatDirector &operator=(const CombatDirector &) = delete;
 
         // Initialize the director
         void Initialize();
@@ -31,7 +31,7 @@ namespace CombatAI
         void RegisterModCallbacks();
 
         // Process an actor (called from hook)
-        void ProcessActor(RE::Actor* a_actor, float a_deltaTime);
+        void ProcessActor(RE::Actor *a_actor, float a_deltaTime);
 
         // Update (called per frame, for cooldowns, etc.)
         void Update(float a_deltaTime);
@@ -39,12 +39,12 @@ namespace CombatAI
         // Cleanup (remove invalid actors)
         void Cleanup();
 
-    private:
+      private:
         CombatDirector() = default;
         ~CombatDirector() = default;
 
         // Check if actor should be processed
-        bool ShouldProcessActor(RE::Actor* a_actor, float a_deltaTime);
+        bool ShouldProcessActor(RE::Actor *a_actor, float a_deltaTime);
 
         // Components
         ActorStateObserver m_observer;
@@ -68,8 +68,8 @@ namespace CombatAI
         // Processing throttle (don't process every frame)
         float m_processTimer = 0.0f;
         float m_processInterval = 0.1f; // Process every 100ms (loaded from config)
-        
+
         // Minimum time before processing newly spawned actors (safety delay)
         static constexpr float SPAWN_WARMUP_DELAY = 0.5f; // 500ms delay
     };
-}
+} // namespace CombatAI

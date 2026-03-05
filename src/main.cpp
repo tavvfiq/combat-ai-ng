@@ -1,18 +1,18 @@
-#include "pch.h"
-#include "Hooks.h"
+#include "APIManager.h"
+#include "CombatAIAPI.h"
 #include "CombatDirector.h"
 #include "Config.h"
+#include "Hooks.h"
 #include "Logger.h"
-#include "CombatAIAPI.h"
-#include "APIManager.h"
+#include "pch.h"
 
-extern "C" DLLEXPORT void* SKSEAPI RequestPluginAPI(ECA_API::InterfaceVersion a_interfaceVersion)
+extern "C" DLLEXPORT void *SKSEAPI RequestPluginAPI(ECA_API::InterfaceVersion a_interfaceVersion)
 {
     auto api = CombatAI::APIManager::GetSingleton();
     switch (a_interfaceVersion) {
     case ECA_API::InterfaceVersion::V1:
         // APIManager implements IVCombatAI1
-        return static_cast<ECA_API::IVCombatAI1*>(api);
+        return static_cast<ECA_API::IVCombatAI1 *>(api);
     }
     return nullptr;
 }
@@ -38,15 +38,13 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
     config.Load();
 
     // Check if plugin is enabled
-    if (!config.IsEnabled())
-    {
+    if (!config.IsEnabled()) {
         LOG_INFO("EnhancedCombatAI is disabled in configuration file");
         return true; // Plugin loaded but disabled
     }
 
     // Set debug log level if enabled
-    if (config.GetGeneral().enableDebugLog)
-    {
+    if (config.GetGeneral().enableDebugLog) {
         spdlog::set_level(spdlog::level::debug);
         spdlog::flush_on(spdlog::level::debug);
         LOG_DEBUG("Debug logging enabled");
@@ -55,22 +53,23 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
         spdlog::flush_on(spdlog::level::info);
     }
 
-    if (!SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message* message) {
+    if (!SKSE::GetMessagingInterface()->RegisterListener([](SKSE::MessagingInterface::Message *message) {
             switch (message->type) {
-                case SKSE::MessagingInterface::kDataLoaded:
-                    // Initialize CombatDirector with config after data is loaded
-                    // kDataLoaded fires after TESDataHandler is available, which is required for mod detection
-                    // This is the earliest safe point for CommonLibSSE (non-NG) where TESDataHandler is guaranteed to be available
-                    // Initialize BEFORE installing hooks so CombatDirector is ready when hooks start calling ProcessActor
-                    CombatAI::CombatDirector::GetInstance().Initialize();
-                    
-                    // Install hooks after initialization
-                    // Hooks will immediately start calling ProcessActor/Update, so CombatDirector must be initialized first
-                    CombatAI::Hooks::Install();
-                    break;
+            case SKSE::MessagingInterface::kDataLoaded:
+                // Initialize CombatDirector with config after data is loaded
+                // kDataLoaded fires after TESDataHandler is available, which is required for mod detection
+                // This is the earliest safe point for CommonLibSSE (non-NG) where TESDataHandler is guaranteed to be
+                // available Initialize BEFORE installing hooks so CombatDirector is ready when hooks start calling
+                // ProcessActor
+                CombatAI::CombatDirector::GetInstance().Initialize();
+
+                // Install hooks after initialization
+                // Hooks will immediately start calling ProcessActor/Update, so CombatDirector must be initialized first
+                CombatAI::Hooks::Install();
+                break;
             }
         })) {
-            logger::error("Failed to register messaging listener");
+        logger::error("Failed to register messaging listener");
     }
 
     LOG_INFO("EnhancedCombatAI loaded successfully");

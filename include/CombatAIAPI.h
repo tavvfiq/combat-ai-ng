@@ -4,8 +4,8 @@
 #include <windows.h>
 
 /*
-* For modders: Copy this file into your own project if you wish to use this API
-*/
+ * For modders: Copy this file into your own project if you wish to use this API
+ */
 namespace ECA_API
 {
     constexpr const auto PluginName = "EnhancedCombatAI";
@@ -32,20 +32,20 @@ namespace ECA_API
     enum class ActionType : std::uint8_t
     {
         None = 0,
-        Retreat, // 1
-        Strafe, // 2
-        Bash, // 3
-        PowerAttack, // 4
+        Retreat,      // 1
+        Strafe,       // 2
+        Bash,         // 3
+        PowerAttack,  // 4
         SprintAttack, // 5
-        Attack, // 6
-        Jump, // 7
-        Dodge, // 8
-        Backoff, //9
-        Advancing, //10
-        Feint, //11
-        Flanking, //12
-        Parry, //13
-        TimedBlock //14
+        Attack,       // 6
+        Jump,         // 7
+        Dodge,        // 8
+        Backoff,      // 9
+        Advancing,    // 10
+        Feint,        // 11
+        Flanking,     // 12
+        Parry,        // 13
+        TimedBlock    // 14
     };
 
     struct Vector3
@@ -65,12 +65,12 @@ namespace ECA_API
     // Callback function signature
     // Param 1: Actor FormID (Raw pointer might be unsafe across DLLs if layout differs, but standard for SKSE)
     // Param 2: Decision that was just executed
-    using DecisionCallback = std::function<void(RE::Actor*, const DecisionData&)>;
+    using DecisionCallback = std::function<void(RE::Actor *, const DecisionData &)>;
 
     // Interface
     class IVCombatAI1
     {
-    public:
+      public:
         virtual ~IVCombatAI1() = default;
 
         /// <summary>
@@ -78,7 +78,8 @@ namespace ECA_API
         /// </summary>
         /// <param name="a_pluginHandle">Your SKSE Plugin Handle</param>
         /// <param name="a_callback">Your callback function</param>
-        virtual APIResult RegisterDecisionCallback(SKSE::PluginHandle a_pluginHandle, DecisionCallback&& a_callback) noexcept = 0;
+        virtual APIResult RegisterDecisionCallback(SKSE::PluginHandle a_pluginHandle,
+                                                   DecisionCallback &&a_callback) noexcept = 0;
 
         /// <summary>
         /// Unregisters your decision callback.
@@ -86,13 +87,13 @@ namespace ECA_API
         virtual APIResult RemoveDecisionCallback(SKSE::PluginHandle a_pluginHandle) noexcept = 0;
     };
 
-    typedef void* (*_RequestPluginAPI)(const InterfaceVersion interfaceVersion);
+    typedef void *(*_RequestPluginAPI)(const InterfaceVersion interfaceVersion);
 
     /// <summary>
     /// Request the Combat AI API interface.
     /// Recommended: Call this during your PostLoad message.
     /// </summary>
-    [[nodiscard]] inline void* RequestPluginAPI(const InterfaceVersion a_interfaceVersion = InterfaceVersion::V1)
+    [[nodiscard]] inline void *RequestPluginAPI(const InterfaceVersion a_interfaceVersion = InterfaceVersion::V1)
     {
         auto pluginHandle = GetModuleHandleA(PluginName);
         _RequestPluginAPI requestAPIFunction = (_RequestPluginAPI)GetProcAddress(pluginHandle, "RequestPluginAPI");
@@ -101,4 +102,4 @@ namespace ECA_API
         }
         return nullptr;
     }
-}
+} // namespace ECA_API

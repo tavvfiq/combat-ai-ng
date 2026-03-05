@@ -1,7 +1,7 @@
-#include "pch.h"
 #include "TimedBlockIntegration.h"
-#include "Logger.h"
 #include "ActorUtils.h"
+#include "Logger.h"
+#include "pch.h"
 #include <styyx-utils.h>
 
 namespace CombatAI
@@ -33,7 +33,7 @@ namespace CombatAI
         // Fallback: Try to look up a form from the mod
         // This is the most reliable if forms are loaded
         constexpr RE::FormID ID_PARRY_WINDOW_SPELL = 0x802;
-        constexpr const char* MOD_FILE = "SimpleTimedBlock.esp";
+        constexpr const char *MOD_FILE = "SimpleTimedBlock.esp";
         auto testForm = dataHandler->LookupForm<RE::SpellItem>(ID_PARRY_WINDOW_SPELL, MOD_FILE);
         if (testForm) {
             LOG_DEBUG("Found SimpleTimedBlock.esp via form lookup");
@@ -65,7 +65,7 @@ namespace CombatAI
         // ID_PARRY_WINDOW_EFFECT = 0x801
         constexpr RE::FormID ID_PARRY_WINDOW_SPELL = 0x802;
         constexpr RE::FormID ID_PARRY_WINDOW_EFFECT = 0x801;
-        constexpr const char* MOD_FILE = "SimpleTimedBlock.esp";
+        constexpr const char *MOD_FILE = "SimpleTimedBlock.esp";
 
         m_spellParryWindow = dataHandler->LookupForm<RE::SpellItem>(ID_PARRY_WINDOW_SPELL, MOD_FILE);
         m_mgefParryWindow = dataHandler->LookupForm<RE::EffectSetting>(ID_PARRY_WINDOW_EFFECT, MOD_FILE);
@@ -87,7 +87,7 @@ namespace CombatAI
         return true;
     }
 
-    bool TimedBlockIntegration::ApplyTimedBlockWindow(RE::Actor* a_actor)
+    bool TimedBlockIntegration::ApplyTimedBlockWindow(RE::Actor *a_actor)
     {
         if (!m_isAvailable || !m_spellParryWindow || !a_actor) {
             return false;
@@ -105,7 +105,7 @@ namespace CombatAI
         }
     }
 
-    bool TimedBlockIntegration::HasTimedBlockWindow(RE::Actor* a_actor) const
+    bool TimedBlockIntegration::HasTimedBlockWindow(RE::Actor *a_actor) const
     {
         if (!m_isAvailable || !m_mgefParryWindow || !a_actor) {
             return false;
@@ -114,4 +114,4 @@ namespace CombatAI
         // Check if actor has the timed block window effect active
         return ActorUtils::SafeHasMagicEffect(a_actor, m_mgefParryWindow);
     }
-}
+} // namespace CombatAI

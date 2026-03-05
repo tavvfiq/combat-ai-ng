@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pch.h"
 #include "ThreadSafeMap.h"
+#include "pch.h"
 #include <chrono>
 
 namespace CombatAI
@@ -9,22 +9,23 @@ namespace CombatAI
     // Tracks timed block attempts and matches them with Simple Timed Block mod events
     class TimedBlockFeedbackTracker
     {
-    public:
-        static TimedBlockFeedbackTracker& GetInstance()
+      public:
+        static TimedBlockFeedbackTracker &GetInstance()
         {
             static TimedBlockFeedbackTracker instance;
             return instance;
         }
 
-        TimedBlockFeedbackTracker(const TimedBlockFeedbackTracker&) = delete;
-        TimedBlockFeedbackTracker& operator=(const TimedBlockFeedbackTracker&) = delete;
+        TimedBlockFeedbackTracker(const TimedBlockFeedbackTracker &) = delete;
+        TimedBlockFeedbackTracker &operator=(const TimedBlockFeedbackTracker &) = delete;
 
         // Record a timed block attempt
-        void RecordTimedBlockAttempt(RE::Actor* a_defender, RE::Actor* a_target, float a_estimatedAttackDuration, float a_timeUntilHit);
+        void RecordTimedBlockAttempt(RE::Actor *a_defender, RE::Actor *a_target, float a_estimatedAttackDuration,
+                                     float a_timeUntilHit);
 
         // Handle Simple Timed Block mod callback event (called when timed block succeeds)
         // a_defender is the actor who successfully timed blocked
-        void OnTimedBlockSuccess(RE::Actor* a_defender);
+        void OnTimedBlockSuccess(RE::Actor *a_defender);
 
         // Update timers and clean up old attempts
         void Update(float a_deltaTime);
@@ -38,9 +39,9 @@ namespace CombatAI
             int timedBlockSuccessCount = 0;
             int timedBlockAttemptCount = 0;
         };
-        TimedBlockFeedback GetFeedback(RE::Actor* a_actor);
+        TimedBlockFeedback GetFeedback(RE::Actor *a_actor);
 
-    private:
+      private:
         TimedBlockFeedbackTracker() = default;
         ~TimedBlockFeedbackTracker() = default;
 
@@ -63,7 +64,7 @@ namespace CombatAI
         ThreadSafeMap<RE::FormID, TimedBlockFeedback> m_feedbackData;
 
         // Maximum age for timed block attempts (clean up old attempts)
-        static constexpr float MAX_ATTEMPT_AGE = 2.0f; // 2 seconds
+        static constexpr float MAX_ATTEMPT_AGE = 2.0f;         // 2 seconds
         static constexpr size_t MAX_ATTEMPTS_PER_DEFENDER = 5; // Keep max 5 recent attempts per defender
     };
-}
+} // namespace CombatAI

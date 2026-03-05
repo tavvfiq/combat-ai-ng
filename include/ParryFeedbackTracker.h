@@ -1,7 +1,7 @@
 #pragma once
 
-#include "pch.h"
 #include "ThreadSafeMap.h"
+#include "pch.h"
 #include <chrono>
 
 namespace CombatAI
@@ -9,21 +9,22 @@ namespace CombatAI
     // Tracks bash attempts for parrying and matches them with EldenParry events
     class ParryFeedbackTracker
     {
-    public:
-        static ParryFeedbackTracker& GetInstance()
+      public:
+        static ParryFeedbackTracker &GetInstance()
         {
             static ParryFeedbackTracker instance;
             return instance;
         }
 
-        ParryFeedbackTracker(const ParryFeedbackTracker&) = delete;
-        ParryFeedbackTracker& operator=(const ParryFeedbackTracker&) = delete;
+        ParryFeedbackTracker(const ParryFeedbackTracker &) = delete;
+        ParryFeedbackTracker &operator=(const ParryFeedbackTracker &) = delete;
 
         // Record a bash attempt for parrying
-        void RecordParryAttempt(RE::Actor* a_parrier, RE::Actor* a_target, float a_estimatedAttackDuration, float a_timeUntilHit);
+        void RecordParryAttempt(RE::Actor *a_parrier, RE::Actor *a_target, float a_estimatedAttackDuration,
+                                float a_timeUntilHit);
 
         // Handle EldenParry mod callback event (called when parry succeeds)
-        void OnParrySuccess(RE::Actor* a_attacker);
+        void OnParrySuccess(RE::Actor *a_attacker);
 
         // Update timers and clean up old attempts
         void Update(float a_deltaTime);
@@ -37,9 +38,9 @@ namespace CombatAI
             int parrySuccessCount = 0;
             int parryAttemptCount = 0;
         };
-        ParryFeedback GetFeedback(RE::Actor* a_actor);
+        ParryFeedback GetFeedback(RE::Actor *a_actor);
 
-    private:
+      private:
         ParryFeedbackTracker() = default;
         ~ParryFeedbackTracker() = default;
 
@@ -62,7 +63,7 @@ namespace CombatAI
         ThreadSafeMap<RE::FormID, ParryFeedback> m_feedbackData;
 
         // Maximum age for parry attempts (clean up old attempts)
-        static constexpr float MAX_ATTEMPT_AGE = 2.0f; // 2 seconds
+        static constexpr float MAX_ATTEMPT_AGE = 2.0f;       // 2 seconds
         static constexpr size_t MAX_ATTEMPTS_PER_TARGET = 5; // Keep max 5 recent attempts per target
     };
-}
+} // namespace CombatAI

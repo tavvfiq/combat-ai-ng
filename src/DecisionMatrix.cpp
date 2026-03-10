@@ -342,8 +342,22 @@ namespace CombatAI
                 distanceModifier = -0.3f * beyondRatio; // Up to -0.3f when at max range
             }
 
+            // Attack defense feedback: If attacks are frequently parried/timed blocked,
+            // increase bash priority to punish overly defensive play.
+            float defenseFeedbackBonus = 0.0f;
+            if (a_state.temporal.self.totalDefenseRate > 0.3f) {
+                // High defense rate (>30%) - significantly increase bash priority
+                defenseFeedbackBonus = 0.3f + (a_state.temporal.self.totalDefenseRate - 0.3f) * 0.8f;
+            } else if (a_state.temporal.self.totalDefenseRate > 0.15f) {
+                // Moderate defense rate (15-30%) - moderate boost
+                defenseFeedbackBonus = 0.15f;
+            } else if (a_state.temporal.self.lastAttackParried || a_state.temporal.self.lastAttackTimedBlocked) {
+                // Recent parry/timed block - immediate boost to break guard
+                defenseFeedbackBonus = 0.2f;
+            }
+
             // Final priority calculation
-            float finalPriority = basePriority + situationBonus + distanceModifier;
+            float finalPriority = basePriority + situationBonus + distanceModifier + defenseFeedbackBonus;
 
             // Only bash if priority is reasonable
             if (finalPriority >= 0.7f) {

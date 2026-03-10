@@ -44,6 +44,7 @@ namespace CombatAI
         ReadModIntegrationSettings(ini);
         ReadParrySettings(ini);
         ReadTimedBlockSettings(ini);
+        ReadCombatPacingSettings(ini);
 
         LOG_INFO("Configuration loaded successfully");
         return true;
@@ -153,6 +154,8 @@ namespace CombatAI
 
     void Config::ReadDecisionMatrixSettings(CSimpleIniA &a_ini)
     {
+        m_decisionMatrix.fallbackWeaponReach = static_cast<float>(
+            a_ini.GetDoubleValue("DecisionMatrix", "FallbackWeaponReach", m_decisionMatrix.fallbackWeaponReach));
         m_decisionMatrix.interruptMaxDistance = static_cast<float>(
             a_ini.GetDoubleValue("DecisionMatrix", "InterruptMaxDistance", m_decisionMatrix.interruptMaxDistance));
         m_decisionMatrix.interruptReachMultiplier = static_cast<float>(a_ini.GetDoubleValue(
@@ -311,5 +314,32 @@ namespace CombatAI
         m_timedBlock.timedBlockTimingBonusMax = ClampValue(m_timedBlock.timedBlockTimingBonusMax, 0.0f, 1.0f);
         m_timedBlock.timedBlockEarlyPenalty = ClampValue(m_timedBlock.timedBlockEarlyPenalty, 0.0f, 1.0f);
         m_timedBlock.timedBlockLatePenalty = ClampValue(m_timedBlock.timedBlockLatePenalty, 0.0f, 1.0f);
+    }
+
+    void Config::ReadCombatPacingSettings(CSimpleIniA &a_ini)
+    {
+        m_combatPacing.enableCombatPacing =
+            a_ini.GetBoolValue("CombatPacing", "EnableCombatPacing", m_combatPacing.enableCombatPacing);
+        m_combatPacing.maxSimultaneousAttackers = static_cast<int>(
+            a_ini.GetLongValue("CombatPacing", "MaxSimultaneousAttackers", m_combatPacing.maxSimultaneousAttackers));
+        m_combatPacing.heldBackFlankingBoost = static_cast<float>(
+            a_ini.GetDoubleValue("CombatPacing", "HeldBackFlankingBoost", m_combatPacing.heldBackFlankingBoost));
+        m_combatPacing.heldBackStrafeBoost = static_cast<float>(
+            a_ini.GetDoubleValue("CombatPacing", "HeldBackStrafeBoost", m_combatPacing.heldBackStrafeBoost));
+        m_combatPacing.waitBeforeRetrySeconds = static_cast<float>(
+            a_ini.GetDoubleValue("CombatPacing", "WaitBeforeRetrySeconds", m_combatPacing.waitBeforeRetrySeconds));
+        m_combatPacing.slotWindowMinSeconds = static_cast<float>(
+            a_ini.GetDoubleValue("CombatPacing", "SlotWindowMinSeconds", m_combatPacing.slotWindowMinSeconds));
+        m_combatPacing.slotWindowMaxSeconds = static_cast<float>(
+            a_ini.GetDoubleValue("CombatPacing", "SlotWindowMaxSeconds", m_combatPacing.slotWindowMaxSeconds));
+
+        // Clamp values
+        m_combatPacing.maxSimultaneousAttackers = (std::max)(1, m_combatPacing.maxSimultaneousAttackers);
+        m_combatPacing.heldBackFlankingBoost = ClampValue(m_combatPacing.heldBackFlankingBoost, 0.0f, 2.0f);
+        m_combatPacing.heldBackStrafeBoost = ClampValue(m_combatPacing.heldBackStrafeBoost, 0.0f, 2.0f);
+        m_combatPacing.waitBeforeRetrySeconds = (std::max)(0.0f, m_combatPacing.waitBeforeRetrySeconds);
+        m_combatPacing.slotWindowMinSeconds = (std::max)(0.5f, m_combatPacing.slotWindowMinSeconds);
+        m_combatPacing.slotWindowMaxSeconds =
+            (std::max)(m_combatPacing.slotWindowMinSeconds, m_combatPacing.slotWindowMaxSeconds);
     }
 } // namespace CombatAI

@@ -53,6 +53,7 @@ namespace CombatAI
 
         struct DecisionMatrixSettings
         {
+            float fallbackWeaponReach = 100.0f;
             float interruptMaxDistance = 150.0f;
             float interruptReachMultiplier = 1.2f;
             bool enableEvasionDodge = true;
@@ -115,14 +116,27 @@ namespace CombatAI
         struct TimedBlockSettings
         {
             bool enableTimedBlock = true;          // Enable timed block mechanism
+            float timedBlockMinDistance = 50.0f;   // Min distance for timed block
+            float timedBlockMaxDistance = 350.0f;  // Max distance for timed block
             float timedBlockWindowStart = 0.05f;   // Start block this many seconds before attack hits (minimum)
             float timedBlockWindowEnd = 0.33f;     // End of timing window (matches mod's 0.33s window)
-            float timedBlockMinDistance = 50.0f;   // Minimum distance for timed block
-            float timedBlockMaxDistance = 200.0f;  // Maximum distance for timed block
-            float timedBlockBasePriority = 1.5f;   // Base priority for timed block opportunity
+            float timedBlockBasePriority = 2.2f;   // Base priority for timed block
             float timedBlockTimingBonusMax = 0.3f; // Maximum bonus for perfect timing
             float timedBlockEarlyPenalty = 0.5f;   // Penalty if block too early
             float timedBlockLatePenalty = 0.5f;    // Penalty if block too late
+        };
+
+        // Combat pacing: limits simultaneous attackers on the same target so
+        // group fights feel tactical rather than chaotic.
+        struct CombatPacingSettings
+        {
+            bool enableCombatPacing = true;      // Master toggle
+            int maxSimultaneousAttackers = 2;    // Max NPCs actively attacking the same target at once
+            float heldBackFlankingBoost = 0.5f;  // Priority boost for Flanking when NPC is held back
+            float heldBackStrafeBoost = 0.3f;    // Priority boost for Strafe when NPC is held back
+            float waitBeforeRetrySeconds = 1.0f; // Min wait before a held-back NPC re-tries for a slot
+            float slotWindowMinSeconds = 3.0f;   // Min time an NPC holds its attack slot before rotation
+            float slotWindowMaxSeconds = 7.0f;   // Max time an NPC holds its attack slot before rotation
         };
 
         static Config &GetInstance()
@@ -146,6 +160,7 @@ namespace CombatAI
         const ModIntegrationSettings &GetModIntegrations() const { return m_modIntegrations; }
         const ParrySettings &GetParry() const { return m_parry; }
         const TimedBlockSettings &GetTimedBlock() const { return m_timedBlock; }
+        const CombatPacingSettings &GetCombatPacing() const { return m_combatPacing; }
 
         // Check if plugin is enabled
         bool IsEnabled() const { return m_general.enablePlugin; }
@@ -163,6 +178,7 @@ namespace CombatAI
         void ReadModIntegrationSettings(CSimpleIniA &a_ini);
         void ReadParrySettings(CSimpleIniA &a_ini);
         void ReadTimedBlockSettings(CSimpleIniA &a_ini);
+        void ReadCombatPacingSettings(CSimpleIniA &a_ini);
 
         GeneralSettings m_general;
         HumanizerSettings m_humanizer;
@@ -172,5 +188,6 @@ namespace CombatAI
         ModIntegrationSettings m_modIntegrations;
         ParrySettings m_parry;
         TimedBlockSettings m_timedBlock;
+        CombatPacingSettings m_combatPacing;
     };
 } // namespace CombatAI

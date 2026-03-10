@@ -1113,6 +1113,30 @@ namespace CombatAI
 
                         // Estimate attack duration
                         targetTemporal.estimatedAttackDuration = EstimateAttackDuration(a_target, isPowerAttack);
+
+                        // Seed hitPhaseRatio by weapon type (will be refined by feedback)
+                        // Daggers are fast and hit early (~45%), great swords hit late (~65%)
+                        WeaponType targetWeaponType = StateHelpers::GetActorWeaponType(a_target);
+                        switch (targetWeaponType) {
+                        case WeaponType::OneHandedDagger:
+                            targetTemporal.hitPhaseRatio = 0.45f;
+                            break;
+                        case WeaponType::TwoHandedSword:
+                        case WeaponType::TwoHandedAxe:
+                            targetTemporal.hitPhaseRatio = 0.65f;
+                            break;
+                        case WeaponType::OneHandedMace:
+                        case WeaponType::OneHandedAxe:
+                            targetTemporal.hitPhaseRatio = 0.58f;
+                            break;
+                        default:
+                            // Leave existing ratio if we have one; only reset on first attack
+                            // (i.e. if it's still the default)
+                            if (targetTemporal.hitPhaseRatio == 0.60f) {
+                                targetTemporal.hitPhaseRatio = 0.60f;
+                            }
+                            break;
+                        }
                     }
 
                     // Update attack timing if currently attacking
@@ -1121,9 +1145,8 @@ namespace CombatAI
                             // Attack is in progress, update elapsed time
                             targetTemporal.attackStartTime += a_deltaTime;
 
-                            // Calculate time until attack hits
-                            // Assume attack hits at ~60% of total duration (windup phase)
-                            float hitTime = targetTemporal.estimatedAttackDuration * 0.6f;
+                            // Calculate time until attack hits using the adaptive hit-phase ratio
+                            float hitTime = targetTemporal.estimatedAttackDuration * targetTemporal.hitPhaseRatio;
                             targetTemporal.timeUntilAttackHits = hitTime - targetTemporal.attackStartTime;
 
                             // Clamp to reasonable range
@@ -1132,6 +1155,41 @@ namespace CombatAI
                             }
                         }
                     } else {
+                        // Attack just finished — adapt hitPhaseRatio using parry feedback.
+                        // We read the self-actor's parry result from its ActorTemporalData.
+                        // Alpha = 0.15 (learning rate for weighted moving average).
+                        constexpr float kAlpha = 0.15f;
+                        constexpr float kRatioMin = 0.35f;
+                        constexpr float kRatioMax = 0.80f;
+
+                        if (targetTemporal.estimatedAttackDuration > 0.01f && targetTemporal.attackStartTime > 0.01f) {
+                            // attackStartTime accumulated to roughly when the attack ended
+                            float observedHitFraction =
+                                targetTemporal.attackStartTime / targetTemporal.estimatedAttackDuration;
+                            observedHitFraction = ClampValue(observedHitFraction, kRatioMin, kRatioMax);
+
+                            // Only adapt if a parry was actually attempted (otherwise we
+                            // don't know if timing was correct — hit may have missed entirely)
+                            // We check the self actor's temporal data for a recent parry attempt.
+                            auto selfFormIDOpt = ActorUtils::SafeGetFormID(a_actor);
+                            if (selfFormIDOpt.has_value()) {
+                                auto selfDataOpt = m_actorTemporalData.Find(selfFormIDOpt.value());
+                                if (selfDataOpt.has_value()) {
+                                    const ActorTemporalData &selfData = selfDataOpt.value();
+                                    // If the last parry attempt was very recent (within this
+                                    // attack), the parry result tells us where the hit landed
+                                    bool recentParryAttempt = (selfData.timeSinceLastParryAttempt < 0.5f);
+                                    if (recentParryAttempt) {
+                                        // Nudge ratio toward where we observed the fraction to be
+                                        targetTemporal.hitPhaseRatio = targetTemporal.hitPhaseRatio * (1.0f - kAlpha) +
+                                                                       observedHitFraction * kAlpha;
+                                        targetTemporal.hitPhaseRatio =
+                                            ClampValue(targetTemporal.hitPhaseRatio, kRatioMin, kRatioMax);
+                                    }
+                                }
+                            }
+                        }
+
                         // Not attacking anymore, reset timing
                         targetTemporal.attackStartTime = -1.0f;
                         targetTemporal.timeUntilAttackHits = 999.0f;
@@ -1171,6 +1229,7 @@ namespace CombatAI
                     temporal.target.attackStartTime = targetTemporal.attackStartTime;
                     temporal.target.estimatedAttackDuration = targetTemporal.estimatedAttackDuration;
                     temporal.target.timeUntilAttackHits = targetTemporal.timeUntilAttackHits;
+                    temporal.target.hitPhaseRatio = targetTemporal.hitPhaseRatio;
                 }
             }
         }

@@ -192,6 +192,7 @@ namespace CombatAI
         float attackStartTime = -1.0f;        // When current attack started (relative time, -1 if not attacking)
         float estimatedAttackDuration = 0.0f; // Estimated total duration of current attack
         float timeUntilAttackHits = 999.0f;   // Estimated time until attack hits (999 if not attacking or already hit)
+        float hitPhaseRatio = 0.60f;          // Adapted fraction of attack duration at which hit lands
     };
 
     struct TemporalState
@@ -209,6 +210,11 @@ namespace CombatAI
         TemporalState temporal;      // Temporal state (time-based tracking)
         float deltaTime = 0.0f;
         float weaponReach = 150.0f; // Weapon reach (from Precision or fallback)
+
+        // Combat pacing: how many NPCs are already attacking this NPC's target this
+        // frame. Set by CombatDirector before calling DecisionMatrix.
+        int attackSlotsUsedOnTarget = 0;
+        bool heldBackByPacing = false; // True when this NPC should not attack (slots full)
     };
 
     // Helper functions

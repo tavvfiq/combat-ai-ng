@@ -154,6 +154,10 @@ namespace CombatAI
                                                   // if not attacking or already hit)
             bool isPowerAttack = false;           // Track if current attack is a power attack
 
+            // Adaptive hit-phase ratio: fraction of estimatedAttackDuration at which the
+            // hit lands. Seeded by weapon type and refined each fight by parry feedback.
+            float hitPhaseRatio = 0.60f; // Default 60%; adapted via weighted moving average
+
             // Previous states for duration tracking
             bool wasBlocking = false;
             bool wasAttacking = false;

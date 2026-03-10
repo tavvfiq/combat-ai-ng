@@ -449,6 +449,30 @@ namespace CombatAI
             return false;
         }
 
+        // Safe GetCombatTarget - returns the actor's current combat target
+        inline RE::Actor *SafeGetCombatTarget(RE::Actor *a_actor)
+        {
+            if (!a_actor) {
+                return nullptr;
+            }
+            try {
+                RE::CombatController *combatController = a_actor->combatController;
+                if (combatController) {
+                    // Prefer resolving targetHandle directly — cachedTarget can be null
+                    // even when the handle is valid (engine hasn't refreshed the pointer yet)
+                    auto targetRef = combatController->targetHandle.get();
+                    if (targetRef) {
+                        return targetRef->As<RE::Actor>();
+                    }
+                    // Fallback: cachedTarget (may be populated in some combat states)
+                    return combatController->cachedTarget.get();
+                }
+            } catch (...) {
+                // Combat controller access failed
+            }
+            return nullptr;
+        }
+
         // Safe GetHeading
         inline std::optional<float> SafeGetHeading(RE::Actor *a_actor, bool a_absolute)
         {

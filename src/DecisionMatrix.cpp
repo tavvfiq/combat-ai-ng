@@ -52,7 +52,23 @@ namespace CombatAI
 
         DecisionResult offenseResult = EvaluateOffense(a_actor, a_state);
         if (offenseResult.action != ActionType::None) {
-            possibleDecisions.push_back(offenseResult);
+            // Combat pacing: only add offensive actions if this NPC has a slot
+            if (!a_state.heldBackByPacing) {
+                possibleDecisions.push_back(offenseResult);
+            }
+        }
+
+        // Combat pacing: if held back, boost flanking/strafe so the NPC takes a
+        // better position rather than standing idle waiting for a slot
+        if (a_state.heldBackByPacing) {
+            const auto &pacingConfig = Config::GetInstance().GetCombatPacing();
+            for (auto &d : possibleDecisions) {
+                if (d.action == ActionType::Flanking) {
+                    d.priority += pacingConfig.heldBackFlankingBoost;
+                } else if (d.action == ActionType::Strafe) {
+                    d.priority += pacingConfig.heldBackStrafeBoost;
+                }
+            }
         }
 
         // If no decisions, return None
@@ -600,7 +616,7 @@ namespace CombatAI
         // But only if we're VERY close (within weapon reach) - don't overuse this
         float weaponReach = a_state.weaponReach;
         if (weaponReach <= 0.0f) {
-            weaponReach = 150.0f; // Fallback reach
+            weaponReach = 100.0f; // Fallback reach
         }
 
         // Tactical spacing distance: only when dangerously close (within weapon
@@ -674,248 +690,239 @@ namespace CombatAI
 
         // Use temporal state: Prevent dodge spam - don't dodge too frequently
         float timeSinceLastDodge = a_state.temporal.self.timeSinceLastDodge;
-        if (timeSinceLastDodge < 1.0f) {
-            // Just dodged < 1s ago - prevent spam, prefer strafe instead
-            // But allow if target is power attacking (urgent)
-            if (!a_state.target.isPowerAttacking) {
-                // Not urgent - prefer strafe instead of dodge spam
-                // Continue to strafe evaluation below
-            }
-        }
-
-        // Trigger: Target is attacking me and close, OR target is blocking AND close
-        // Use threshold instead of exact equality (0.7 = roughly facing towards, more
-        // lenient for blocking)
-        bool shouldDodge = false;
-        if (a_state.target.orientationDot > 0.7f) {
-            bool conditionsMet = false;
-            float minEvasionDist = config.GetDecisionMatrix().evasionMinDistance;
-
-            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
-                // Attacking: dodge if within evasion range
-                // Use temporal state: Higher priority if target has been attacking for a
-                // while (committed)
-                float targetAttackingDuration = a_state.temporal.target.attackingDuration;
-                if (a_state.target.distance >= minEvasionDist &&
-                    a_state.target.distance <= config.GetDecisionMatrix().sprintAttackMaxDistance) {
-                    conditionsMet = true;
-
-                    // Boost priority if target has been attacking for a while (committed to
-                    // attack)
-                    if (targetAttackingDuration > 0.5f) {
-                        // Target committed to attack - better dodge timing
-                    }
-                }
-            } else if (a_state.target.isBlocking) {
-                // Blocking: only dodge if close enough (blocking isn't as urgent as
-                // attacking) Require closer distance for blocking targets to trigger
-                // dodge
-                float blockingEvasionMaxDist = minEvasionDist * 1.5f; // Slightly further than min evasion distance
-                if (a_state.target.distance >= minEvasionDist && a_state.target.distance <= blockingEvasionMaxDist) {
-                    conditionsMet = true;
-                }
-            }
-
-            // Check stamina
-            auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-            if (actorOwner) {
-                float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
-                float currentStamina = a_state.self.staminaPercent * maxStamina;
-                if (currentStamina < config.GetDodgeSystem().dodgeStaminaCost) {
-                    conditionsMet = false;
-                }
-            }
-
-            if (conditionsMet) {
-                // Always dodge when conditions are met
-                // Stamina cost is now properly deducted in DodgeSystem, so we don't need
-                // chance-based selection
-                shouldDodge = true;
-            }
-        }
-
-        if (shouldDodge) {
-            result.action = ActionType::Dodge;
-            float baseDodgePriority = 1.5f; // Base evasion priority
-
-            // Use enhanced combat context: Threat level
-            // Higher threat level = higher priority for dodge
-            ThreatLevel dodgeThreatLevel = a_state.combatContext.threatLevel;
-            if (dodgeThreatLevel == ThreatLevel::Critical) {
-                baseDodgePriority += 0.7f; // Critical threat - very high dodge priority
-            } else if (dodgeThreatLevel == ThreatLevel::High) {
-                baseDodgePriority += 0.5f; // High threat - high dodge priority
-            } else if (dodgeThreatLevel == ThreatLevel::Moderate) {
-                baseDodgePriority += 0.3f; // Moderate threat - moderate dodge priority
-            }
-
-            // More enemies targeting us = higher dodge priority
-            if (a_state.combatContext.enemiesTargetingUs > 1) {
-                baseDodgePriority += 0.3f; // Multiple enemies targeting us - dodge is critical
-            }
-
-            // Health-based priority: Low health = higher dodge priority (survival
-            // instinct)
-            float healthModifier = 0.0f;
-            if (a_state.self.healthPercent < 0.3f) {
-                // Critical health (< 30%) - very high dodge priority
-                healthModifier = 0.8f;
-            } else if (a_state.self.healthPercent < 0.5f) {
-                // Low health (30-50%) - high dodge priority
-                healthModifier = 0.5f;
-            } else if (a_state.self.healthPercent < 0.7f) {
-                // Moderate health (50-70%) - moderate dodge priority boost
-                healthModifier = 0.2f;
-            }
-            baseDodgePriority += healthModifier;
-
-            // Pressure-based priority: Target has more HP and is attacking = pressured
-            // situation NPCs should prioritize dodging when outmatched
-            float pressureModifier = 0.0f;
-            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
-                // Target is attacking - check if we're pressured
-                if (a_state.target.healthPercent > a_state.self.healthPercent + 0.2f) {
-                    // Target has significantly more HP (20%+ more) - we're pressured
-                    pressureModifier = 0.6f; // High priority to dodge when pressured
-                } else if (a_state.target.healthPercent > a_state.self.healthPercent) {
-                    // Target has more HP (even slightly) - moderate pressure
-                    pressureModifier = 0.3f;
-                }
-
-                // Boost priority if target is power attacking (more dangerous)
-                if (a_state.target.isPowerAttacking) {
-                    pressureModifier += 0.2f;
-                }
-            }
-            baseDodgePriority += pressureModifier;
-
-            // Extra boost when interrupting own attack to dodge (survival takes
-            // priority)
-            if (!a_state.self.isIdle && (a_state.self.healthPercent < 0.5f || a_state.target.isPowerAttacking)) {
-                baseDodgePriority += 0.5f; // High priority to interrupt attack and dodge
-                                           // when low health or power attack incoming
-            }
-
-            // Apply weapon evasion modifier (one-handed can dodge faster, two-handed
-            // slower)
-            result.priority = baseDodgePriority + weaponEvasionModifier;
-
-            // Dodge intensity based on urgency (closer = more urgent)
-            float distance = a_state.target.distance;
-            float dodgeIntensity = 0.6f; // Base intensity
-            if (distance < config.GetDecisionMatrix().evasionMinDistance) {
-                dodgeIntensity = 1.0f; // Maximum intensity when very close
-            } else if (distance < config.GetDecisionMatrix().evasionMinDistance &&
-                       distance < config.GetDecisionMatrix().sprintAttackMaxDistance) {
-                dodgeIntensity = 0.8f; // High intensity when close
-            }
-
-            // One-handed weapons can dodge faster/more agile
-            if (a_state.self.isOneHanded) {
-                dodgeIntensity = (dodgeIntensity + 0.1f > 1.0f) ? 1.0f : (dodgeIntensity + 0.1f);
-            }
-
-            result.intensity = dodgeIntensity;
+        if (timeSinceLastDodge < 1.5f && !a_state.target.isPowerAttacking) {
+            // Just dodged recently and it's not an urgent power attack - skip
+            // (fall through to strafe evaluation below)
+            // NOTE: do NOT return here; strafe/evasion logic follows
         } else {
-            // Strafe should only trigger when there's a tactical reason, not as a
-            // default fallback Only strafe if:
-            // 1. Target is attacking (evasion)
-            // 2. Target is blocking (repositioning)
-            // 3. We just finished an attack (repositioning)
-            // 4. We're in melee range (tactical positioning)
-            // 5. Multiple enemies (defensive positioning)
 
-            bool shouldStrafe = false;
-            float strafePriority = 1.3f;
+            // Trigger: Target is attacking me and close, OR target is blocking AND close
+            // Use threshold instead of exact equality (0.7 = roughly facing towards, more
+            // lenient for blocking)
+            bool shouldDodge = false;
+            if (a_state.target.orientationDot > 0.7f) {
+                bool conditionsMet = false;
 
-            // Strong reasons to strafe
-            if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
-                shouldStrafe = true;
-                strafePriority = 1.6f; // Higher priority when target is attacking (evasion)
-            } else if (a_state.target.isBlocking && !a_state.target.isAttacking) {
-                shouldStrafe = true;
-                strafePriority = 1.4f; // Good time to reposition for better angle
-            } else if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
-                shouldStrafe = true;
-                strafePriority = 1.5f; // Just finished attack, reposition
+                if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                    // Dodge when attacker is within melee range: between 20% and 160% of
+                    // weapon reach. Too close (< 20%) and there's no room to evade; too far
+                    // (> 160%) and the attack can't reach you anyway.
+                    float reach = a_state.weaponReach > 0.0f ? a_state.weaponReach
+                                                             : config.GetDecisionMatrix().fallbackWeaponReach;
+                    float dodgeMinDist = reach * 0.2f;
+                    float dodgeMaxDist = reach * 1.6f;
+                    if (a_state.target.distance >= dodgeMinDist && a_state.target.distance <= dodgeMaxDist) {
+                        conditionsMet = true;
+                    }
+                } else if (a_state.target.isBlocking) {
+                    // Blocking: dodge if within weapon reach (repositioning opportunity)
+                    float reach = a_state.weaponReach > 0.0f ? a_state.weaponReach
+                                                             : config.GetDecisionMatrix().fallbackWeaponReach;
+                    if (a_state.target.distance <= reach * 1.5f) {
+                        conditionsMet = true;
+                    }
+                }
+
+                // Check stamina
+                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+                if (actorOwner) {
+                    float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
+                    float currentStamina = a_state.self.staminaPercent * maxStamina;
+                    if (currentStamina < config.GetDodgeSystem().dodgeStaminaCost) {
+                        conditionsMet = false;
+                    }
+                }
+
+                if (conditionsMet) {
+                    shouldDodge = true;
+                }
+            } // end dodge anti-spam else-block
+
+            if (shouldDodge) {
+                result.action = ActionType::Dodge;
+                float baseDodgePriority = 1.5f; // Base evasion priority
+
+                // Use enhanced combat context: Threat level
+                // Higher threat level = higher priority for dodge
+                ThreatLevel dodgeThreatLevel = a_state.combatContext.threatLevel;
+                if (dodgeThreatLevel == ThreatLevel::Critical) {
+                    baseDodgePriority += 0.7f; // Critical threat - very high dodge priority
+                } else if (dodgeThreatLevel == ThreatLevel::High) {
+                    baseDodgePriority += 0.5f; // High threat - high dodge priority
+                } else if (dodgeThreatLevel == ThreatLevel::Moderate) {
+                    baseDodgePriority += 0.3f; // Moderate threat - moderate dodge priority
+                }
+
+                // More enemies targeting us = higher dodge priority
+                if (a_state.combatContext.enemiesTargetingUs > 1) {
+                    baseDodgePriority += 0.3f; // Multiple enemies targeting us - dodge is critical
+                }
+
+                // Health-based priority: Low health = higher dodge priority (survival
+                // instinct)
+                float healthModifier = 0.0f;
+                if (a_state.self.healthPercent < 0.3f) {
+                    // Critical health (< 30%) - very high dodge priority
+                    healthModifier = 0.8f;
+                } else if (a_state.self.healthPercent < 0.5f) {
+                    // Low health (30-50%) - high dodge priority
+                    healthModifier = 0.5f;
+                } else if (a_state.self.healthPercent < 0.7f) {
+                    // Moderate health (50-70%) - moderate dodge priority boost
+                    healthModifier = 0.2f;
+                }
+                baseDodgePriority += healthModifier;
+
+                // Pressure-based priority: Target has more HP and is attacking = pressured
+                // situation NPCs should prioritize dodging when outmatched
+                float pressureModifier = 0.0f;
+                if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                    // Target is attacking - check if we're pressured
+                    if (a_state.target.healthPercent > a_state.self.healthPercent + 0.2f) {
+                        // Target has significantly more HP (20%+ more) - we're pressured
+                        pressureModifier = 0.6f; // High priority to dodge when pressured
+                    } else if (a_state.target.healthPercent > a_state.self.healthPercent) {
+                        // Target has more HP (even slightly) - moderate pressure
+                        pressureModifier = 0.3f;
+                    }
+
+                    // Boost priority if target is power attacking (more dangerous)
+                    if (a_state.target.isPowerAttacking) {
+                        pressureModifier += 0.2f;
+                    }
+                }
+                baseDodgePriority += pressureModifier;
+
+                // Extra boost when interrupting own attack to dodge (survival takes
+                // priority)
+                if (!a_state.self.isIdle && (a_state.self.healthPercent < 0.5f || a_state.target.isPowerAttacking)) {
+                    baseDodgePriority += 0.5f; // High priority to interrupt attack and dodge
+                                               // when low health or power attack incoming
+                }
+
+                // Apply weapon evasion modifier (one-handed can dodge faster, two-handed
+                // slower)
+                result.priority = baseDodgePriority + weaponEvasionModifier;
+
+                // Dodge intensity based on urgency (closer = more urgent)
+                float distance = a_state.target.distance;
+                float dodgeIntensity = 0.6f; // Base intensity
+                if (distance < config.GetDecisionMatrix().evasionMinDistance) {
+                    dodgeIntensity = 1.0f; // Maximum intensity when very close
+                } else if (distance < config.GetDecisionMatrix().evasionMinDistance &&
+                           distance < config.GetDecisionMatrix().sprintAttackMaxDistance) {
+                    dodgeIntensity = 0.8f; // High intensity when close
+                }
+
+                // One-handed weapons can dodge faster/more agile
+                if (a_state.self.isOneHanded) {
+                    dodgeIntensity = (dodgeIntensity + 0.1f > 1.0f) ? 1.0f : (dodgeIntensity + 0.1f);
+                }
+
+                result.intensity = dodgeIntensity;
             } else {
-                // Weaker reasons - only strafe if in melee range or outnumbered
-                float reachDistance = a_state.weaponReach;
-                if (reachDistance <= 0.0f) {
-                    reachDistance = 150.0f;
-                }
+                // Strafe should only trigger when there's a tactical reason, not as a
+                // default fallback Only strafe if:
+                // 1. Target is attacking (evasion)
+                // 2. Target is blocking (repositioning)
+                // 3. We just finished an attack (repositioning)
+                // 4. We're in melee range (tactical positioning)
+                // 5. Multiple enemies (defensive positioning)
 
-                float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
+                bool shouldStrafe = false;
+                float strafePriority = 1.3f;
 
-                // Use maxAttackDistance with a buffer to ensure we cover the gap where
-                // Advancing stops Advancing stops when distance <= maxAttackDistance, so
-                // we must strafe/engage if we are within that range Using 1.1f buffer
-                // ensures slightly larger range than advancing cutoff (overlap)
-                bool inMeleeRange = (a_state.target.distance <= maxAttackDistance * 1.1f);
-                // More accurate outnumbered check: enemies > allies + 1
-                bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
-                // Significantly outnumbered: enemies >= allies * 2
-                bool significantlyOutnumbered =
-                    (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
-
-                if (inMeleeRange || outnumbered) {
+                // Strong reasons to strafe
+                if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
                     shouldStrafe = true;
-                    if (inMeleeRange) {
-                        strafePriority += 0.1f; // Slight boost in melee range
-                    }
-                    if (outnumbered) {
-                        strafePriority += 0.3f; // Increased from 0.2f - more defensive when outnumbered
-                    }
-                    if (significantlyOutnumbered) {
-                        strafePriority += 0.4f; // Even higher priority when significantly outnumbered
-                    }
-                }
-            }
-
-            // Proactive repositioning when outnumbered: strafe even when target is idle
-            // This helps avoid being surrounded and creates better positioning
-            if (!shouldStrafe) {
-                bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
-                bool significantlyOutnumbered =
-                    (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
-
-                if (outnumbered) {
+                    strafePriority = 1.6f; // Higher priority when target is attacking (evasion)
+                } else if (a_state.target.isBlocking && !a_state.target.isAttacking) {
+                    shouldStrafe = true;
+                    strafePriority = 1.4f; // Good time to reposition for better angle
+                } else if (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough) {
+                    shouldStrafe = true;
+                    strafePriority = 1.5f; // Just finished attack, reposition
+                } else {
+                    // Weaker reasons - only strafe if in melee range or outnumbered
                     float reachDistance = a_state.weaponReach;
                     if (reachDistance <= 0.0f) {
-                        reachDistance = 150.0f;
+                        reachDistance = config.GetDecisionMatrix().fallbackWeaponReach;
                     }
 
-                    // Reposition when outnumbered, especially if close to target
-                    bool closeToTarget = (a_state.target.distance <= reachDistance * 2.0f);
+                    float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
 
-                    if (closeToTarget || significantlyOutnumbered) {
+                    // Use maxAttackDistance with a buffer to ensure we cover the gap where
+                    // Advancing stops Advancing stops when distance <= maxAttackDistance, so
+                    // we must strafe/engage if we are within that range Using 1.1f buffer
+                    // ensures slightly larger range than advancing cutoff (overlap)
+                    bool inMeleeRange = (a_state.target.distance <= maxAttackDistance * 1.1f);
+                    // More accurate outnumbered check: enemies > allies + 1
+                    bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
+                    // Significantly outnumbered: enemies >= allies * 2
+                    bool significantlyOutnumbered =
+                        (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
+
+                    if (inMeleeRange || outnumbered) {
                         shouldStrafe = true;
-                        strafePriority = 1.4f; // Good priority for proactive repositioning
-
-                        if (significantlyOutnumbered) {
-                            strafePriority = 1.6f; // Higher priority when significantly outnumbered
+                        if (inMeleeRange) {
+                            strafePriority += 0.1f; // Slight boost in melee range
                         }
-
-                        // Boost if we're in melee range (more urgent repositioning)
-                        if (a_state.target.distance <= reachDistance * 1.2f) {
-                            strafePriority += 0.2f;
+                        if (outnumbered) {
+                            strafePriority += 0.3f; // Increased from 0.2f - more defensive when outnumbered
+                        }
+                        if (significantlyOutnumbered) {
+                            strafePriority += 0.4f; // Even higher priority when significantly outnumbered
                         }
                     }
                 }
+
+                // Proactive repositioning when outnumbered: strafe even when target is idle
+                // This helps avoid being surrounded and creates better positioning
+                if (!shouldStrafe) {
+                    bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
+                    bool significantlyOutnumbered =
+                        (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
+
+                    if (outnumbered) {
+                        float reachDistance = a_state.weaponReach;
+                        if (reachDistance <= 0.0f) {
+                            reachDistance = config.GetDecisionMatrix().fallbackWeaponReach;
+                        }
+
+                        // Reposition when outnumbered, especially if close to target
+                        bool closeToTarget = (a_state.target.distance <= reachDistance * 2.0f);
+
+                        if (closeToTarget || significantlyOutnumbered) {
+                            shouldStrafe = true;
+                            strafePriority = 1.4f; // Good priority for proactive repositioning
+
+                            if (significantlyOutnumbered) {
+                                strafePriority = 1.6f; // Higher priority when significantly outnumbered
+                            }
+
+                            // Boost if we're in melee range (more urgent repositioning)
+                            if (a_state.target.distance <= reachDistance * 1.2f) {
+                                strafePriority += 0.2f;
+                            }
+                        }
+                    }
+                }
+
+                if (shouldStrafe) {
+                    result.action = ActionType::Strafe;
+                    result.priority = strafePriority;
+                    result.direction = CalculateStrafeDirection(a_state);
+                    result.intensity = 0.7f; // Moderate strafe speed
+                }
+                // If no tactical reason, return None - let other actions (offense,
+                // feinting, etc.) compete
             }
 
-            if (shouldStrafe) {
-                result.action = ActionType::Strafe;
-                result.priority = strafePriority;
-                result.direction = CalculateStrafeDirection(a_state);
-                result.intensity = 0.7f; // Moderate strafe speed
-            }
-            // If no tactical reason, return None - let other actions (offense,
-            // feinting, etc.) compete
-        }
+            return result;
+        } // end else (anti-spam)
 
         return result;
-    }
+    } // end EvaluateEvasion
 
     DecisionResult DecisionMatrix::EvaluateSurvival([[maybe_unused]] RE::Actor *a_actor, const ActorStateData &a_state)
     {
@@ -1063,7 +1070,7 @@ namespace CombatAI
         // Calculate max attack distance first (needed for decision logic)
         float reachDistance = a_state.weaponReach;
         if (reachDistance <= 0.0f) {
-            reachDistance = 150.0f; // Default fallback
+            reachDistance = config.GetDecisionMatrix().fallbackWeaponReach; // Default fallback
         }
         float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
 
@@ -1664,21 +1671,26 @@ namespace CombatAI
 
             // Hit/miss feedback: Adjust attack priority based on recent hit success
             // If last attack hit, encourage follow-up attacks (combos)
-            // If last attack missed, reduce priority slightly (need better
-            // timing/positioning)
+            // If last attack missed, reduce priority slightly (need better timing/positioning)
+            //
+            // Window is 1.75s: a normal attack animation takes ~0.5-0.8s,
+            // plus the humanizer reaction delay (~0.2-0.5s), leaves ~0.5-1.0s
+            // of usable combo window — enough to feel like a proper chain.
             float hitMissFeedback = 0.0f;
-            if (a_state.temporal.self.lastAttackHit && a_state.temporal.self.timeSinceLastHitAttack < 1.0f) {
+            if (a_state.temporal.self.lastAttackHit && a_state.temporal.self.timeSinceLastHitAttack < 1.75f) {
                 // Recent hit - encourage follow-up attacks (combo opportunity)
-                hitMissFeedback = 0.2f;
+                // Scale down bonus as time passes (fresher hit = stronger combo incentive)
+                float comboFreshness = 1.0f - (a_state.temporal.self.timeSinceLastHitAttack / 1.75f);
+                hitMissFeedback = 0.2f + comboFreshness * 0.15f; // 0.2 to 0.35 depending on freshness
             } else if (a_state.temporal.self.lastAttackMissed &&
-                       a_state.temporal.self.timeSinceLastMissedAttack < 1.0f) {
+                       a_state.temporal.self.timeSinceLastMissedAttack < 1.75f) {
                 // Recent miss - slight penalty (need better timing/positioning)
                 hitMissFeedback = -0.15f;
-            } else if (a_state.temporal.self.missRate > 0.5f && a_state.temporal.self.totalAttackCount >= 5) {
+            } else if (a_state.temporal.self.missRate > 0.5f && a_state.temporal.self.totalAttackCount >= 8) {
                 // High miss rate (>50%) with enough data - reduce attack priority
                 hitMissFeedback =
                     -0.2f - (a_state.temporal.self.missRate - 0.5f) * 0.4f; // Up to -0.4f for 100% miss rate
-            } else if (a_state.temporal.self.hitRate > 0.6f && a_state.temporal.self.totalAttackCount >= 5) {
+            } else if (a_state.temporal.self.hitRate > 0.6f && a_state.temporal.self.totalAttackCount >= 8) {
                 // High hit rate (>60%) with enough data - encourage attacks
                 hitMissFeedback = 0.15f;
             }
@@ -2591,7 +2603,7 @@ namespace CombatAI
         } else if (a_decision.action == ActionType::Bash && distance < 200.0f) {
             score += 3.0f; // Prefer bash when very close
         } else if ((a_decision.action == ActionType::Attack || a_decision.action == ActionType::PowerAttack) &&
-                   distance >= 150.0f && distance <= 300.0f) {
+                   distance >= Config::GetInstance().GetDecisionMatrix().fallbackWeaponReach && distance <= 300.0f) {
             score += 2.0f; // Prefer attacks at optimal range
         } else if (a_decision.action == ActionType::Feint && distance >= 100.0f && distance <= 400.0f) {
             score += 2.0f; // Prefer feinting at melee range
@@ -2773,9 +2785,9 @@ namespace CombatAI
 
             if (a_state.temporal.target.timeUntilAttackHits < 999.0f) {
                 LOG_DEBUG("TemporalTarget: TimeUntilAtkHits={:.2f}s EstAtkDur={:.2f}s "
-                          "AtkStartTime={:.2f}s",
+                          "AtkStartTime={:.2f}s HitPhaseRatio={:.2f}",
                           a_state.temporal.target.timeUntilAttackHits, a_state.temporal.target.estimatedAttackDuration,
-                          a_state.temporal.target.attackStartTime);
+                          a_state.temporal.target.attackStartTime, a_state.temporal.target.hitPhaseRatio);
             } else {
                 LOG_DEBUG("TemporalTarget: TimeUntilAtkHits=N/A EstAtkDur={:.2f}s "
                           "AtkStartTime={:.2f}s",

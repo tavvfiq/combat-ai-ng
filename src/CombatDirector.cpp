@@ -6,6 +6,7 @@
 #include "GuardCounterFeedbackTracker.h"
 #include "Logger.h"
 #include "ModEventSinks.h"
+#include "PacingPackageManager.h"
 #include "ParryFeedbackTracker.h"
 #include "PrecisionIntegration.h"
 #include "TimedBlockFeedbackTracker.h"
@@ -69,6 +70,11 @@ namespace CombatAI
         humanizerConfig.advancingMistakeMultiplier = config.GetHumanizer().advancingMistakeMultiplier;
         humanizerConfig.flankingMistakeMultiplier = config.GetHumanizer().flankingMistakeMultiplier;
         m_humanizer.SetConfig(humanizerConfig);
+
+        // Initialize PacingPackageManager (WYT integration, optional)
+        if (config.GetCombatPacing().enableCombatPacing) {
+            PacingPackageManager::GetInstance().Initialize();
+        }
 
         // Register mod callback listeners (for EldenParry integration)
         RegisterModCallbacks();
@@ -143,6 +149,126 @@ namespace CombatAI
 
         // Gather state first to check decision type
         ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
+
+        // --- Combat Pacing: timed slot system ---
+        const auto &pacingConfig = config.GetCombatPacing();
+        RE::FormID actorID = 0;
+        RE::FormID targetID = 0;
+        if (pacingConfig.enableCombatPacing) {
+            auto actorIDOpt = ActorUtils::SafeGetFormID(a_actor);
+            if (actorIDOpt.has_value()) {
+                actorID = actorIDOpt.value();
+            }
+            if (state.target.isValid) {
+                auto combatTarget = ActorUtils::SafeGetCombatTarget(a_actor);
+                if (combatTarget) {
+                    auto tidOpt = ActorUtils::SafeGetFormID(combatTarget);
+                    if (tidOpt.has_value()) {
+                        targetID = tidOpt.value();
+                    }
+                }
+            }
+
+            if (actorID != 0 && targetID != 0) {
+                std::lock_guard<std::mutex> slotLock(m_slotMutex);
+
+                // Does this NPC already hold a valid slot for this target?
+                bool alreadyHoldsSlot = false;
+                auto selfIt = m_slotHolders.find(actorID);
+                if (selfIt != m_slotHolders.end()) {
+                    if (selfIt->second.targetID == targetID && selfIt->second.expiryTime > m_elapsedTime) {
+                        alreadyHoldsSlot = true; // keep fighting
+                    } else {
+                        // Slot expired or target changed — relinquish
+                        m_slotHolders.erase(selfIt);
+                    }
+                }
+
+                if (!alreadyHoldsSlot) {
+                    // Count how many OTHERS currently hold a slot for this target
+                    int activeSlots = 0;
+                    for (const auto &[aid, entry] : m_slotHolders) {
+                        if (entry.targetID == targetID && entry.expiryTime > m_elapsedTime) {
+                            ++activeSlots;
+                        }
+                    }
+                    state.attackSlotsUsedOnTarget = activeSlots;
+
+                    // Dynamic max: scale with enemy count so large groups feel more
+                    // aggressive, while small groups remain disciplined.
+                    // Formula: base + 1 extra attacker per 3 enemies beyond the first,
+                    // capped at 2x the configured base.
+                    int baseMax = pacingConfig.maxSimultaneousAttackers;
+                    int enemyCount = state.combatContext.enemyCount;
+                    int bonus = (std::max)(0, (enemyCount - 1) / 3);
+                    int effectiveMax = (std::min)(baseMax * 2, baseMax + bonus);
+                    state.heldBackByPacing = (activeSlots >= effectiveMax);
+
+                    if (state.heldBackByPacing) {
+                        static constexpr float kOpportunityDotThreshold = -0.3f;
+                        static constexpr float kEngagementDotThreshold = 0.7f;
+                        static constexpr float kEngagementDistThreshold = 200.0f;
+
+                        bool targetFacingAway = state.target.orientationDot < kOpportunityDotThreshold;
+                        bool targetEngagingUs = state.target.orientationDot > kEngagementDotThreshold &&
+                                                state.target.distance < kEngagementDistThreshold;
+
+                        auto DoSlotTransfer = [&](const char *reason) {
+                            // Evict the slot holder with least remaining time (fairest to evict)
+                            RE::FormID evictID = 0;
+                            float shortestRemaining = (std::numeric_limits<float>::max)();
+                            for (const auto &[aid, entry] : m_slotHolders) {
+                                if (aid != actorID && entry.targetID == targetID && entry.expiryTime > m_elapsedTime) {
+                                    float remaining = entry.expiryTime - m_elapsedTime;
+                                    if (remaining < shortestRemaining) {
+                                        shortestRemaining = remaining;
+                                        evictID = aid;
+                                    }
+                                }
+                            }
+                            if (evictID != 0) {
+                                m_slotHolders.erase(evictID);
+                                LOG_DEBUG("Pacing: {} — evicted {:08X}, {:08X} claims slot", reason, evictID, actorID);
+                            }
+                            static constexpr float kProvisionalWindowSeconds = 0.5f;
+                            m_slotHolders[actorID] = SlotEntry{targetID, m_elapsedTime + kProvisionalWindowSeconds};
+                            PacingPackageManager::GetInstance().UnlockEnemy(a_actor);
+                            state.heldBackByPacing = false;
+                        };
+
+                        if (targetFacingAway) {
+                            // --- Opportunity Attack ---
+                            // Target's back is turned — seize the flank
+                            DoSlotTransfer("opportunity");
+                        } else if (targetEngagingUs) {
+                            // --- Engagement Priority ---
+                            // Target is actively facing and closing on this NPC — they get priority
+                            DoSlotTransfer("engagement");
+                        } else {
+                            // Apply WYT package override (no-op when WYT absent)
+                            PacingPackageManager::GetInstance().LockEnemy(a_actor);
+                        }
+                    } else {
+                        // *** RACE-CONDITION FIX ***
+                        // Reserve the slot NOW (inside the mutex) with a short provisional
+                        // window so that another NPC processed in the same tick cannot also
+                        // see an empty slot and sneak in.
+                        // The window is extended to the full SlotWindowMin-Max duration
+                        // if this NPC actually executes an attack below.
+                        static constexpr float kProvisionalWindowSeconds = 0.5f;
+                        m_slotHolders[actorID] = SlotEntry{targetID, m_elapsedTime + kProvisionalWindowSeconds};
+                        // Also remove any lingering WYT lock from a previous held-back frame
+                        PacingPackageManager::GetInstance().UnlockEnemy(a_actor);
+                        LOG_DEBUG("Pacing: actor {:08X} reserved provisional slot for {:08X}", actorID, targetID);
+                    }
+                } else {
+                    // This NPC already holds a valid slot — not held back
+                    state.attackSlotsUsedOnTarget = 0;
+                    state.heldBackByPacing = false;
+                }
+            }
+        }
+
         DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
 
         if (!canReact) {
@@ -180,8 +306,66 @@ namespace CombatAI
 
                 // Notify Public API listeners
                 APIManager::GetSingleton()->NotifyDecision(a_actor, decision);
+
+                // Extend provisional slot to full window on confirmed attack
+                if (pacingConfig.enableCombatPacing && actorID != 0 && targetID != 0 && !state.heldBackByPacing &&
+                    (decision.action == ActionType::Attack || decision.action == ActionType::PowerAttack ||
+                     decision.action == ActionType::SprintAttack)) {
+                    std::lock_guard<std::mutex> slotLock(m_slotMutex);
+                    // Extend whatever slot we have (provisional or existing) to the full window
+                    float window = m_slotDist(m_rng);
+                    m_slotHolders[actorID] = SlotEntry{targetID, m_elapsedTime + window};
+                    LOG_DEBUG("Pacing: actor {:08X} confirmed slot for {:08X} for {:.1f}s", actorID, targetID, window);
+                }
             }
         }
+    }
+
+    void CombatDirector::OnNPCHit(RE::Actor *a_victim)
+    {
+        if (!a_victim) {
+            return;
+        }
+
+        const auto &pacingConfig = Config::GetInstance().GetCombatPacing();
+        if (!pacingConfig.enableCombatPacing) {
+            return;
+        }
+
+        auto victimIDOpt = ActorUtils::SafeGetFormID(a_victim);
+        if (!victimIDOpt.has_value()) {
+            return;
+        }
+        RE::FormID victimID = victimIDOpt.value();
+
+        // Grant a short retaliation window so this NPC can hit back
+        // This overrides any WYT lock for the duration of the window
+        static constexpr float kRetaliationWindowSeconds = 2.5f;
+
+        std::lock_guard<std::mutex> slotLock(m_slotMutex);
+
+        // Only react if this NPC doesn't already hold a real (non-provisional) slot
+        auto it = m_slotHolders.find(victimID);
+        bool alreadyHasFullSlot =
+            (it != m_slotHolders.end() && it->second.expiryTime > m_elapsedTime + kRetaliationWindowSeconds);
+        if (alreadyHasFullSlot) {
+            return; // Already actively attacking — no need
+        }
+
+        // Resolve their current target to store in the slot
+        RE::FormID targetID = 0;
+        auto combatTarget = ActorUtils::SafeGetCombatTarget(a_victim);
+        if (combatTarget) {
+            auto tidOpt = ActorUtils::SafeGetFormID(combatTarget);
+            if (tidOpt.has_value()) {
+                targetID = tidOpt.value();
+            }
+        }
+
+        // Grant the retaliation slot and remove WYT lock
+        m_slotHolders[victimID] = SlotEntry{targetID, m_elapsedTime + kRetaliationWindowSeconds};
+        PacingPackageManager::GetInstance().UnlockEnemy(a_victim);
+        LOG_DEBUG("Pacing: actor {:08X} granted retaliation slot (was hit)", victimID);
     }
 
     void CombatDirector::Update(float a_deltaTime)
@@ -189,6 +373,25 @@ namespace CombatAI
         // Update per-frame systems (must be called once per frame, not per actor)
         m_humanizer.Update(a_deltaTime);
         m_observer.Update(a_deltaTime);
+
+        // Advance elapsed time and prune expired attack slots
+        {
+            std::lock_guard<std::mutex> slotLock(m_slotMutex);
+            m_elapsedTime += a_deltaTime;
+            // Update slotDist bounds from config (cheap struct copy, harmless every frame)
+            const auto &pacingCfg = Config::GetInstance().GetCombatPacing();
+            m_slotDist =
+                std::uniform_real_distribution<float>(pacingCfg.slotWindowMinSeconds, pacingCfg.slotWindowMaxSeconds);
+            // Purge expired holders so their slots become available for the next wave
+            for (auto it = m_slotHolders.begin(); it != m_slotHolders.end();) {
+                if (it->second.expiryTime <= m_elapsedTime) {
+                    LOG_DEBUG("Pacing: slot for actor {:08X} expired at t={:.1f}", it->first, m_elapsedTime);
+                    it = m_slotHolders.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
 
         auto &config = Config::GetInstance();
 

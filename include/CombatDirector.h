@@ -8,6 +8,9 @@
 #include "ParryFeedbackTracker.h"
 #include "ThreadSafeMap.h"
 #include "pch.h"
+#include <mutex>
+#include <random>
+#include <unordered_map>
 
 namespace CombatAI
 {
@@ -39,6 +42,10 @@ namespace CombatAI
         // Cleanup (remove invalid actors)
         void Cleanup();
 
+        // Called when player hits an NPC — grants a short retaliation slot if
+        // the NPC is currently locked out by the pacing system
+        void OnNPCHit(RE::Actor *a_victim);
+
       private:
         CombatDirector() = default;
         ~CombatDirector() = default;
@@ -68,6 +75,23 @@ namespace CombatAI
         // Processing throttle (don't process every frame)
         float m_processTimer = 0.0f;
         float m_processInterval = 0.1f; // Process every 100ms (loaded from config)
+
+        // Combat pacing: timed attack slot system.
+        // Each NPC that claims a slot holds it for a random duration (SlotWindowMin–Max seconds).
+        // Key = attacker FormID → (target FormID, time when slot expires).
+        // Protected by m_slotMutex.
+        struct SlotEntry
+        {
+            RE::FormID targetID = 0;
+            float expiryTime = 0.0f; // compared against m_elapsedTime
+        };
+        std::unordered_map<RE::FormID, SlotEntry> m_slotHolders;
+        mutable std::mutex m_slotMutex;
+        float m_elapsedTime = 0.0f; // monotonically increasing game time
+
+        // Random engine for slot window durations
+        std::mt19937 m_rng{std::random_device{}()};
+        std::uniform_real_distribution<float> m_slotDist{3.0f, 7.0f}; // updated from config
 
         // Minimum time before processing newly spawned actors (safety delay)
         static constexpr float SPAWN_WARMUP_DELAY = 0.5f; // 500ms delay

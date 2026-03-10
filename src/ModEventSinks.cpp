@@ -1,6 +1,7 @@
 #include "ModEventSinks.h"
 #include "ActorUtils.h"
 #include "AttackDefenseFeedbackTracker.h"
+#include "CombatDirector.h"
 #include "GuardCounterFeedbackTracker.h"
 #include "Logger.h"
 #include "ParryFeedbackTracker.h"
@@ -101,10 +102,16 @@ namespace CombatAI
             return RE::BSEventNotifyControl::kContinue;
         }
 
-        // Only process if attacker is an NPC (not player)
-        // This detects when NPC attacks successfully hit any target (player or NPC)
+        // Case 1: Player hits an NPC → grant the NPC a retaliation slot so they
+        // can fight back even if the pacing system was holding them back
+        if (ActorUtils::SafeIsPlayerRef(attacker) && target) {
+            CombatDirector::GetInstance().OnNPCHit(target);
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        // Case 2: NPC attacker (skip player attacks for feedback tracking)
         if (ActorUtils::SafeIsPlayerRef(attacker)) {
-            return RE::BSEventNotifyControl::kContinue; // Skip player attacks
+            return RE::BSEventNotifyControl::kContinue; // shouldn't reach here but guard anyway
         }
 
         // Check if hit was blocked - if blocked, it's not a successful hit

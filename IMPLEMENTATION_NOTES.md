@@ -16,7 +16,9 @@ The plugin follows a modular architecture with clear separation of concerns:
 6. **Humanizer** - Adds organic feel (reaction latency, mistake probability, cooldowns)
 7. **DodgeSystem** - Handles TK Dodge integration for evasion
 8. **CombatStyleEnhancer** - Enhances NPC behavior based on combat styles (supports all action types)
-9. **Config** - Configuration system using SimpleINI
+9. **PacingPackageManager** - Manages combat pacing and simultaneous attacker slots
+10. **Feedback Trackers** - Tracks attack/defense history (Parry, Timed Block, Guard Counter, General Hits/Misses)
+11. **Config** - Configuration system using SimpleINI
 
 ## Important Notes
 
@@ -43,8 +45,10 @@ See `HOOK_PATTERN_EXPLANATION.md` for detailed comparison of pre-hook vs post-ho
 - Supports: Circling, Fallback, Advance, Backoff
 
 ### Action Types
-✅ **Implemented 10 action types**:
+✅ **Implemented 12 action types**:
 - Bash (interrupt)
+- Parry (defense)
+- Timed Block (defense)
 - Strafe (evasion)
 - Retreat (survival)
 - PowerAttack, Attack, SprintAttack (offense)
@@ -109,6 +113,9 @@ See `HOOK_PATTERN_EXPLANATION.md` for detailed comparison of pre-hook vs post-ho
 ✅ **Per-Actor Throttling** - Performance optimization via configurable processing intervals
 ✅ **Intensity Values** - All actions have intensity values for better decision making
 ✅ **BFCO State Optimization** - Removed redundant state resets, only set needed flags
+✅ **EldenParry & Timed Block Integration** - Full support for timed defensive actions relying on external mods
+✅ **Combat Pacing System** - Slot-based system to prevent the player from being overwhelmed by multiple attackers
+✅ **Feedback Tracking System** - Dynamic tracking of hits, misses, parries, and timed blocks to provide data for the AI logic
 
 ## Mod Integrations
 
@@ -135,6 +142,16 @@ See `HOOK_PATTERN_EXPLANATION.md` for detailed comparison of pre-hook vs post-ho
 - **Method**: Precision API (GetAttackCollisionCapsuleLength)
 - **Usage**: Used in ActorStateObserver for accurate distance calculations
 - **Documentation**: See `PRECISION_INTEGRATION.md`
+
+### Simple Timed Block & EldenParry
+- **Purpose**: Advanced defensive capabilities
+- **Method**: Animation events and mod-specific spells
+- **Usage**: Automatically triggers timed defensive actions based on incoming attacks and precision timing windows.
+
+### Combat Pacing (Wait Your Turn style)
+- **Purpose**: Manage multiple enemies attacking simultaneously
+- **Method**: Dynamically locking/unlocking NPC packages (PacingPackageManager)
+- **Usage**: Prevents NPC swarms from constantly attacking all at once by enforcing attack slots.
 
 ## TK Dodge Integration
 
@@ -202,6 +219,9 @@ src/
 ├── Hooks.h/cpp                    ✅ Hook implementations (Character::Update)
 ├── DodgeSystem.h/cpp              ✅ TK Dodge integration
 ├── CombatStyleEnhancer.h/cpp      ✅ Combat style enhancement
+├── PacingPackageManager.h/cpp     ✅ Combat pacing and slot management
+├── AttackDefenseFeedbackTracker.h/cpp ✅ Hit/Miss tracking
+├── TimedBlockIntegration.h/cpp    ✅ Simple Timed Block integration
 └── PrecisionIntegration.h/cpp     ✅ Precision mod integration
 ```
 

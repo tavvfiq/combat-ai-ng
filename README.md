@@ -12,6 +12,7 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 
 ### Combat Actions
 - **Bash Interrupts**: NPCs bash when target is power attacking within reach
+- **Parry & Timed Block**: NPCs can defensively parry or timed block incoming attacks when the respective mods are installed
 - **Evasion**: NPCs dodge/strafe/jump when target is blocking or attacking
 - **Retreat**: NPCs retreat when low on stamina or health
 - **Backoff**: NPCs back away when target is casting magic or drawing bow
@@ -24,6 +25,9 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 - **BFCO Attack Framework**: Enhanced attack animations and state management
 - **TK Dodge RE**: NPC dodging system for evasion
 - **Precision**: Accurate weapon reach calculations
+- **EldenParry**: Support for parry mechanics integrated into decision making
+- **Simple Timed Block**: Support for timed blocking mechanics
+- **Combat Pacing**: Integration with pacing systems to manage and limit simultaneous attackers
 
 ## Requirements
 
@@ -37,6 +41,8 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 - **BFCO Attack Framework**: For enhanced attack animations
 - **TK Dodge RE**: For NPC dodging/evasion
 - **Precision**: For accurate weapon reach calculations
+- **EldenParry**: For parry mechanics
+- **Simple Timed Block**: For timed block mechanics
 
 ## Installation
 
@@ -75,6 +81,14 @@ The plugin uses `EnhancedCombatAI.ini` for configuration. A template is provided
 - `SurvivalHealthThreshold` - Health threshold for survival mode (%)
 - `SurvivalStaminaThreshold` - Stamina threshold for survival mode (%)
 
+#### Combat Pacing
+- `EnableCombatPacing` - Enable/disable the combat pacing feature
+- `MaxSimultaneousAttackers` - Limit the number of concurrent attackers
+
+#### Parry & Timed Block
+- `EnableParry` / `EnableTimedBlock` - Enable respective systems
+- Configuration for window timings, distance constraints, and timing bonuses.
+
 #### Performance
 - `ProcessInterval` - Processing interval (milliseconds)
 - `CleanupInterval` - Cleanup interval (milliseconds)
@@ -103,9 +117,9 @@ CPR/BFCO/TK Dodge → Mod integrations
 
 ### Decision Priority
 
-1. **Interrupt (Priority 1)**
-   - Trigger: Target power attacking + Distance < Weapon Reach
-   - Action: Bash
+1. **Interrupt & Defense (Priority 1)**
+   - Trigger: Target attacking/power attacking within reach
+   - Action: Parry, Timed Block, or Bash (Interrupt)
 
 2. **Evasion (Priority 1-2)**
    - Trigger: Target blocking/attacking + Actor idle
@@ -138,6 +152,8 @@ NPCs are enhanced based on their combat style:
 - **Per-Actor Throttling**: Actors are processed at configurable intervals (default 100ms) to optimize performance
 - **Jump Evasion**: NPCs can jump to evade ranged attacks (uses dodge system with animation replacement via OAR)
 - **Intensity-Based Actions**: All actions have intensity values for more nuanced behavior
+- **Combat Pacing**: Dynamically assigns attack slots to prevent the player from being overwhelmed by too many enemies at once.
+- **Feedback Tracking**: System monitors attack/defense success rates and reaction times over the battle.
 
 ## Mod Compatibility
 
@@ -147,6 +163,8 @@ NPCs are enhanced based on their combat style:
 - **TK Dodge RE**: Fully integrated, auto-detected
 - **Precision**: Fully integrated, auto-detected
 - **Modern Combat Overhaul (MCO)**: Compatible via BFCO integration
+- **EldenParry**: Fully integrated for parry actions
+- **Simple Timed Block**: Fully integrated for timed block window generation
 
 ### How Integration Works
 - Mods are auto-detected at runtime

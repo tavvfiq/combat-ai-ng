@@ -742,7 +742,14 @@ namespace CombatAI
                 if (actorOwner) {
                     float maxStamina = actorOwner->GetBaseActorValue(RE::ActorValue::kStamina);
                     float currentStamina = a_state.self.staminaPercent * maxStamina;
-                    if (currentStamina < config.GetDodgeSystem().dodgeStaminaCost) {
+                    
+                    // Relax stamina cost in life-or-death scenarios
+                    float requiredStamina = config.GetDodgeSystem().dodgeStaminaCost;
+                    if (a_state.target.isPowerAttacking || a_state.self.healthPercent < 0.3f) {
+                        requiredStamina *= 0.5f; // Dodge on adrenaline/fumes
+                    }
+                    
+                    if (currentStamina < requiredStamina) {
                         conditionsMet = false;
                     }
                 }
@@ -791,18 +798,26 @@ namespace CombatAI
                 // situation NPCs should prioritize dodging when outmatched
                 float pressureModifier = 0.0f;
                 if (a_state.target.isAttacking || a_state.target.isPowerAttacking) {
+                    // BASELINE: Attack is incoming, add flat priority so we don't just trade blows
+                    pressureModifier += 0.3f;
+                    
+                    // REACTIVE: If attack just started, prioritize dodging earlier
+                    if (a_state.temporal.target.attackingDuration > 0.0f && a_state.temporal.target.attackingDuration < 0.3f) {
+                        pressureModifier += 0.3f; // Fast reaction boost
+                    }
+
                     // Target is attacking - check if we're pressured
                     if (a_state.target.healthPercent > a_state.self.healthPercent + 0.2f) {
                         // Target has significantly more HP (20%+ more) - we're pressured
-                        pressureModifier = 0.6f; // High priority to dodge when pressured
+                        pressureModifier += 0.6f; // High priority to dodge when pressured
                     } else if (a_state.target.healthPercent > a_state.self.healthPercent) {
                         // Target has more HP (even slightly) - moderate pressure
-                        pressureModifier = 0.3f;
+                        pressureModifier += 0.3f;
                     }
 
                     // Boost priority if target is power attacking (more dangerous)
                     if (a_state.target.isPowerAttacking) {
-                        pressureModifier += 0.2f;
+                        pressureModifier += 0.4f;
                     }
                 }
                 baseDodgePriority += pressureModifier;

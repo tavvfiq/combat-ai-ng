@@ -153,6 +153,11 @@ namespace CombatAI
         }
 
         state.isValid = true;
+        state.isPlayer = ActorUtils::SafeIsPlayerRef(a_target);
+        if (state.isPlayer) {
+            state.detectionLevel = ActorUtils::SafeRequestDetectionLevel(a_self, a_target);
+            state.isDetected = state.detectionLevel > 0;
+        }
 
         // Use safe wrappers for all target property access - target can be knocked
         // down/deleted Blocking state - use safe wrapper

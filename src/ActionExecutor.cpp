@@ -33,6 +33,13 @@ namespace CombatAI
             return false;
         }
 
+        const bool targetsHiddenPlayer = a_state.target.isPlayer && !a_state.target.isDetected;
+        if (targetsHiddenPlayer &&
+            (a_decision.action == ActionType::Attack || a_decision.action == ActionType::PowerAttack ||
+             a_decision.action == ActionType::SprintAttack || a_decision.action == ActionType::Advancing)) {
+            return false;
+        }
+
         // Reset jump variable if executing a different action
         // This prevents the jump variable from staying true when we want to do something else
         if (a_decision.action != ActionType::Jump) {

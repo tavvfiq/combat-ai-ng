@@ -1060,6 +1060,12 @@ namespace CombatAI
             return result;
         }
 
+        // Combat targets remain assigned while an NPC searches for a hidden
+        // player. Avoid revealing the player's exact position through offense.
+        if (a_state.target.isPlayer && !a_state.target.isDetected) {
+            return result;
+        }
+
         // Calculate max attack distance first (needed for decision logic)
         float reachDistance = a_state.weaponReach;
         if (reachDistance <= 0.0f) {
@@ -2680,8 +2686,11 @@ namespace CombatAI
         if (a_state.target.isValid) {
             std::uint32_t targetWeaponFormID =
                 a_state.target.equippedRightHand ? a_state.target.equippedRightHand->GetFormID() : 0;
-            LOG_DEBUG("Target: Valid=true Dist={:.1f} Health={:.1f}% Stamina={:.1f}%", a_state.target.distance,
-                      a_state.target.healthPercent * 100.0f, a_state.target.staminaPercent * 100.0f);
+            LOG_DEBUG("Target: Valid=true Player={} Detected={} DetectionLevel={} Dist={:.1f} Health={:.1f}% "
+                      "Stamina={:.1f}%",
+                      a_state.target.isPlayer, a_state.target.isDetected, a_state.target.detectionLevel,
+                      a_state.target.distance, a_state.target.healthPercent * 100.0f,
+                      a_state.target.staminaPercent * 100.0f);
             LOG_DEBUG("Target: Atk={} PAtk={} Blk={} Cast={} Draw={} Flee={} "
                       "InAtkRecov={} Knock={}",
                       a_state.target.isAttacking, a_state.target.isPowerAttacking, a_state.target.isBlocking,

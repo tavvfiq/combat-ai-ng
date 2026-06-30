@@ -289,6 +289,18 @@ namespace CombatAI
             }
         }
 
+        inline std::int32_t SafeRequestDetectionLevel(RE::Actor *a_observer, RE::Actor *a_target)
+        {
+            if (!a_observer || !a_target) {
+                return 0;
+            }
+            try {
+                return a_observer->RequestDetectionLevel(a_target);
+            } catch (...) {
+                return 0;
+            }
+        }
+
         // Safe GetLevel
         inline std::uint16_t SafeGetLevel(RE::Actor *a_actor)
         {

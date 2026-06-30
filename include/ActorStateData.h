@@ -46,6 +46,9 @@ namespace CombatAI
     struct TargetState
     {
         bool isValid = false;
+        bool isPlayer = false;
+        bool isDetected = true;
+        std::int32_t detectionLevel = 0;
         bool isBlocking = false;
         bool isAttacking = false;
         bool isPowerAttacking = false;

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -108,35 +110,37 @@ namespace CombatAI
             return a_default;
         }
 
-        // Thread-safe get or create (if not exists, create with default value)
-        // Returns pointer to value (valid until next write operation)
-        Value *GetOrCreate(const Key &a_key, const Value &a_default)
-        {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            auto [it, inserted] =
-                m_map.emplace(std::piecewise_construct, std::forward_as_tuple(a_key), std::forward_as_tuple(a_default));
-            return &it->second;
-        }
-
-        // Thread-safe get or create with default constructor (for default-constructible types)
-        template <typename = std::enable_if_t<std::is_default_constructible_v<Value>>>
-        Value *GetOrCreateDefault(const Key &a_key)
-        {
-            std::unique_lock<std::shared_mutex> lock(m_mutex);
-            auto [it, inserted] = m_map.emplace(std::piecewise_construct, std::forward_as_tuple(a_key), std::tuple<>());
-            return &it->second;
-        }
-
-        // Thread-safe get mutable reference (for updating)
-        // Returns pointer if found, nullptr otherwise
-        Value *GetMutable(const Key &a_key)
+        // Thread-safe read-modify-write.
+        // Invokes a_func with a mutable reference to the value for a_key while the write
+        // lock is held, so the entire read-modify-write is atomic. Returns true if the
+        // key existed (and a_func was invoked), false otherwise.
+        //
+        // IMPORTANT: Do NOT call back into this same map from within a_func. The mutex is
+        // not recursive, so re-entering would deadlock. Prefer this over the old
+        // pointer-returning accessors: a raw pointer into the map is only valid while the
+        // lock is held, and mutating through it after the lock was released is a data race
+        // (and a use-after-free if another thread erases the entry).
+        template <typename Func> bool Modify(const Key &a_key, Func &&a_func)
         {
             std::unique_lock<std::shared_mutex> lock(m_mutex);
             auto it = m_map.find(a_key);
-            if (it != m_map.end()) {
-                return &it->second;
+            if (it == m_map.end()) {
+                return false;
             }
-            return nullptr;
+            a_func(it->second);
+            return true;
+        }
+
+        // Thread-safe get-or-create + modify.
+        // Default-constructs the value for a_key if it does not already exist, then invokes
+        // a_func with a mutable reference while the write lock is held. Same non-reentrancy
+        // rule as Modify().
+        template <typename Func, typename = std::enable_if_t<std::is_default_constructible_v<Value>>>
+        void ModifyOrCreate(const Key &a_key, Func &&a_func)
+        {
+            std::unique_lock<std::shared_mutex> lock(m_mutex);
+            auto it = m_map.try_emplace(a_key).first;
+            a_func(it->second);
         }
 
       private:

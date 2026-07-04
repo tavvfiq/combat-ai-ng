@@ -38,57 +38,37 @@ namespace CombatAI
             return false;
         }
 
-        // Use thread-safe map operations - get or create default state
-        auto *statePtr = m_reactionStates.GetOrCreateDefault(formID);
-        if (!statePtr) {
-            return false; // Failed to get or create
-        }
+        // Ensure a reaction state exists and check whether the delay still needs to be
+        // initialized. The read-modify-write is done atomically under the map's lock.
+        bool needsInit = false;
+        m_reactionStates.ModifyOrCreate(formID,
+                                        [&](ActorReactionState &state) { needsInit = (state.reactionDelay == 0.0f); });
 
-        if (!statePtr) {
-            return false; // Failed to get state
-        }
-        auto &state = *statePtr;
-
-        // Initialize delay if not set
-        // Re-validate actor before accessing it (could become invalid)
-        if (state.reactionDelay == 0.0f) {
-            // Validate actor is still valid before initializing
-            if (!ActorUtils::SafeIsInCombat(a_actor)) {
-                // Actor left combat, clean up and exit
-                m_reactionStates.Erase(formID);
-                return false;
-            }
+        // Initialize delay if not set. InitializeReactionDelay locks the same map, so it
+        // must run outside the callback above to avoid a recursive (deadlocking) lock.
+        if (needsInit) {
             InitializeReactionDelay(a_actor);
-            // Re-get state after initialization
-            statePtr = m_reactionStates.GetMutable(formID);
-            if (!statePtr) {
-                return false; // State was removed or not found
+        }
+
+        // Advance the reaction timer and evaluate readiness atomically under the lock.
+        // If the entry was removed in the meantime, treat the actor as unable to react.
+        bool canReact = false;
+        m_reactionStates.Modify(formID, [&](ActorReactionState &state) {
+            // If already able to react, keep it (reset happens after the action executes).
+            if (state.canReact) {
+                canReact = true;
+                return;
             }
-            state = *statePtr;
-        }
 
-        // Re-validate actor before accessing state (actor could become invalid)
-        if (!ActorUtils::SafeIsInCombat(a_actor)) {
-            // Actor left combat, clean up and exit
-            m_reactionStates.Erase(formID);
-            return false;
-        }
+            // Update timer (convert seconds to milliseconds) and check if the delay passed.
+            state.reactionTimer += a_deltaTime * 1000.0f;
+            if (state.reactionTimer >= state.reactionDelay) {
+                state.canReact = true;
+                canReact = true;
+            }
+        });
 
-        // If already can react, return true (don't reset here - reset after action is executed)
-        if (state.canReact) {
-            return true;
-        }
-
-        // Update timer
-        state.reactionTimer += a_deltaTime * 1000.0f; // Convert to milliseconds
-
-        // Check if delay has passed
-        if (state.reactionTimer >= state.reactionDelay) {
-            state.canReact = true;
-            return true;
-        }
-
-        return false;
+        return canReact;
     }
 
     void Humanizer::ResetReactionState(RE::Actor *a_actor)
@@ -109,14 +89,12 @@ namespace CombatAI
             return; // Invalid FormID
         }
 
-        // Use thread-safe map operations
-        auto *statePtr = m_reactionStates.GetMutable(formID);
-        if (statePtr) {
-            // Reset timer and delay, will be re-initialized on next CanReact call
-            statePtr->reactionTimer = 0.0f;
-            statePtr->reactionDelay = 0.0f;
-            statePtr->canReact = false;
-        }
+        // Reset timer and delay atomically; will be re-initialized on next CanReact call
+        m_reactionStates.Modify(formID, [](ActorReactionState &state) {
+            state.reactionTimer = 0.0f;
+            state.reactionDelay = 0.0f;
+            state.canReact = false;
+        });
     }
 
     bool Humanizer::ShouldMakeMistake(RE::Actor *a_actor, ActionType a_action)
@@ -155,19 +133,16 @@ namespace CombatAI
             return true; // Invalid FormID - safe default (on cooldown)
         }
 
-        // Use thread-safe map operations
-        auto *cooldownStatePtr = m_cooldownStates.GetMutable(formID);
-        if (!cooldownStatePtr) {
-            return false;
-        }
+        // Read the cooldown atomically. Holding the outer map's lock for the lookup
+        // prevents another thread from erasing the actor entry (and thus the nested
+        // cooldown map) while we are reading from it.
+        bool onCooldown = false;
+        m_cooldownStates.Modify(formID, [&](ActorCooldownState &cooldownState) {
+            auto cooldownOpt = cooldownState.cooldowns.Find(a_action);
+            onCooldown = cooldownOpt.has_value() && cooldownOpt.value() > 0.0f;
+        });
 
-        // Check nested cooldown map (also thread-safe)
-        auto cooldownOpt = cooldownStatePtr->cooldowns.Find(a_action);
-        if (!cooldownOpt.has_value()) {
-            return false;
-        }
-
-        return cooldownOpt.value() > 0.0f;
+        return onCooldown;
     }
 
     float Humanizer::GetCooldownForAction(ActionType a_action) const
@@ -209,16 +184,12 @@ namespace CombatAI
             return; // Invalid FormID
         }
 
-        // Use thread-safe map operations - get or create default
-        auto *cooldownStatePtr = m_cooldownStates.GetOrCreateDefault(formID);
-        if (!cooldownStatePtr) {
-            return; // Failed to get or create
-        }
-
         // Map Strafe to Dodge cooldown (they share the same cooldown)
         ActionType cooldownKey = (a_action == ActionType::Strafe) ? ActionType::Dodge : a_action;
-        // Use thread-safe nested map
-        cooldownStatePtr->cooldowns.Emplace(cooldownKey, cooldown);
+
+        // Get-or-create the actor's cooldown state and record the cooldown atomically.
+        m_cooldownStates.ModifyOrCreate(
+            formID, [&](ActorCooldownState &cooldownState) { cooldownState.cooldowns.Emplace(cooldownKey, cooldown); });
     }
 
     void Humanizer::RecoverFromCorruption()
@@ -361,12 +332,6 @@ namespace CombatAI
             return; // Invalid FormID
         }
 
-        // Use thread-safe map operations - get or create default
-        auto *statePtr = m_reactionStates.GetOrCreateDefault(formID);
-        if (!statePtr) {
-            return; // Failed to get or create
-        }
-
         // Calculate base delay based on actor level
         // Use wrapper to safely get level - validate actor again before accessing
         if (!ActorUtils::SafeIsInCombat(a_actor)) {
@@ -381,8 +346,12 @@ namespace CombatAI
         // Random variance: base + variance
         std::uniform_real_distribution<float> dist(0.0f, m_config.reactionVarianceMs);
         float variance = dist(g_gen);
-        statePtr->reactionDelay = baseDelay + variance;
-        statePtr->reactionTimer = 0.0f;
-        statePtr->canReact = false;
+
+        // Get-or-create the reaction state and initialize it atomically under the lock.
+        m_reactionStates.ModifyOrCreate(formID, [&](ActorReactionState &state) {
+            state.reactionDelay = baseDelay + variance;
+            state.reactionTimer = 0.0f;
+            state.canReact = false;
+        });
     }
 } // namespace CombatAI

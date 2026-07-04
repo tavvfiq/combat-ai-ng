@@ -136,20 +136,16 @@ namespace CombatAI
             }
         }
 
-        // Check if actor can react (reaction delay)
-        // For movement actions, allow continuous execution even during reaction delay
-        // (we check this after getting the decision to see if it's a movement action)
-        bool canReact = m_humanizer.CanReact(a_actor, a_deltaTime);
-
-        // Gather state first to check decision type
-        ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
-        DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
-
-        if (!canReact) {
+        // Check if actor can react (reaction delay). Bail out before the expensive
+        // state gathering and decision evaluation when the actor is still within its
+        // reaction latency window - there is nothing we could act on this frame anyway.
+        if (!m_humanizer.CanReact(a_actor, a_deltaTime)) {
             return; // can't react yet
         }
 
-        // State and decision already gathered above for movement action check
+        // Gather state and evaluate the decision matrix (the heavy per-actor work)
+        ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
+        DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
 
         // Check if should make mistake (humanizer)
         if (decision.action != ActionType::None && m_humanizer.ShouldMakeMistake(a_actor, decision.action)) {
@@ -341,32 +337,18 @@ namespace CombatAI
 
         // Increment spawn time using the deltaTime for this actor
         // This ensures spawn times are updated even if Update() hasn't been called
-        // yet
-        auto *spawnTimePtr = m_actorSpawnTimes.GetMutable(formID);
-        if (spawnTimePtr) {
-            *spawnTimePtr += a_deltaTime;
-        }
+        // yet. The read-modify-write is done atomically under the map's lock.
+        float currentSpawnTime = 0.0f;
+        m_actorSpawnTimes.Modify(formID, [&](float &spawnTime) {
+            spawnTime += a_deltaTime;
+            currentSpawnTime = spawnTime;
+        });
 
         // Check if actor is still in warmup period
-        auto currentSpawnTimeOpt = m_actorSpawnTimes.Find(formID);
-        if (currentSpawnTimeOpt.has_value() && currentSpawnTimeOpt.value() < SPAWN_WARMUP_DELAY) {
+        if (currentSpawnTime < SPAWN_WARMUP_DELAY) {
             // Actor is still warming up, don't process yet
             return false;
         }
-
-        // Use thread-safe map operations for timer
-        auto *timerPtr = m_actorProcessTimers.GetMutable(formID);
-        if (!timerPtr) {
-            // First time processing this actor, initialize timer
-            auto [inserted, newTimerPtr] = m_actorProcessTimers.Emplace(formID, 0.0f);
-            if (!inserted || !newTimerPtr) {
-                return false; // Failed to insert
-            }
-            return true; // First time, allow processing
-        }
-
-        // Update timer
-        *timerPtr += a_deltaTime;
 
         // Determine processing interval based on distance to player (LOD)
         // Get player position - safely
@@ -392,14 +374,23 @@ namespace CombatAI
             }
         }
 
-        // Only process if interval has passed
-        if (*timerPtr < targetInterval) {
-            return false; // Skip processing this frame
+        // Update the per-actor throttle timer atomically under the map's lock and
+        // decide whether enough time has elapsed to process this actor this frame.
+        bool shouldProcess = false;
+        bool existed = m_actorProcessTimers.Modify(formID, [&](float &timer) {
+            timer += a_deltaTime;
+            if (timer >= targetInterval) {
+                timer = 0.0f; // Reset timer for next interval
+                shouldProcess = true;
+            }
+        });
+
+        if (!existed) {
+            // First time processing this actor, initialize timer and allow processing
+            m_actorProcessTimers.Emplace(formID, 0.0f);
+            return true;
         }
 
-        // Reset timer for next interval
-        *timerPtr = 0.0f;
-
-        return true;
+        return shouldProcess;
     }
 } // namespace CombatAI

@@ -858,161 +858,160 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
-        // Get or create actor temporal data
-        auto *actorTemporalPtr = m_actorTemporalData.GetOrCreateDefault(formID);
-        if (!actorTemporalPtr) {
-            return temporal;
-        }
-        ActorTemporalData &actorTemporal = *actorTemporalPtr;
+        // Get or create actor temporal data and update it atomically under the map's
+        // lock. Holding the lock for the whole read-modify-write keeps the reference
+        // valid even if another thread inserts or erases entries concurrently.
+        m_actorTemporalData.ModifyOrCreate(formID, [&](ActorTemporalData &actorTemporal) {
+            // Update timers
+            actorTemporal.timeSinceLastAttack += a_deltaTime;
+            actorTemporal.timeSinceLastDodge += a_deltaTime;
+            actorTemporal.timeSinceLastAction += a_deltaTime;
+            actorTemporal.timeSinceLastPowerAttack += a_deltaTime;
+            actorTemporal.timeSinceLastSprintAttack += a_deltaTime;
+            actorTemporal.timeSinceLastBash += a_deltaTime;
+            actorTemporal.timeSinceLastFeint += a_deltaTime;
 
-        // Update timers
-        actorTemporal.timeSinceLastAttack += a_deltaTime;
-        actorTemporal.timeSinceLastDodge += a_deltaTime;
-        actorTemporal.timeSinceLastAction += a_deltaTime;
-        actorTemporal.timeSinceLastPowerAttack += a_deltaTime;
-        actorTemporal.timeSinceLastSprintAttack += a_deltaTime;
-        actorTemporal.timeSinceLastBash += a_deltaTime;
-        actorTemporal.timeSinceLastFeint += a_deltaTime;
+            // Track duration of current states
+            bool isBlocking = ActorUtils::SafeIsBlocking(a_actor);
+            bool isAttacking = ActorUtils::SafeIsAttacking(a_actor);
+            RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
+            bool isIdle = (attackState == RE::ATTACK_STATE_ENUM::kNone);
 
-        // Track duration of current states
-        bool isBlocking = ActorUtils::SafeIsBlocking(a_actor);
-        bool isAttacking = ActorUtils::SafeIsAttacking(a_actor);
-        RE::ATTACK_STATE_ENUM attackState = ActorUtils::SafeGetAttackState(a_actor);
-        bool isIdle = (attackState == RE::ATTACK_STATE_ENUM::kNone);
-
-        if (isBlocking) {
-            if (actorTemporal.wasBlocking) {
-                actorTemporal.blockingDuration += a_deltaTime;
-            } else {
-                actorTemporal.blockingDuration = a_deltaTime; // Just started blocking
-            }
-        } else {
-            actorTemporal.blockingDuration = 0.0f;
-        }
-
-        if (isAttacking || attackState != RE::ATTACK_STATE_ENUM::kNone) {
-            if (actorTemporal.wasAttacking || actorTemporal.previousAttackState != RE::ATTACK_STATE_ENUM::kNone) {
-                actorTemporal.attackingDuration += a_deltaTime;
-            } else {
-                actorTemporal.attackingDuration = a_deltaTime; // Just started attacking
-                // Track attack attempt for defense feedback
-                if (a_target) {
-                    bool isPowerAttack = IsPowerAttacking(a_actor);
-                    AttackDefenseFeedbackTracker::GetInstance().RecordAttackAttempt(a_actor, a_target, isPowerAttack);
+            if (isBlocking) {
+                if (actorTemporal.wasBlocking) {
+                    actorTemporal.blockingDuration += a_deltaTime;
+                } else {
+                    actorTemporal.blockingDuration = a_deltaTime; // Just started blocking
                 }
-            }
-        } else {
-            actorTemporal.attackingDuration = 0.0f;
-        }
-
-        if (isIdle) {
-            if (actorTemporal.wasIdle) {
-                actorTemporal.idleDuration += a_deltaTime;
             } else {
-                actorTemporal.idleDuration = a_deltaTime; // Just became idle
+                actorTemporal.blockingDuration = 0.0f;
             }
-        } else {
-            actorTemporal.idleDuration = 0.0f;
-        }
 
-        // Update previous states
-        actorTemporal.wasBlocking = isBlocking;
-        actorTemporal.wasAttacking = isAttacking;
-        actorTemporal.wasIdle = isIdle;
-        actorTemporal.previousAttackState = attackState;
+            if (isAttacking || attackState != RE::ATTACK_STATE_ENUM::kNone) {
+                if (actorTemporal.wasAttacking || actorTemporal.previousAttackState != RE::ATTACK_STATE_ENUM::kNone) {
+                    actorTemporal.attackingDuration += a_deltaTime;
+                } else {
+                    actorTemporal.attackingDuration = a_deltaTime; // Just started attacking
+                    // Track attack attempt for defense feedback
+                    if (a_target) {
+                        bool isPowerAttack = IsPowerAttacking(a_actor);
+                        AttackDefenseFeedbackTracker::GetInstance().RecordAttackAttempt(a_actor, a_target,
+                                                                                        isPowerAttack);
+                    }
+                }
+            } else {
+                actorTemporal.attackingDuration = 0.0f;
+            }
 
-        // Copy to output
-        temporal.self.timeSinceLastAttack = actorTemporal.timeSinceLastAttack;
-        temporal.self.timeSinceLastDodge = actorTemporal.timeSinceLastDodge;
-        temporal.self.timeSinceLastAction = actorTemporal.timeSinceLastAction;
-        temporal.self.blockingDuration = actorTemporal.blockingDuration;
-        temporal.self.attackingDuration = actorTemporal.attackingDuration;
-        temporal.self.idleDuration = actorTemporal.idleDuration;
-        temporal.self.timeSinceLastPowerAttack = actorTemporal.timeSinceLastPowerAttack;
-        temporal.self.timeSinceLastSprintAttack = actorTemporal.timeSinceLastSprintAttack;
-        temporal.self.timeSinceLastBash = actorTemporal.timeSinceLastBash;
-        temporal.self.timeSinceLastFeint = actorTemporal.timeSinceLastFeint;
+            if (isIdle) {
+                if (actorTemporal.wasIdle) {
+                    actorTemporal.idleDuration += a_deltaTime;
+                } else {
+                    actorTemporal.idleDuration = a_deltaTime; // Just became idle
+                }
+            } else {
+                actorTemporal.idleDuration = 0.0f;
+            }
 
-        // Copy parry feedback
-        temporal.self.lastParrySuccess = actorTemporal.lastParrySuccess;
-        temporal.self.lastParryEstimatedDuration = actorTemporal.lastParryEstimatedDuration;
-        temporal.self.timeSinceLastParryAttempt = actorTemporal.timeSinceLastParryAttempt;
-        temporal.self.parrySuccessCount = actorTemporal.parrySuccessCount;
-        temporal.self.parryAttemptCount = actorTemporal.parryAttemptCount;
+            // Update previous states
+            actorTemporal.wasBlocking = isBlocking;
+            actorTemporal.wasAttacking = isAttacking;
+            actorTemporal.wasIdle = isIdle;
+            actorTemporal.previousAttackState = attackState;
 
-        // Copy timed block feedback
-        temporal.self.lastTimedBlockSuccess = actorTemporal.lastTimedBlockSuccess;
-        temporal.self.lastTimedBlockEstimatedDuration = actorTemporal.lastTimedBlockEstimatedDuration;
-        temporal.self.timeSinceLastTimedBlockAttempt = actorTemporal.timeSinceLastTimedBlockAttempt;
-        temporal.self.timedBlockSuccessCount = actorTemporal.timedBlockSuccessCount;
-        temporal.self.timedBlockAttemptCount = actorTemporal.timedBlockAttemptCount;
+            // Copy to output
+            temporal.self.timeSinceLastAttack = actorTemporal.timeSinceLastAttack;
+            temporal.self.timeSinceLastDodge = actorTemporal.timeSinceLastDodge;
+            temporal.self.timeSinceLastAction = actorTemporal.timeSinceLastAction;
+            temporal.self.blockingDuration = actorTemporal.blockingDuration;
+            temporal.self.attackingDuration = actorTemporal.attackingDuration;
+            temporal.self.idleDuration = actorTemporal.idleDuration;
+            temporal.self.timeSinceLastPowerAttack = actorTemporal.timeSinceLastPowerAttack;
+            temporal.self.timeSinceLastSprintAttack = actorTemporal.timeSinceLastSprintAttack;
+            temporal.self.timeSinceLastBash = actorTemporal.timeSinceLastBash;
+            temporal.self.timeSinceLastFeint = actorTemporal.timeSinceLastFeint;
 
-        // Copy attack defense feedback
-        temporal.self.lastAttackParried = actorTemporal.lastAttackParried;
-        temporal.self.lastAttackTimedBlocked = actorTemporal.lastAttackTimedBlocked;
-        temporal.self.lastAttackHit = actorTemporal.lastAttackHit;
-        temporal.self.lastAttackMissed = actorTemporal.lastAttackMissed;
-        temporal.self.timeSinceLastParriedAttack = actorTemporal.timeSinceLastParriedAttack;
-        temporal.self.timeSinceLastTimedBlockedAttack = actorTemporal.timeSinceLastTimedBlockedAttack;
-        temporal.self.timeSinceLastHitAttack = actorTemporal.timeSinceLastHitAttack;
-        temporal.self.timeSinceLastMissedAttack = actorTemporal.timeSinceLastMissedAttack;
-        temporal.self.parriedAttackCount = actorTemporal.parriedAttackCount;
-        temporal.self.timedBlockedAttackCount = actorTemporal.timedBlockedAttackCount;
-        temporal.self.hitAttackCount = actorTemporal.hitAttackCount;
-        temporal.self.missedAttackCount = actorTemporal.missedAttackCount;
-        temporal.self.totalAttackCount = actorTemporal.totalAttackCount;
-        temporal.self.parryRate = actorTemporal.parryRate;
-        temporal.self.timedBlockRate = actorTemporal.timedBlockRate;
-        temporal.self.hitRate = actorTemporal.hitRate;
-        temporal.self.missRate = actorTemporal.missRate;
-        temporal.self.totalDefenseRate = actorTemporal.totalDefenseRate;
+            // Copy parry feedback
+            temporal.self.lastParrySuccess = actorTemporal.lastParrySuccess;
+            temporal.self.lastParryEstimatedDuration = actorTemporal.lastParryEstimatedDuration;
+            temporal.self.timeSinceLastParryAttempt = actorTemporal.timeSinceLastParryAttempt;
+            temporal.self.parrySuccessCount = actorTemporal.parrySuccessCount;
+            temporal.self.parryAttemptCount = actorTemporal.parryAttemptCount;
 
-        // Update parry feedback from ParryFeedbackTracker
-        auto parryFeedback = ParryFeedbackTracker::GetInstance().GetFeedback(a_actor);
-        actorTemporal.lastParrySuccess = parryFeedback.lastParrySuccess;
-        actorTemporal.lastParryEstimatedDuration = parryFeedback.lastParryEstimatedDuration;
-        actorTemporal.timeSinceLastParryAttempt = parryFeedback.timeSinceLastParryAttempt;
-        actorTemporal.parrySuccessCount = parryFeedback.parrySuccessCount;
-        actorTemporal.parryAttemptCount = parryFeedback.parryAttemptCount;
+            // Copy timed block feedback
+            temporal.self.lastTimedBlockSuccess = actorTemporal.lastTimedBlockSuccess;
+            temporal.self.lastTimedBlockEstimatedDuration = actorTemporal.lastTimedBlockEstimatedDuration;
+            temporal.self.timeSinceLastTimedBlockAttempt = actorTemporal.timeSinceLastTimedBlockAttempt;
+            temporal.self.timedBlockSuccessCount = actorTemporal.timedBlockSuccessCount;
+            temporal.self.timedBlockAttemptCount = actorTemporal.timedBlockAttemptCount;
 
-        // Update timed block feedback from TimedBlockFeedbackTracker
-        auto timedBlockFeedback = TimedBlockFeedbackTracker::GetInstance().GetFeedback(a_actor);
-        actorTemporal.lastTimedBlockSuccess = timedBlockFeedback.lastTimedBlockSuccess;
-        actorTemporal.lastTimedBlockEstimatedDuration = timedBlockFeedback.lastTimedBlockEstimatedDuration;
-        actorTemporal.timeSinceLastTimedBlockAttempt = timedBlockFeedback.timeSinceLastTimedBlockAttempt;
-        actorTemporal.timedBlockSuccessCount = timedBlockFeedback.timedBlockSuccessCount;
-        actorTemporal.timedBlockAttemptCount = timedBlockFeedback.timedBlockAttemptCount;
+            // Copy attack defense feedback
+            temporal.self.lastAttackParried = actorTemporal.lastAttackParried;
+            temporal.self.lastAttackTimedBlocked = actorTemporal.lastAttackTimedBlocked;
+            temporal.self.lastAttackHit = actorTemporal.lastAttackHit;
+            temporal.self.lastAttackMissed = actorTemporal.lastAttackMissed;
+            temporal.self.timeSinceLastParriedAttack = actorTemporal.timeSinceLastParriedAttack;
+            temporal.self.timeSinceLastTimedBlockedAttack = actorTemporal.timeSinceLastTimedBlockedAttack;
+            temporal.self.timeSinceLastHitAttack = actorTemporal.timeSinceLastHitAttack;
+            temporal.self.timeSinceLastMissedAttack = actorTemporal.timeSinceLastMissedAttack;
+            temporal.self.parriedAttackCount = actorTemporal.parriedAttackCount;
+            temporal.self.timedBlockedAttackCount = actorTemporal.timedBlockedAttackCount;
+            temporal.self.hitAttackCount = actorTemporal.hitAttackCount;
+            temporal.self.missedAttackCount = actorTemporal.missedAttackCount;
+            temporal.self.totalAttackCount = actorTemporal.totalAttackCount;
+            temporal.self.parryRate = actorTemporal.parryRate;
+            temporal.self.timedBlockRate = actorTemporal.timedBlockRate;
+            temporal.self.hitRate = actorTemporal.hitRate;
+            temporal.self.missRate = actorTemporal.missRate;
+            temporal.self.totalDefenseRate = actorTemporal.totalDefenseRate;
 
-        // Update guard counter feedback from GuardCounterFeedbackTracker
-        auto guardCounterFeedback = GuardCounterFeedbackTracker::GetInstance().GetFeedback(a_actor);
-        actorTemporal.lastGuardCounterSuccess = guardCounterFeedback.lastGuardCounterSuccess;
-        actorTemporal.timeSinceLastGuardCounterAttempt = guardCounterFeedback.timeSinceLastGuardCounterAttempt;
-        actorTemporal.guardCounterSuccessCount = guardCounterFeedback.guardCounterSuccessCount;
-        actorTemporal.guardCounterAttemptCount = guardCounterFeedback.guardCounterAttemptCount;
-        actorTemporal.guardCounterFailedCount = guardCounterFeedback.guardCounterFailedCount;
-        actorTemporal.guardCounterMissedOpportunityCount = guardCounterFeedback.guardCounterMissedOpportunityCount;
-        actorTemporal.guardCounterSuccessRate = guardCounterFeedback.guardCounterSuccessRate;
+            // Update parry feedback from ParryFeedbackTracker
+            auto parryFeedback = ParryFeedbackTracker::GetInstance().GetFeedback(a_actor);
+            actorTemporal.lastParrySuccess = parryFeedback.lastParrySuccess;
+            actorTemporal.lastParryEstimatedDuration = parryFeedback.lastParryEstimatedDuration;
+            actorTemporal.timeSinceLastParryAttempt = parryFeedback.timeSinceLastParryAttempt;
+            actorTemporal.parrySuccessCount = parryFeedback.parrySuccessCount;
+            actorTemporal.parryAttemptCount = parryFeedback.parryAttemptCount;
 
-        // Update attack defense feedback from AttackDefenseFeedbackTracker
-        auto attackDefenseFeedback = AttackDefenseFeedbackTracker::GetInstance().GetFeedback(a_actor);
-        actorTemporal.lastAttackParried = attackDefenseFeedback.lastAttackParried;
-        actorTemporal.lastAttackTimedBlocked = attackDefenseFeedback.lastAttackTimedBlocked;
-        actorTemporal.lastAttackHit = attackDefenseFeedback.lastAttackHit;
-        actorTemporal.lastAttackMissed = attackDefenseFeedback.lastAttackMissed;
-        actorTemporal.timeSinceLastParriedAttack = attackDefenseFeedback.timeSinceLastParriedAttack;
-        actorTemporal.timeSinceLastTimedBlockedAttack = attackDefenseFeedback.timeSinceLastTimedBlockedAttack;
-        actorTemporal.timeSinceLastHitAttack = attackDefenseFeedback.timeSinceLastHitAttack;
-        actorTemporal.timeSinceLastMissedAttack = attackDefenseFeedback.timeSinceLastMissedAttack;
-        actorTemporal.parriedAttackCount = attackDefenseFeedback.parriedAttackCount;
-        actorTemporal.timedBlockedAttackCount = attackDefenseFeedback.timedBlockedAttackCount;
-        actorTemporal.hitAttackCount = attackDefenseFeedback.hitAttackCount;
-        actorTemporal.missedAttackCount = attackDefenseFeedback.missedAttackCount;
-        actorTemporal.totalAttackCount = attackDefenseFeedback.totalAttackCount;
-        actorTemporal.parryRate = attackDefenseFeedback.parryRate;
-        actorTemporal.timedBlockRate = attackDefenseFeedback.timedBlockRate;
-        actorTemporal.hitRate = attackDefenseFeedback.hitRate;
-        actorTemporal.missRate = attackDefenseFeedback.missRate;
-        actorTemporal.totalDefenseRate = attackDefenseFeedback.totalDefenseRate;
+            // Update timed block feedback from TimedBlockFeedbackTracker
+            auto timedBlockFeedback = TimedBlockFeedbackTracker::GetInstance().GetFeedback(a_actor);
+            actorTemporal.lastTimedBlockSuccess = timedBlockFeedback.lastTimedBlockSuccess;
+            actorTemporal.lastTimedBlockEstimatedDuration = timedBlockFeedback.lastTimedBlockEstimatedDuration;
+            actorTemporal.timeSinceLastTimedBlockAttempt = timedBlockFeedback.timeSinceLastTimedBlockAttempt;
+            actorTemporal.timedBlockSuccessCount = timedBlockFeedback.timedBlockSuccessCount;
+            actorTemporal.timedBlockAttemptCount = timedBlockFeedback.timedBlockAttemptCount;
+
+            // Update guard counter feedback from GuardCounterFeedbackTracker
+            auto guardCounterFeedback = GuardCounterFeedbackTracker::GetInstance().GetFeedback(a_actor);
+            actorTemporal.lastGuardCounterSuccess = guardCounterFeedback.lastGuardCounterSuccess;
+            actorTemporal.timeSinceLastGuardCounterAttempt = guardCounterFeedback.timeSinceLastGuardCounterAttempt;
+            actorTemporal.guardCounterSuccessCount = guardCounterFeedback.guardCounterSuccessCount;
+            actorTemporal.guardCounterAttemptCount = guardCounterFeedback.guardCounterAttemptCount;
+            actorTemporal.guardCounterFailedCount = guardCounterFeedback.guardCounterFailedCount;
+            actorTemporal.guardCounterMissedOpportunityCount = guardCounterFeedback.guardCounterMissedOpportunityCount;
+            actorTemporal.guardCounterSuccessRate = guardCounterFeedback.guardCounterSuccessRate;
+
+            // Update attack defense feedback from AttackDefenseFeedbackTracker
+            auto attackDefenseFeedback = AttackDefenseFeedbackTracker::GetInstance().GetFeedback(a_actor);
+            actorTemporal.lastAttackParried = attackDefenseFeedback.lastAttackParried;
+            actorTemporal.lastAttackTimedBlocked = attackDefenseFeedback.lastAttackTimedBlocked;
+            actorTemporal.lastAttackHit = attackDefenseFeedback.lastAttackHit;
+            actorTemporal.lastAttackMissed = attackDefenseFeedback.lastAttackMissed;
+            actorTemporal.timeSinceLastParriedAttack = attackDefenseFeedback.timeSinceLastParriedAttack;
+            actorTemporal.timeSinceLastTimedBlockedAttack = attackDefenseFeedback.timeSinceLastTimedBlockedAttack;
+            actorTemporal.timeSinceLastHitAttack = attackDefenseFeedback.timeSinceLastHitAttack;
+            actorTemporal.timeSinceLastMissedAttack = attackDefenseFeedback.timeSinceLastMissedAttack;
+            actorTemporal.parriedAttackCount = attackDefenseFeedback.parriedAttackCount;
+            actorTemporal.timedBlockedAttackCount = attackDefenseFeedback.timedBlockedAttackCount;
+            actorTemporal.hitAttackCount = attackDefenseFeedback.hitAttackCount;
+            actorTemporal.missedAttackCount = attackDefenseFeedback.missedAttackCount;
+            actorTemporal.totalAttackCount = attackDefenseFeedback.totalAttackCount;
+            actorTemporal.parryRate = attackDefenseFeedback.parryRate;
+            actorTemporal.timedBlockRate = attackDefenseFeedback.timedBlockRate;
+            actorTemporal.hitRate = attackDefenseFeedback.hitRate;
+            actorTemporal.missRate = attackDefenseFeedback.missRate;
+            actorTemporal.totalDefenseRate = attackDefenseFeedback.totalDefenseRate;
+        });
 
         // Track target temporal state
         if (a_target) {
@@ -1028,10 +1027,8 @@ namespace CombatAI
                 // We'll use a hash of both FormIDs as the key
                 RE::FormID targetKey = formID; // Use actor's FormID as base key
 
-                auto *targetTemporalPtr = m_targetTemporalData.GetOrCreateDefault(targetKey);
-                if (targetTemporalPtr) {
-                    TargetTemporalData &targetTemporal = *targetTemporalPtr;
-
+                // Update the target temporal data atomically under the map's lock.
+                m_targetTemporalData.ModifyOrCreate(targetKey, [&](TargetTemporalData &targetTemporal) {
                     // Update timers
                     targetTemporal.timeSinceLastAttack += a_deltaTime;
                     targetTemporal.timeSinceLastPowerAttack += a_deltaTime;
@@ -1176,7 +1173,7 @@ namespace CombatAI
                     temporal.target.attackStartTime = targetTemporal.attackStartTime;
                     temporal.target.estimatedAttackDuration = targetTemporal.estimatedAttackDuration;
                     temporal.target.timeUntilAttackHits = targetTemporal.timeUntilAttackHits;
-                }
+                });
             }
         }
 
@@ -1195,39 +1192,37 @@ namespace CombatAI
         }
         RE::FormID formID = formIDOpt.value();
 
-        auto *actorTemporalPtr = m_actorTemporalData.GetMutable(formID);
-        if (!actorTemporalPtr) {
-            return;
-        }
+        // Reset timers based on action type, atomically under the map's lock. If the
+        // actor has no temporal entry yet, there is nothing to reset.
+        m_actorTemporalData.Modify(formID, [&](ActorTemporalData &temporal) {
+            temporal.timeSinceLastAction = 0.0f;
 
-        // Reset timers based on action type
-        actorTemporalPtr->timeSinceLastAction = 0.0f;
-
-        switch (a_action) {
-        case ActionType::Attack:
-        case ActionType::PowerAttack:
-        case ActionType::SprintAttack:
-            actorTemporalPtr->timeSinceLastAttack = 0.0f;
-            if (a_action == ActionType::PowerAttack) {
-                actorTemporalPtr->timeSinceLastPowerAttack = 0.0f;
-            } else if (a_action == ActionType::SprintAttack) {
-                actorTemporalPtr->timeSinceLastSprintAttack = 0.0f;
+            switch (a_action) {
+            case ActionType::Attack:
+            case ActionType::PowerAttack:
+            case ActionType::SprintAttack:
+                temporal.timeSinceLastAttack = 0.0f;
+                if (a_action == ActionType::PowerAttack) {
+                    temporal.timeSinceLastPowerAttack = 0.0f;
+                } else if (a_action == ActionType::SprintAttack) {
+                    temporal.timeSinceLastSprintAttack = 0.0f;
+                }
+                break;
+            case ActionType::Dodge:
+            case ActionType::Jump:
+            case ActionType::Strafe:
+                temporal.timeSinceLastDodge = 0.0f;
+                break;
+            case ActionType::Bash:
+                temporal.timeSinceLastBash = 0.0f;
+                break;
+            case ActionType::Feint:
+                temporal.timeSinceLastFeint = 0.0f;
+                break;
+            default:
+                break;
             }
-            break;
-        case ActionType::Dodge:
-        case ActionType::Jump:
-        case ActionType::Strafe:
-            actorTemporalPtr->timeSinceLastDodge = 0.0f;
-            break;
-        case ActionType::Bash:
-            actorTemporalPtr->timeSinceLastBash = 0.0f;
-            break;
-        case ActionType::Feint:
-            actorTemporalPtr->timeSinceLastFeint = 0.0f;
-            break;
-        default:
-            break;
-        }
+        });
     }
 
     void ActorStateObserver::Cleanup(RE::Actor *a_actor)

@@ -179,6 +179,8 @@ namespace CombatAI
             a_ini.GetBoolValue("DecisionMatrix", "EnableOffense", m_decisionMatrix.enableOffense);
         m_decisionMatrix.offenseReachMultiplier = static_cast<float>(
             a_ini.GetDoubleValue("DecisionMatrix", "OffenseReachMultiplier", m_decisionMatrix.offenseReachMultiplier));
+        m_decisionMatrix.enableSprintAttack =
+            a_ini.GetBoolValue("DecisionMatrix", "EnableSprintAttack", m_decisionMatrix.enableSprintAttack);
         m_decisionMatrix.sprintAttackMinDistance = static_cast<float>(a_ini.GetDoubleValue(
             "DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance));
         m_decisionMatrix.sprintAttackMaxDistance = static_cast<float>(a_ini.GetDoubleValue(

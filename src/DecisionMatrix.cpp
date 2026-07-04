@@ -1153,7 +1153,7 @@ namespace CombatAI
             (a_state.target.distance > sprintAttackMinDist && a_state.target.distance < sprintAttackMaxDist);
 
         if (checkSprintAttack) {
-            bool shouldSprintAttack = true;
+            bool shouldSprintAttack = config.GetDecisionMatrix().enableSprintAttack;
 
             // Don't sprint attack if target is actively attacking (too risky)
             // Exception: if target is in attack recovery or fleeing

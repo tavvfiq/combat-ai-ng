@@ -71,6 +71,7 @@ The plugin uses `EnhancedCombatAI.ini` for configuration. A template is provided
 
 #### Decision Matrix
 - `InterruptReachMultiplier` - Reach multiplier for interrupt decisions
+- `EnableSprintAttack` - Enable NPC sprint (gap-closer) attacks (fall back to advancing if disabled)
 - `EvasionEnabled` - Enable evasion system
 - `SurvivalHealthThreshold` - Health threshold for survival mode (%)
 - `SurvivalStaminaThreshold` - Stamina threshold for survival mode (%)

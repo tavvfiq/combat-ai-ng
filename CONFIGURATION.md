@@ -101,6 +101,10 @@ Settings for tactical decision making.
   - Enable survival retreat behavior
   - If `false`, NPCs won't retreat when low on stamina/health
 
+- **EnableSprintAttack** (bool, default: `true`)
+  - Enable NPC sprint (gap-closer) attacks
+  - If `false`, NPCs advance/run toward the target instead of sprint attacking
+
 ### [Performance]
 Performance optimization settings.
 

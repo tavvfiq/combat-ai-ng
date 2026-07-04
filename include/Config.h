@@ -1,13 +1,19 @@
 #pragma once
 
 #include <SimpleIni.h>
+#include <atomic>
 #include <string>
 
 namespace CombatAI
 {
+    // Forward declaration for the runtime config menu (needs write access).
+    class ConfigMenu;
+
     // Configuration manager for the plugin
     class Config
     {
+        friend class ConfigMenu;
+
       public:
         struct GeneralSettings
         {
@@ -79,6 +85,32 @@ namespace CombatAI
             // Stamina checks compare actual stamina value against stamina cost (not percentage thresholds)
         };
 
+        // Curated high-impact scoring weights for the decision matrix.
+        // Defaults mirror the previously hardcoded literals in DecisionMatrix.cpp.
+        // Base priorities decide which action tends to win; modifiers shift priority
+        // based on the tactical situation.
+        struct ScoringWeights
+        {
+            // Per-action base priorities
+            float interruptPowerAttackBase = 1.4f; // Bash to interrupt a power attack
+            float evasionDodgeBase = 1.3f;         // Dodge/strafe when threatened
+            float advancingBase = 1.0f;            // Run toward target to close distance
+            float sprintAttackBase = 1.3f;         // Sprint (gap-closer) attack
+            float attackBase = 1.0f;               // Normal/power attack in melee range
+            float backoffBase = 1.8f;              // Back away from caster/archer
+            float flankingBase = 1.4f;             // Tactical flanking movement
+
+            // High-impact offense modifiers (added to attack priority)
+            float targetStaggeredBonus = 0.6f;          // Target knocked/staggered
+            float targetCastingBonus = 0.5f;            // Target casting or drawing bow
+            float targetRecoveryBonus = 0.5f;           // Target in attack recovery window
+            float targetFleeingBonus = 0.4f;            // Target fleeing (pursue/finish)
+            float targetLowHealthFinisherBonus = 0.4f;  // Target very low health (finish)
+            float openingRiskPenalty = 0.4f;            // Penalty when target is ready & facing us
+            float flankingAttackBonus = 0.3f;           // Attacking from behind/side
+            float allyCoverBonus = 0.2f;                // Allies nearby to cover the opening
+        };
+
         struct PerformanceSettings
         {
             bool onlyProcessCombatActors = true;
@@ -138,11 +170,21 @@ namespace CombatAI
         // Load configuration from INI file
         bool Load(const std::string &a_filePath = "Data/SKSE/Plugins/EnhancedCombatAI.ini");
 
+        // Save current configuration back to the INI file (used by the runtime menu)
+        bool Save(const std::string &a_filePath = "Data/SKSE/Plugins/EnhancedCombatAI.ini");
+
+        // Humanizer settings are copied into the Humanizer at init, so changes made at
+        // runtime must be re-applied on the game thread. The menu marks them dirty;
+        // CombatDirector consumes the flag on its next process tick.
+        void MarkHumanizerDirty() { m_humanizerDirty = true; }
+        bool ConsumeHumanizerDirty() { return m_humanizerDirty.exchange(false); }
+
         // Get settings
         const GeneralSettings &GetGeneral() const { return m_general; }
         const HumanizerSettings &GetHumanizer() const { return m_humanizer; }
         const DodgeSystemSettings &GetDodgeSystem() const { return m_dodgeSystem; }
         const DecisionMatrixSettings &GetDecisionMatrix() const { return m_decisionMatrix; }
+        const ScoringWeights &GetScoringWeights() const { return m_scoringWeights; }
         const PerformanceSettings &GetPerformance() const { return m_performance; }
         const ModIntegrationSettings &GetModIntegrations() const { return m_modIntegrations; }
         const ParrySettings &GetParry() const { return m_parry; }
@@ -160,6 +202,7 @@ namespace CombatAI
         void ReadHumanizerSettings(CSimpleIniA &a_ini);
         void ReadDodgeSystemSettings(CSimpleIniA &a_ini);
         void ReadDecisionMatrixSettings(CSimpleIniA &a_ini);
+        void ReadScoringWeightsSettings(CSimpleIniA &a_ini);
         void ReadPerformanceSettings(CSimpleIniA &a_ini);
         void ReadModIntegrationSettings(CSimpleIniA &a_ini);
         void ReadParrySettings(CSimpleIniA &a_ini);
@@ -169,9 +212,12 @@ namespace CombatAI
         HumanizerSettings m_humanizer;
         DodgeSystemSettings m_dodgeSystem;
         DecisionMatrixSettings m_decisionMatrix;
+        ScoringWeights m_scoringWeights;
         PerformanceSettings m_performance;
         ModIntegrationSettings m_modIntegrations;
         ParrySettings m_parry;
         TimedBlockSettings m_timedBlock;
+
+        std::atomic<bool> m_humanizerDirty{false};
     };
 } // namespace CombatAI

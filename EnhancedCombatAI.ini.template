@@ -203,6 +203,57 @@ EnablePowerAttackStaminaCheck = true
 # Note: Normal attacks are always allowed regardless of stamina (even if stamina is 0)
 EnableSprintAttackStaminaCheck = true
 
+[ScoringWeights]
+# Curated high-impact tuning weights for the decision matrix.
+# Base priorities decide which action tends to win when several are valid.
+# Higher = that action is chosen more often. Range 0.0 - 5.0.
+
+# Bash to interrupt a target's power attack
+InterruptPowerAttackBase = 1.4
+
+# Dodge/strafe spacing when threatened
+EvasionDodgeBase = 1.3
+
+# Run toward the target to close distance
+AdvancingBase = 1.0
+
+# Sprint (gap-closer) attack
+SprintAttackBase = 1.3
+
+# Normal/power attack while in melee range
+AttackBase = 1.0
+
+# Back away from a caster/archer or close aggressor
+BackoffBase = 1.8
+
+# Tactical flanking movement with allies
+FlankingBase = 1.4
+
+# Offense modifiers - added to attack priority based on the situation. Range 0.0 - 3.0.
+# Target knocked down / staggered (perfect opening)
+TargetStaggeredBonus = 0.6
+
+# Target casting a spell or drawing a bow
+TargetCastingBonus = 0.5
+
+# Target in its attack recovery window
+TargetRecoveryBonus = 0.5
+
+# Target fleeing (pursue / finish)
+TargetFleeingBonus = 0.4
+
+# Target at very low health (finisher)
+TargetLowHealthFinisherBonus = 0.4
+
+# Penalty when the target is ready and facing us (attacking is risky)
+OpeningRiskPenalty = 0.4
+
+# Bonus when attacking from behind/side (flanking)
+FlankingAttackBonus = 0.3
+
+# Bonus when allies are nearby to cover the attack opening
+AllyCoverBonus = 0.2
+
 [Performance]
 # Only process actors in combat
 # Set to false to process all actors (not recommended)

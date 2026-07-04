@@ -15,6 +15,15 @@ namespace CombatAI
     {
         return (std::max)(minVal, (std::min)(maxVal, value));
     }
+
+    // Effective melee reach in game units. target.distance is center-to-center, so
+    // pad the weapon reach with the target's physical body radius to connect
+    // reliably regardless of the target's size. a_multiplier applies the relevant
+    // reach multiplier (offense/interrupt) from config.
+    static float EffectiveAttackRange(const ActorStateData &a_state, float a_weaponReach, float a_multiplier)
+    {
+        return a_weaponReach * a_multiplier + a_state.target.boundRadius;
+    }
     DecisionResult DecisionMatrix::Evaluate(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         std::vector<DecisionResult> possibleDecisions;
@@ -137,6 +146,8 @@ namespace CombatAI
             // Apply reach multiplier from config
             reachDistance *= config.GetDecisionMatrix().interruptReachMultiplier;
         }
+        // Pad with target body radius (distance is center-to-center)
+        reachDistance += a_state.target.boundRadius;
 
         // Optimal bash range: closer is better, but not too close
         float optimalBashDistance = reachDistance * 0.7f; // Optimal is 70% of max reach
@@ -150,7 +161,7 @@ namespace CombatAI
         // 1. Interrupt power attacks (highest priority - very dangerous)
         if (a_state.target.isPowerAttacking && a_state.target.distance < reachDistance) {
             shouldBash = true;
-            basePriority = 1.4f; // High priority for interrupting power attacks
+            basePriority = config.GetScoringWeights().interruptPowerAttackBase; // Interrupt power attacks
 
             // Higher priority if target is facing us (more dangerous)
             if (a_state.target.orientationDot > 0.7f) {
@@ -620,7 +631,7 @@ namespace CombatAI
             // Prefer strafe for tactical repositioning (better than backoff - maintains
             // engagement)
             result.action = ActionType::Strafe;
-            result.priority = 1.3f; // Reduced from 1.4f - still important but not overriding
+            result.priority = config.GetScoringWeights().evasionDodgeBase; // Evasion spacing base
 
             // Boost priority if dangerously close (within weapon reach)
             if (a_state.target.distance < weaponReach * 0.8f) {
@@ -1071,7 +1082,10 @@ namespace CombatAI
         if (reachDistance <= 0.0f) {
             reachDistance = 150.0f; // Default fallback
         }
-        float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
+        // Effective range pads weapon reach with the target's body radius so
+        // center-to-center distance checks connect regardless of target size.
+        float maxAttackDistance =
+            EffectiveAttackRange(a_state, reachDistance, config.GetDecisionMatrix().offenseReachMultiplier);
 
         // Define sprint attack ranges
         const float sprintAttackMaxDist = config.GetDecisionMatrix().sprintAttackMaxDistance;
@@ -1096,7 +1110,7 @@ namespace CombatAI
                 advancingResult.action = ActionType::Advancing;
 
                 // Base priority for advancing
-                float basePriority = 1.0f;
+                float basePriority = config.GetScoringWeights().advancingBase;
 
                 // Boost priority if target is fleeing (pursuit)
                 if (a_state.target.isFleeing) {
@@ -1177,7 +1191,7 @@ namespace CombatAI
             if (shouldSprintAttack) {
                 sprintAttackResult.action = ActionType::SprintAttack;
 
-                float basePriority = 1.3f;
+                float basePriority = config.GetScoringWeights().sprintAttackBase;
 
                 // Stamina modifier
                 float staminaModifier = 0.0f;
@@ -1310,7 +1324,8 @@ namespace CombatAI
         }
 
         // --- 4. Normal Attack Logic (Close Range) ---
-        float optimalAttackDistance = reachDistance * 0.9f; // Optimal range is slightly less than base reach
+        // Optimal range is slightly less than base reach, padded with target body radius
+        float optimalAttackDistance = EffectiveAttackRange(a_state, reachDistance, 0.9f);
 
         // Use enhanced combat context: Range granularity
         // Only consider attacks when in attack range (use range category for more
@@ -1393,7 +1408,7 @@ namespace CombatAI
             float flankingBonus = 0.0f;
             if (a_state.target.orientationDot < 0.3f) {
                 // We're behind or to the side of target - excellent flanking position
-                flankingBonus = 0.3f;
+                flankingBonus = config.GetScoringWeights().flankingAttackBonus;
                 if (a_state.combatContext.hasNearbyAlly) {
                     flankingBonus = 0.4f; // Even better if ally is engaging target
                 }
@@ -1440,7 +1455,7 @@ namespace CombatAI
 
             if (targetIsReady && targetFacingUs) {
                 // Target is ready and facing us - attacking creates a significant opening
-                openingRiskModifier = -0.4f; // Reduce priority - risky to attack
+                openingRiskModifier = -config.GetScoringWeights().openingRiskPenalty; // Risky to attack
 
                 // Even riskier when outnumbered (multiple enemies can counter)
                 if (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1) {
@@ -1453,7 +1468,7 @@ namespace CombatAI
 
             // Safer to attack when we have allies (they can cover us)
             if (a_state.combatContext.hasNearbyAlly && a_state.combatContext.allyCount >= 1) {
-                openingRiskModifier += 0.2f; // Allies can cover - reduce risk
+                openingRiskModifier += config.GetScoringWeights().allyCoverBonus; // Allies can cover
                 if (a_state.combatContext.allyCount >= 2) {
                     openingRiskModifier += 0.1f; // Multiple allies - even safer
                 }
@@ -1472,11 +1487,11 @@ namespace CombatAI
 
             // Excellent opportunities - significant boosts
             if (a_state.target.knockState != RE::KNOCK_STATE_ENUM::kNormal) {
-                targetStateModifier += 0.6f; // Target staggered - perfect opportunity
+                targetStateModifier += config.GetScoringWeights().targetStaggeredBonus; // Target staggered
                 hasGoodOpening = true;
             }
             if (a_state.target.isCasting || a_state.target.isDrawingBow) {
-                targetStateModifier += 0.5f; // Target casting/drawing - very vulnerable
+                targetStateModifier += config.GetScoringWeights().targetCastingBonus; // Target casting/drawing
                 hasGoodOpening = true;
             }
 
@@ -1498,7 +1513,7 @@ namespace CombatAI
             // declared above)
             if (a_state.target.isInAttackRecovery ||
                 (targetTimeSinceLastAttack < 0.5f && targetTimeSinceLastAttack > 0.1f)) {
-                targetStateModifier += 0.5f; // Excellent opportunity - target is recovering from attack
+                targetStateModifier += config.GetScoringWeights().targetRecoveryBonus; // Target recovering
                 hasGoodOpening = true;
 
                 // Extra bonus if target just finished attack (immediate recovery window)
@@ -1509,7 +1524,7 @@ namespace CombatAI
 
             // Target fleeing is a good opportunity for pursuit/finishing
             if (a_state.target.isFleeing) {
-                targetStateModifier += 0.4f; // Good opportunity - target is fleeing
+                targetStateModifier += config.GetScoringWeights().targetFleeingBonus; // Target fleeing
                 hasGoodOpening = true;
 
                 // Extra bonus if target is low health (finishing move opportunity)
@@ -1520,7 +1535,7 @@ namespace CombatAI
 
             // Target low health - finishing move opportunity
             if (a_state.target.healthPercent < 0.2f) {
-                targetStateModifier += 0.4f; // Target very low health - finish them
+                targetStateModifier += config.GetScoringWeights().targetLowHealthFinisherBonus; // Very low health
                 hasGoodOpening = true;
             } else if (a_state.target.healthPercent < 0.4f) {
                 targetStateModifier += 0.2f; // Target low health - pressure them
@@ -1594,7 +1609,8 @@ namespace CombatAI
             }
 
             // Base priority - competitive but not overriding
-            float basePriority = 1.0f + priorityModifier + healthModifier + openingRiskModifier + targetStateModifier +
+            float basePriority = config.GetScoringWeights().attackBase + priorityModifier + healthModifier +
+                                 openingRiskModifier + targetStateModifier +
                                  flankingBonus + coordinationBonus + outnumberingBonus;
 
             // Weapon type considerations: Different weapons have different optimal
@@ -1930,7 +1946,7 @@ namespace CombatAI
             result.action = ActionType::Backoff;
 
             // Base priority (between Evasion and Survival)
-            float basePriority = 1.8f;
+            float basePriority = config.GetScoringWeights().backoffBase;
 
             // Apply urgency modifier
             basePriority += urgencyModifier;
@@ -2097,7 +2113,7 @@ namespace CombatAI
         // 5. Multiple allies engaged with target - better flanking opportunity
 
         bool shouldFlank = false;
-        float basePriority = 1.4f;
+        float basePriority = Config::GetInstance().GetScoringWeights().flankingBase;
         float situationBonus = 0.0f;
 
         // Use enhanced combat context: Target facing relative to allies
@@ -2793,6 +2809,7 @@ namespace CombatAI
         }
 
         // Misc
-        LOG_DEBUG("Misc: WeaponReach={:.1f} DeltaTime={:.4f}s", a_state.weaponReach, a_state.deltaTime);
+        LOG_DEBUG("Misc: WeaponReach={:.1f} TargetBoundRadius={:.1f} SelfBoundRadius={:.1f} DeltaTime={:.4f}s",
+                  a_state.weaponReach, a_state.target.boundRadius, a_state.self.boundRadius, a_state.deltaTime);
     }
 } // namespace CombatAI

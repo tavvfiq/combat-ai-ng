@@ -2,6 +2,7 @@
 #include "CombatAIAPI.h"
 #include "CombatDirector.h"
 #include "Config.h"
+#include "ConfigMenu.h"
 #include "Hooks.h"
 #include "Logger.h"
 #include "pch.h"
@@ -66,6 +67,9 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
                 // Install hooks after initialization
                 // Hooks will immediately start calling ProcessActor/Update, so CombatDirector must be initialized first
                 CombatAI::Hooks::Install();
+
+                // Register the runtime config menu (self-skips if SKSE Menu Framework is absent)
+                CombatAI::ConfigMenu::Register();
                 break;
             }
         })) {

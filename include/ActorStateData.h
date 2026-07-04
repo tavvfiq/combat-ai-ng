@@ -35,6 +35,7 @@ namespace CombatAI
         bool isWalking = false;   // Movement state: walking
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
+        float boundRadius = 30.0f;                // Horizontal body radius (game units)
         WeaponType weaponType = WeaponType::None; // Weapon type equipped
         bool isOneHanded = false;                 // True if one-handed weapon
         bool isTwoHanded = false;                 // True if two-handed weapon
@@ -65,6 +66,7 @@ namespace CombatAI
         float orientationDot = 0.0f; // Dot product: 1.0 = facing directly at me, -1.0 = facing away
         RE::NiPoint3 position;
         RE::NiPoint3 forwardVector;
+        float boundRadius = 30.0f; // Horizontal body radius (game units)
 
         RE::TESForm *equippedRightHand = nullptr;
         WeaponType weaponType = WeaponType::None; // Target weapon type equipped

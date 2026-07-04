@@ -37,6 +37,7 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 - **BFCO Attack Framework**: For enhanced attack animations
 - **TK Dodge RE**: For NPC dodging/evasion
 - **Precision**: For accurate weapon reach calculations
+- **SKSE Menu Framework**: For the in-game runtime configuration menu (edit settings live)
 
 ## Installation
 
@@ -49,6 +50,19 @@ A SKSE plugin that enhances Skyrim's combat AI to make NPCs more reactive and ta
 ## Configuration
 
 The plugin uses `EnhancedCombatAI.ini` for configuration. A template is provided (`EnhancedCombatAI.ini.template`).
+
+### Runtime configuration (in-game)
+
+If **SKSE Menu Framework** is installed, open the Mod Control Panel and select **Enhanced Combat AI → Config** to edit settings live without restarting:
+- Decision-matrix toggles, distances, and scoring weights apply **instantly**.
+- Humanizer values apply within a tick.
+- **Save to INI** persists your changes; **Reload from INI** re-reads the file.
+
+Without the framework the plugin still works normally — the menu simply doesn't appear.
+
+### Scoring weights
+
+The `[ScoringWeights]` section exposes the high-impact decision priorities (per-action base priorities plus the main offense modifiers), so you can rebalance which actions NPCs favor without recompiling.
 
 ### Key Settings
 

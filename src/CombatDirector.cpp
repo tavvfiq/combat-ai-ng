@@ -47,10 +47,21 @@ namespace CombatAI
             }
         }
 
+        // Apply processing interval + humanizer values from config
+        ApplyConfig();
+
+        // Register mod callback listeners (for EldenParry integration)
+        RegisterModCallbacks();
+    }
+
+    void CombatDirector::ApplyConfig()
+    {
+        auto &config = Config::GetInstance();
+
         // Set processing interval
         m_processInterval = config.GetGeneral().processingInterval;
 
-        // Initialize humanizer with config values
+        // Push humanizer config values into the humanizer (copied by value)
         Humanizer::Config humanizerConfig;
         humanizerConfig.baseReactionDelayMs = config.GetHumanizer().baseReactionDelayMs;
         humanizerConfig.reactionVarianceMs = config.GetHumanizer().reactionVarianceMs;
@@ -69,9 +80,6 @@ namespace CombatAI
         humanizerConfig.advancingMistakeMultiplier = config.GetHumanizer().advancingMistakeMultiplier;
         humanizerConfig.flankingMistakeMultiplier = config.GetHumanizer().flankingMistakeMultiplier;
         m_humanizer.SetConfig(humanizerConfig);
-
-        // Register mod callback listeners (for EldenParry integration)
-        RegisterModCallbacks();
     }
 
     void CombatDirector::RegisterModCallbacks()
@@ -123,6 +131,11 @@ namespace CombatAI
 
         auto &config = Config::GetInstance();
         bool debugEnabled = config.GetGeneral().enableDebugLog;
+
+        // Re-apply humanizer config on the game thread if the runtime menu changed it.
+        if (config.ConsumeHumanizerDirty()) {
+            ApplyConfig();
+        }
 
         if (!ShouldProcessActor(a_actor, a_deltaTime)) {
             return;

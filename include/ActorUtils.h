@@ -108,6 +108,31 @@ namespace CombatAI
             }
         }
 
+        // Horizontal body radius (game units) from the actor's bounding box.
+        // Used to pad melee reach so center-to-center distance checks account for
+        // the physical size of the actor. Falls back to a humanoid default.
+        inline float GetBodyRadius(RE::Actor *a_actor)
+        {
+            constexpr float kDefaultRadius = 30.0f;
+            constexpr float kMinRadius = 24.0f;
+            if (!a_actor) {
+                return kDefaultRadius;
+            }
+            try {
+                RE::NiPoint3 boundMax = a_actor->GetBoundMax();
+                RE::NiPoint3 boundMin = a_actor->GetBoundMin();
+                float halfX = (boundMax.x - boundMin.x) * 0.5f;
+                float halfY = (boundMax.y - boundMin.y) * 0.5f;
+                float radius = (halfX > halfY) ? halfX : halfY;
+                if (radius < kMinRadius) {
+                    return kMinRadius;
+                }
+                return radius;
+            } catch (...) {
+                return kDefaultRadius;
+            }
+        }
+
         // Safe WhoIsCasting
         inline std::uint32_t SafeWhoIsCasting(RE::Actor *a_actor)
         {

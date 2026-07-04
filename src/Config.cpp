@@ -40,12 +40,100 @@ namespace CombatAI
         ReadHumanizerSettings(ini);
         ReadDodgeSystemSettings(ini);
         ReadDecisionMatrixSettings(ini);
+        ReadScoringWeightsSettings(ini);
         ReadPerformanceSettings(ini);
         ReadModIntegrationSettings(ini);
         ReadParrySettings(ini);
         ReadTimedBlockSettings(ini);
 
         LOG_INFO("Configuration loaded successfully");
+        return true;
+    }
+
+    bool Config::Save(const std::string &a_filePath)
+    {
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        // Load the existing file first so comments and unknown keys are preserved.
+        ini.LoadFile(a_filePath.c_str());
+
+        auto B = [&](const char *sec, const char *key, bool val) { ini.SetBoolValue(sec, key, val); };
+        auto D = [&](const char *sec, const char *key, float val) {
+            ini.SetDoubleValue(sec, key, static_cast<double>(val));
+        };
+
+        // General
+        B("General", "EnablePlugin", m_general.enablePlugin);
+        B("General", "EnableDebugLog", m_general.enableDebugLog);
+        D("General", "ProcessingInterval", m_general.processingInterval);
+
+        // Humanizer
+        D("Humanizer", "BaseReactionDelayMs", m_humanizer.baseReactionDelayMs);
+        D("Humanizer", "ReactionVarianceMs", m_humanizer.reactionVarianceMs);
+        D("Humanizer", "ReactionDelayReductionPerLevelMs", m_humanizer.reactionDelayReductionPerLevelMs);
+        D("Humanizer", "MinReactionDelayMs", m_humanizer.minReactionDelayMs);
+        D("Humanizer", "BaseMistakeChance", m_humanizer.baseMistakeChance);
+        D("Humanizer", "MistakeChanceReductionPerLevel", m_humanizer.mistakeChanceReductionPerLevel);
+        D("Humanizer", "MinMistakeChance", m_humanizer.minMistakeChance);
+        D("Humanizer", "BashCooldownSeconds", m_humanizer.bashCooldownSeconds);
+        D("Humanizer", "DodgeCooldownSeconds", m_humanizer.dodgeCooldownSeconds);
+        D("Humanizer", "JumpCooldownSeconds", m_humanizer.jumpCooldownSeconds);
+
+        // Dodge system
+        D("DodgeSystem", "DodgeStaminaCost", m_dodgeSystem.dodgeStaminaCost);
+        D("DodgeSystem", "IFrameDuration", m_dodgeSystem.iFrameDuration);
+        B("DodgeSystem", "EnableStepDodge", m_dodgeSystem.enableStepDodge);
+        B("DodgeSystem", "EnableDodgeAttackCancel", m_dodgeSystem.enableDodgeAttackCancel);
+
+        // Decision matrix
+        D("DecisionMatrix", "InterruptMaxDistance", m_decisionMatrix.interruptMaxDistance);
+        D("DecisionMatrix", "InterruptReachMultiplier", m_decisionMatrix.interruptReachMultiplier);
+        B("DecisionMatrix", "EnableEvasionDodge", m_decisionMatrix.enableEvasionDodge);
+        D("DecisionMatrix", "EvasionMinDistance", m_decisionMatrix.evasionMinDistance);
+        B("DecisionMatrix", "EnableJumpEvasion", m_decisionMatrix.enableJumpEvasion);
+        D("DecisionMatrix", "StaminaThreshold", m_decisionMatrix.staminaThreshold);
+        D("DecisionMatrix", "HealthThreshold", m_decisionMatrix.healthThreshold);
+        B("DecisionMatrix", "EnableSurvivalRetreat", m_decisionMatrix.enableSurvivalRetreat);
+        B("DecisionMatrix", "EnableOffense", m_decisionMatrix.enableOffense);
+        D("DecisionMatrix", "OffenseReachMultiplier", m_decisionMatrix.offenseReachMultiplier);
+        B("DecisionMatrix", "EnableSprintAttack", m_decisionMatrix.enableSprintAttack);
+        D("DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance);
+        D("DecisionMatrix", "SprintAttackMaxDistance", m_decisionMatrix.sprintAttackMaxDistance);
+        D("DecisionMatrix", "PowerAttackStaminaCost", m_decisionMatrix.powerAttackStaminaCost);
+        D("DecisionMatrix", "SprintAttackStaminaCost", m_decisionMatrix.sprintAttackStaminaCost);
+        B("DecisionMatrix", "EnablePowerAttackStaminaCheck", m_decisionMatrix.enablePowerAttackStaminaCheck);
+        B("DecisionMatrix", "EnableSprintAttackStaminaCheck", m_decisionMatrix.enableSprintAttackStaminaCheck);
+
+        // Scoring weights
+        const auto &w = m_scoringWeights;
+        D("ScoringWeights", "InterruptPowerAttackBase", w.interruptPowerAttackBase);
+        D("ScoringWeights", "EvasionDodgeBase", w.evasionDodgeBase);
+        D("ScoringWeights", "AdvancingBase", w.advancingBase);
+        D("ScoringWeights", "SprintAttackBase", w.sprintAttackBase);
+        D("ScoringWeights", "AttackBase", w.attackBase);
+        D("ScoringWeights", "BackoffBase", w.backoffBase);
+        D("ScoringWeights", "FlankingBase", w.flankingBase);
+        D("ScoringWeights", "TargetStaggeredBonus", w.targetStaggeredBonus);
+        D("ScoringWeights", "TargetCastingBonus", w.targetCastingBonus);
+        D("ScoringWeights", "TargetRecoveryBonus", w.targetRecoveryBonus);
+        D("ScoringWeights", "TargetFleeingBonus", w.targetFleeingBonus);
+        D("ScoringWeights", "TargetLowHealthFinisherBonus", w.targetLowHealthFinisherBonus);
+        D("ScoringWeights", "OpeningRiskPenalty", w.openingRiskPenalty);
+        D("ScoringWeights", "FlankingAttackBonus", w.flankingAttackBonus);
+        D("ScoringWeights", "AllyCoverBonus", w.allyCoverBonus);
+
+        // Mod integrations
+        B("ModIntegrations", "EnableCPRIntegration", m_modIntegrations.enableCPRIntegration);
+        B("ModIntegrations", "EnableBFCOIntegration", m_modIntegrations.enableBFCOIntegration);
+        B("ModIntegrations", "EnablePrecisionIntegration", m_modIntegrations.enablePrecisionIntegration);
+        B("ModIntegrations", "EnableTKDodgeIntegration", m_modIntegrations.enableTKDodgeIntegration);
+
+        SI_Error rc = ini.SaveFile(a_filePath.c_str());
+        if (rc < 0) {
+            LOG_WARN("Failed to save config file: {}", a_filePath);
+            return false;
+        }
+        LOG_INFO("Configuration saved to: {}", a_filePath);
         return true;
     }
 
@@ -210,6 +298,47 @@ namespace CombatAI
         m_decisionMatrix.attackStaminaCost = (std::max)(0.0f, m_decisionMatrix.attackStaminaCost);
         m_decisionMatrix.powerAttackStaminaCost = (std::max)(0.0f, m_decisionMatrix.powerAttackStaminaCost);
         m_decisionMatrix.sprintAttackStaminaCost = (std::max)(0.0f, m_decisionMatrix.sprintAttackStaminaCost);
+    }
+
+    void Config::ReadScoringWeightsSettings(CSimpleIniA &a_ini)
+    {
+        auto readWeight = [&](const char *key, float current) {
+            return static_cast<float>(a_ini.GetDoubleValue("ScoringWeights", key, current));
+        };
+
+        // Per-action base priorities
+        m_scoringWeights.interruptPowerAttackBase =
+            readWeight("InterruptPowerAttackBase", m_scoringWeights.interruptPowerAttackBase);
+        m_scoringWeights.evasionDodgeBase = readWeight("EvasionDodgeBase", m_scoringWeights.evasionDodgeBase);
+        m_scoringWeights.advancingBase = readWeight("AdvancingBase", m_scoringWeights.advancingBase);
+        m_scoringWeights.sprintAttackBase = readWeight("SprintAttackBase", m_scoringWeights.sprintAttackBase);
+        m_scoringWeights.attackBase = readWeight("AttackBase", m_scoringWeights.attackBase);
+        m_scoringWeights.backoffBase = readWeight("BackoffBase", m_scoringWeights.backoffBase);
+        m_scoringWeights.flankingBase = readWeight("FlankingBase", m_scoringWeights.flankingBase);
+
+        // High-impact offense modifiers
+        m_scoringWeights.targetStaggeredBonus =
+            readWeight("TargetStaggeredBonus", m_scoringWeights.targetStaggeredBonus);
+        m_scoringWeights.targetCastingBonus = readWeight("TargetCastingBonus", m_scoringWeights.targetCastingBonus);
+        m_scoringWeights.targetRecoveryBonus = readWeight("TargetRecoveryBonus", m_scoringWeights.targetRecoveryBonus);
+        m_scoringWeights.targetFleeingBonus = readWeight("TargetFleeingBonus", m_scoringWeights.targetFleeingBonus);
+        m_scoringWeights.targetLowHealthFinisherBonus =
+            readWeight("TargetLowHealthFinisherBonus", m_scoringWeights.targetLowHealthFinisherBonus);
+        m_scoringWeights.openingRiskPenalty = readWeight("OpeningRiskPenalty", m_scoringWeights.openingRiskPenalty);
+        m_scoringWeights.flankingAttackBonus = readWeight("FlankingAttackBonus", m_scoringWeights.flankingAttackBonus);
+        m_scoringWeights.allyCoverBonus = readWeight("AllyCoverBonus", m_scoringWeights.allyCoverBonus);
+
+        // Clamp to sane ranges (priorities positive, modifiers bounded)
+        auto &w = m_scoringWeights;
+        for (float *base : {&w.interruptPowerAttackBase, &w.evasionDodgeBase, &w.advancingBase, &w.sprintAttackBase,
+                            &w.attackBase, &w.backoffBase, &w.flankingBase}) {
+            *base = ClampValue(*base, 0.0f, 5.0f);
+        }
+        for (float *mod : {&w.targetStaggeredBonus, &w.targetCastingBonus, &w.targetRecoveryBonus, &w.targetFleeingBonus,
+                           &w.targetLowHealthFinisherBonus, &w.openingRiskPenalty, &w.flankingAttackBonus,
+                           &w.allyCoverBonus}) {
+            *mod = ClampValue(*mod, 0.0f, 3.0f);
+        }
     }
 
     void Config::ReadPerformanceSettings(CSimpleIniA &a_ini)

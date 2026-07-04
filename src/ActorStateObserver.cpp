@@ -128,6 +128,9 @@ namespace CombatAI
         // Forward vector - GetActorForwardVector now uses safe wrapper internally
         state.forwardVector = StateHelpers::GetActorForwardVector(a_actor);
 
+        // Physical body radius (used to pad melee reach)
+        state.boundRadius = ActorUtils::GetBodyRadius(a_actor);
+
         // Weapon type information
         state.weaponType = StateHelpers::GetActorWeaponType(a_actor);
 
@@ -216,6 +219,9 @@ namespace CombatAI
 
         // Forward vector - GetActorForwardVector now uses safe wrapper internally
         state.forwardVector = StateHelpers::GetActorForwardVector(a_target);
+
+        // Physical body radius (used to pad melee reach)
+        state.boundRadius = ActorUtils::GetBodyRadius(a_target);
 
         // Distance - use safe wrapper for self position
         auto selfPosOpt = ActorUtils::SafeGetPosition(a_self);
@@ -561,9 +567,14 @@ namespace CombatAI
                     weaponReach = 150.0f; // Fallback
                 }
 
-                float maxAttackRange = weaponReach * 1.5f;     // Max attack range (with multiplier)
-                float optimalAttackRange = weaponReach * 0.9f; // Optimal attack range
-                float closeRange = optimalAttackRange * 0.6f;  // Close range threshold
+                // Pad reach with the target's physical radius: target.distance is
+                // center-to-center, so the gap to actually connect includes the
+                // target's body size (important for large creatures).
+                float effectiveReach = weaponReach + ActorUtils::GetBodyRadius(target.get());
+
+                float maxAttackRange = effectiveReach * 1.5f;     // Max attack range (with multiplier)
+                float optimalAttackRange = effectiveReach * 0.9f; // Optimal attack range
+                float closeRange = optimalAttackRange * 0.6f;     // Close range threshold
 
                 float targetDistance = context.closestEnemyDistance;
 

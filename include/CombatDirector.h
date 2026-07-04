@@ -27,6 +27,10 @@ namespace CombatAI
         // Initialize the director
         void Initialize();
 
+        // (Re)apply runtime-tunable config values (processing interval + humanizer).
+        // Safe to call on the game thread; used at init and after runtime config edits.
+        void ApplyConfig();
+
         // Register mod callback listeners (for EldenParry integration)
         void RegisterModCallbacks();
 

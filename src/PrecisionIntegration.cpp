@@ -58,10 +58,11 @@ namespace CombatAI
         if (weapon) {
             RE::TESObjectWEAP *weap = weapon->As<RE::TESObjectWEAP>();
             if (weap) {
-                // Use weapon reach stat (in game units, typically 100-200)
-                float baseReach = weap->weaponData.reach;
-                if (baseReach > 0.0f) {
-                    return baseReach;
+                // weaponData.reach is a multiplier (~1.0-1.3), NOT game units.
+                // Convert to game units the same way ActorStateObserver::GetWeaponReach does.
+                float reachMultiplier = weap->GetReach();
+                if (reachMultiplier > 0.0f) {
+                    return reachMultiplier * 100.0f;
                 }
             }
         }

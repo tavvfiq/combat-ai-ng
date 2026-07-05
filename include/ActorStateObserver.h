@@ -56,6 +56,12 @@ namespace CombatAI
         // Helper: Get weapon reach (approximation)
         float GetWeaponReach(RE::Actor *a_actor);
 
+        // Recompute distance-dependent fields (primary-target distance + range
+        // category / isInAttackRange) from the LIVE target position. The rest of the
+        // combat context is cached for several seconds, but range must stay fresh or
+        // NPCs act on a stale distance (e.g. think a point-blank target is far away).
+        void UpdateRangeCategory(RE::Actor *a_actor, CombatContext &a_context);
+
         // Gather temporal state (time-based tracking)
         TemporalState GatherTemporalState(RE::Actor *a_actor, RE::Actor *a_target, float a_deltaTime);
 
@@ -67,7 +73,9 @@ namespace CombatAI
         };
         // Thread-safe to prevent crashes from concurrent access
         ThreadSafeMap<RE::FormID, CachedCombatContext> m_combatContextCache;
-        static constexpr float COMBAT_CONTEXT_UPDATE_INTERVAL = 5.0f; // Update every 1 second
+        // How long the expensive nearby-actor scan (enemy/ally counts, ally positions)
+        // is cached. Range/distance is refreshed every gather via UpdateRangeCategory.
+        static constexpr float COMBAT_CONTEXT_UPDATE_INTERVAL = 5.0f;
 
         // Temporal state tracking per actor
         struct ActorTemporalData

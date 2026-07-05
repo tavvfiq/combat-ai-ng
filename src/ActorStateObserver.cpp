@@ -486,6 +486,72 @@ namespace CombatAI
         return PrecisionIntegration::GetInstance().GetWeaponReach(a_actor);
     }
 
+    void ActorStateObserver::UpdateRangeCategory(RE::Actor *a_actor, CombatContext &a_context)
+    {
+        if (!a_actor) {
+            return;
+        }
+
+        // Resolve the live primary combat target
+        RE::Actor *target = nullptr;
+        RE::NiPointer<RE::Actor> targetPtr;
+        try {
+            auto *combatController = a_actor->combatController;
+            if (combatController) {
+                targetPtr = combatController->targetHandle.get();
+                target = targetPtr.get();
+            }
+        } catch (...) {
+            return;
+        }
+        if (!target) {
+            return;
+        }
+
+        auto selfPosOpt = ActorUtils::SafeGetPosition(a_actor);
+        auto targetPosOpt = ActorUtils::SafeGetPosition(target);
+        if (!selfPosOpt.has_value() || !targetPosOpt.has_value()) {
+            return;
+        }
+
+        float targetDistance = StateHelpers::CalculateDistance(selfPosOpt.value(), targetPosOpt.value());
+        a_context.closestEnemyDistance = targetDistance;
+
+        float weaponReach = GetWeaponReach(a_actor);
+        if (weaponReach <= 0.0f) {
+            weaponReach = 150.0f; // Fallback
+        }
+
+        // "In attack range" uses the same formula as the decision matrix's offense
+        // check (weapon reach * offense multiplier + target body radius) so
+        // isInAttackRange never disagrees with whether an attack will be attempted.
+        // Optimal/close are tiers of that range.
+        float targetRadius = ActorUtils::GetBodyRadius(target);
+        float offenseMult = Config::GetInstance().GetDecisionMatrix().offenseReachMultiplier;
+        float maxAttackRange = StateHelpers::EffectiveAttackRange(weaponReach, targetRadius, offenseMult);
+        float optimalAttackRange = maxAttackRange * 0.9f; // Optimal attack range (90% of max)
+        float closeRange = maxAttackRange * 0.54f;        // Close range threshold (~54% of max)
+
+        a_context.isInCloseRange = false;
+        a_context.isInOptimalRange = false;
+        a_context.isInAttackRange = false;
+        if (targetDistance <= closeRange) {
+            a_context.rangeCategory = RangeCategory::CloseRange;
+            a_context.isInCloseRange = true;
+            a_context.isInOptimalRange = true;
+            a_context.isInAttackRange = true;
+        } else if (targetDistance <= optimalAttackRange) {
+            a_context.rangeCategory = RangeCategory::OptimalRange;
+            a_context.isInOptimalRange = true;
+            a_context.isInAttackRange = true;
+        } else if (targetDistance <= maxAttackRange) {
+            a_context.rangeCategory = RangeCategory::MaxRange;
+            a_context.isInAttackRange = true;
+        } else {
+            a_context.rangeCategory = RangeCategory::OutOfRange;
+        }
+    }
+
     CombatContext ActorStateObserver::GatherCombatContext(RE::Actor *a_actor, float a_currentTime)
     {
         CombatContext context;
@@ -517,6 +583,9 @@ namespace CombatAI
                 context = cached.context;
                 // Ensure raw pointer is cleared (it was cleared when cached)
                 context.closestEnemy = nullptr;
+                // Refresh the distance/range from the live target - the cached scan
+                // data (enemy/ally counts) is fine to reuse, but range must be current.
+                UpdateRangeCategory(a_actor, context);
                 return context;
             }
         }
@@ -554,41 +623,9 @@ namespace CombatAI
                 // Scan failed, continue with whatever we have
             }
 
-            // Calculate range granularity based on target distance and weapon reach
-            if (target && target.get()) {
-                float weaponReach = GetWeaponReach(a_actor);
-                if (weaponReach <= 0.0f) {
-                    weaponReach = 150.0f; // Fallback
-                }
-
-                // "In attack range" uses the same formula as the decision matrix's
-                // offense check (weapon reach * offense multiplier + target body
-                // radius) so isInAttackRange never disagrees with whether an attack
-                // will actually be attempted. Optimal/close are tiers of that range.
-                float targetRadius = ActorUtils::GetBodyRadius(target.get());
-                float offenseMult = Config::GetInstance().GetDecisionMatrix().offenseReachMultiplier;
-                float maxAttackRange = StateHelpers::EffectiveAttackRange(weaponReach, targetRadius, offenseMult);
-                float optimalAttackRange = maxAttackRange * 0.9f; // Optimal attack range (90% of max)
-                float closeRange = maxAttackRange * 0.54f;        // Close range threshold (~54% of max)
-
-                float targetDistance = context.closestEnemyDistance;
-
-                if (targetDistance <= closeRange) {
-                    context.rangeCategory = RangeCategory::CloseRange;
-                    context.isInCloseRange = true;
-                    context.isInOptimalRange = true;
-                    context.isInAttackRange = true;
-                } else if (targetDistance <= optimalAttackRange) {
-                    context.rangeCategory = RangeCategory::OptimalRange;
-                    context.isInOptimalRange = true;
-                    context.isInAttackRange = true;
-                } else if (targetDistance <= maxAttackRange) {
-                    context.rangeCategory = RangeCategory::MaxRange;
-                    context.isInAttackRange = true;
-                } else {
-                    context.rangeCategory = RangeCategory::OutOfRange;
-                }
-            }
+            // Range granularity is computed from the live target position (never
+            // cached) so it can't lag behind the actor's real distance.
+            UpdateRangeCategory(a_actor, context);
 
             // Calculate threat level based on enemy count
             if (context.enemyCount == 0) {

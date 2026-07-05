@@ -623,9 +623,15 @@ namespace CombatAI
                            !a_state.target.isCasting && !a_state.target.isDrawingBow;
         bool justFinishedAttack = (a_state.self.attackState == RE::ATTACK_STATE_ENUM::kFollowThrough);
 
+        // Only maintain spacing when there's a defensive reason to: the target is
+        // guarding (reposition to flank) or we're low on stamina and want to reset.
+        // Against a fully idle, open target, attacking is better than backing off -
+        // otherwise NPCs strafe point-blank targets forever instead of committing.
+        bool spacingReason = a_state.target.isBlocking || a_state.self.staminaPercent < 0.3f;
+
         // Only prioritize spacing if VERY close (within weapon reach) and observing
         // This prevents constant strafing when at safe distances
-        if (isTooClose && isObserving && !justFinishedAttack) {
+        if (isTooClose && isObserving && spacingReason && !justFinishedAttack) {
             // Prefer strafe for tactical repositioning (better than backoff - maintains
             // engagement)
             result.action = ActionType::Strafe;
@@ -938,6 +944,7 @@ namespace CombatAI
 
         // Get thresholds from config
         const float healthThreshold = config.GetDecisionMatrix().healthThreshold;
+        const float staminaThreshold = config.GetDecisionMatrix().staminaThreshold;
 
         // Trigger: Health < threshold OR significantly outnumbered (tactical retreat)
         bool shouldRetreat = false;
@@ -963,6 +970,22 @@ namespace CombatAI
             if (outnumberingTarget) {
                 retreatPriority *= 0.7f; // Reduce by 30% when outnumbering (still high
                                          // priority but less urgent)
+            }
+        }
+
+        // Stamina-based tactical retreat: an exhausted NPC can't attack/power/sprint
+        // effectively and vanilla combat AI already backs it off to recover. Match that
+        // with a real Backoff decision instead of issuing an Advance the engine ignores
+        // (which produced "decision says advance but the NPC backs away"). Lower
+        // priority than health survival; only when not already fleeing/finishing.
+        if (!shouldRetreat && staminaThreshold > 0.0f && a_state.self.staminaPercent <= staminaThreshold &&
+            a_state.self.healthPercent > healthThreshold) {
+            shouldRetreat = true;
+            retreatPriority = 1.5f; // Tactical - below health survival (2.0)
+
+            // Less urgent when we have the numbers advantage
+            if (outnumberingTarget) {
+                retreatPriority *= 0.7f;
             }
         }
 

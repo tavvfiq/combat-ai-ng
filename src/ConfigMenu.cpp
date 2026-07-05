@@ -40,11 +40,20 @@ namespace CombatAI
         auto liveFloat = [&](const char *label, float *v, float lo, float hi, const char *fmt = "%.2f") {
             ImGuiMCP::SliderFloat(label, v, lo, hi, fmt);
         };
+        // spdlog's level is global and was fixed at plugin load, so toggling the
+        // debug-log bool alone does nothing until we re-apply the level here.
+        auto applyLogLevel = [&]() {
+            auto lvl = config.m_general.enableDebugLog ? spdlog::level::debug : spdlog::level::info;
+            spdlog::set_level(lvl);
+            spdlog::flush_on(lvl);
+        };
 
         if (ImGuiMCP::BeginTabBar("ECAConfigTabs")) {
             if (ImGuiMCP::BeginTabItem("General")) {
                 ImGuiMCP::Checkbox("Enable plugin", &config.m_general.enablePlugin);
-                ImGuiMCP::Checkbox("Enable debug log", &config.m_general.enableDebugLog);
+                if (ImGuiMCP::Checkbox("Enable debug log", &config.m_general.enableDebugLog)) {
+                    applyLogLevel();
+                }
                 humanFloat("Processing interval (s)", &config.m_general.processingInterval, 0.01f, 1.0f, "%.2f");
                 ImGuiMCP::EndTabItem();
             }
@@ -195,6 +204,7 @@ namespace CombatAI
         if (ImGuiMCP::Button("Reload from INI")) {
             config.Load();
             config.MarkHumanizerDirty();
+            applyLogLevel();
         }
     }
 } // namespace CombatAI

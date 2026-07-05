@@ -46,6 +46,21 @@ namespace CombatAI
             ResetJumpVariable(a_actor);
         }
 
+        // Blocking locks the actor into a defensive shuffle - it can't advance/sprint or
+        // swing while the shield is up, so NPCs get stuck blocking and never close the
+        // gap. Release the block for any action that isn't inherently defensive.
+        if (a_state.self.isBlocking) {
+            switch (a_decision.action) {
+            case ActionType::Bash:
+            case ActionType::Parry:
+            case ActionType::TimedBlock:
+                break; // these rely on the block state
+            default:
+                NotifyAnimation(a_actor, "blockStop");
+                break;
+            }
+        }
+
         bool success = false;
 
         switch (a_decision.action) {
@@ -902,18 +917,15 @@ namespace CombatAI
             return false;
         }
 
-        // Try CPR advancing if available
-        // NOTE: CPR only works for melee-only actors
+        float currentDistance = a_state.target.isValid ? a_state.target.distance : 1000.0f;
+
+        auto &config = Config::GetInstance();
+        float desiredMinDist = config.GetDecisionMatrix().sprintAttackMinDistance;
+        float desiredMaxDist = config.GetDecisionMatrix().sprintAttackMaxDistance;
+
         bool isMeleeOnly = IsMeleeOnlyActor(a_actor);
-        if (IsCPRAvailable(a_actor) && isMeleeOnly) {
-            // Calculate advancing parameters based on current distance
-            float currentDistance = a_state.target.isValid ? a_state.target.distance : 1000.0f;
-
-            // Calculate desired engagement distance (sprint attack range)
-            auto &config = Config::GetInstance();
-            float desiredMinDist = config.GetDecisionMatrix().sprintAttackMinDistance;
-            float desiredMaxDist = config.GetDecisionMatrix().sprintAttackMaxDistance;
-
+        bool cprAvailable = IsCPRAvailable(a_actor);
+        if (cprAvailable && isMeleeOnly) {
             // Set inner radius (minimum engagement distance)
             float innerRadiusMin = desiredMinDist * 0.8f;
             float innerRadiusMid = desiredMinDist;
@@ -922,9 +934,10 @@ namespace CombatAI
             // Set outer radius (maximum engagement distance - where we want to advance to)
             float outerRadiusMin = desiredMaxDist * 0.9f;
             float outerRadiusMid = desiredMaxDist;
-            // Set outer radius - must be larger than current distance to trigger advancing
+            // Keep the outer radius just below the current distance at long range so
+            // the actor stays "beyond outer radius", which per CPR = sprint toward the
+            // target (fast gap-close). Inside the band would only walk at normal speed.
             float baseOuterRadiusMax = desiredMaxDist * 1.1f;
-            // If current distance is beyond the base outer radius, expand it
             float outerRadiusMax = (std::max)(baseOuterRadiusMax, currentDistance * 0.95f);
 
             // Enable CPR advancing

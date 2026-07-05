@@ -61,6 +61,22 @@ namespace CombatAI
             }
         }
 
+        // Sprint-charge (from advancing) must stop before a standing attack so the NPC
+        // plants to swing. SprintAttack manages its own sprint; leave it alone.
+        switch (a_decision.action) {
+        case ActionType::Attack:
+        case ActionType::PowerAttack:
+        case ActionType::Bash:
+        case ActionType::Parry:
+        case ActionType::TimedBlock:
+            if (ActorUtils::SafeIsSprinting(a_actor)) {
+                ActorUtils::SafeSetSprinting(a_actor, false);
+            }
+            break;
+        default:
+            break;
+        }
+
         bool success = false;
 
         switch (a_decision.action) {
@@ -925,6 +941,19 @@ namespace CombatAI
 
         bool isMeleeOnly = IsMeleeOnlyActor(a_actor);
         bool cprAvailable = IsCPRAvailable(a_actor);
+
+        // Sprint-charge: CPR (like ProjectGapClose) only shapes movement while the actor
+        // is already advancing; it won't move a standing NPC. So actively put a melee
+        // NPC into a sprint toward the target and give it a heading, then let vanilla +
+        // CPR path/shape the charge. Reuses the sprint primitive from ExecuteSprintAttack.
+        if (config.GetDecisionMatrix().enableSprintCharge && isMeleeOnly && a_state.target.isValid) {
+            if (!ActorUtils::SafeIsSprinting(a_actor)) {
+                NotifyAnimation(a_actor, "SprintStart");
+                ActorUtils::SafeSetSprinting(a_actor, true);
+            }
+            SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+        }
+
         if (cprAvailable && isMeleeOnly) {
             // Set inner radius (minimum engagement distance)
             float innerRadiusMin = desiredMinDist * 0.8f;

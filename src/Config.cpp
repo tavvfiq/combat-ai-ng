@@ -111,6 +111,7 @@ namespace CombatAI
         B("DecisionMatrix", "EnableOffense", m_decisionMatrix.enableOffense);
         D("DecisionMatrix", "OffenseReachMultiplier", m_decisionMatrix.offenseReachMultiplier);
         B("DecisionMatrix", "EnableSprintAttack", m_decisionMatrix.enableSprintAttack);
+        B("DecisionMatrix", "EnableSprintCharge", m_decisionMatrix.enableSprintCharge);
         D("DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance);
         D("DecisionMatrix", "SprintAttackMaxDistance", m_decisionMatrix.sprintAttackMaxDistance);
         D("DecisionMatrix", "AttackStaminaCost", m_decisionMatrix.attackStaminaCost);
@@ -315,6 +316,8 @@ namespace CombatAI
             a_ini.GetDoubleValue("DecisionMatrix", "OffenseReachMultiplier", m_decisionMatrix.offenseReachMultiplier));
         m_decisionMatrix.enableSprintAttack =
             a_ini.GetBoolValue("DecisionMatrix", "EnableSprintAttack", m_decisionMatrix.enableSprintAttack);
+        m_decisionMatrix.enableSprintCharge =
+            a_ini.GetBoolValue("DecisionMatrix", "EnableSprintCharge", m_decisionMatrix.enableSprintCharge);
         m_decisionMatrix.sprintAttackMinDistance = static_cast<float>(a_ini.GetDoubleValue(
             "DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance));
         m_decisionMatrix.sprintAttackMaxDistance = static_cast<float>(a_ini.GetDoubleValue(

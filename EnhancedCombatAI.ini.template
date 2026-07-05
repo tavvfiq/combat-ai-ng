@@ -144,6 +144,11 @@ OffenseReachMultiplier = 1.0
 # If false, NPCs will advance/run toward the target instead of sprint attacking
 EnableSprintAttack = true
 
+# Enable sprint charge while advancing (gap-close)
+# When advancing, melee NPCs sprint toward the target to close distance (then let
+# CPR/vanilla path the charge). If false, advancing only sets CPR advance radii.
+EnableSprintCharge = true
+
 # Minimum distance for sprint attack (game units)
 SprintAttackMinDistance = 220.0
 

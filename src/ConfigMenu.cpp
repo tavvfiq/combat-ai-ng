@@ -103,6 +103,7 @@ namespace CombatAI
                 ImGuiMCP::Checkbox("Enable survival retreat", &config.m_decisionMatrix.enableSurvivalRetreat);
                 ImGuiMCP::Checkbox("Enable jump evasion", &config.m_decisionMatrix.enableJumpEvasion);
                 ImGuiMCP::Checkbox("Enable sprint attack", &config.m_decisionMatrix.enableSprintAttack);
+                ImGuiMCP::Checkbox("Enable sprint charge (gap-close)", &config.m_decisionMatrix.enableSprintCharge);
                 ImGuiMCP::Separator();
                 liveFloat("Offense reach multiplier", &config.m_decisionMatrix.offenseReachMultiplier, 0.5f, 3.0f);
                 liveFloat("Interrupt reach multiplier", &config.m_decisionMatrix.interruptReachMultiplier, 0.5f, 3.0f);

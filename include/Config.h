@@ -73,6 +73,7 @@ namespace CombatAI
             bool enableOffense = true;
             float offenseReachMultiplier = 1.0f;
             bool enableSprintAttack = true; // Master toggle for NPC sprint (gap-closer) attacks
+            bool enableSprintCharge = true; // Sprint toward target while advancing (gap-close)
             float sprintAttackMinDistance = 300.0f;
             float sprintAttackMaxDistance = 800.0f;
             float attackStaminaCost =

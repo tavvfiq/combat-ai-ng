@@ -135,6 +135,46 @@ namespace CombatAI
                 ImGuiMCP::EndTabItem();
             }
 
+            if (ImGuiMCP::BeginTabItem("Performance")) {
+                ImGuiMCP::Checkbox("Only process combat actors", &config.m_performance.onlyProcessCombatActors);
+                liveFloat("Cleanup interval (s)", &config.m_performance.cleanupInterval, 1.0f, 30.0f, "%.1f");
+                ImGuiMCP::Separator();
+                ImGuiMCP::Text("Adaptive processing interval (LOD)");
+                liveFloat("Near distance", &config.m_performance.distanceNear, 0.0f, 5000.0f, "%.0f");
+                liveFloat("Mid distance", &config.m_performance.distanceMid, 0.0f, 8000.0f, "%.0f");
+                liveFloat("Mid interval (s)", &config.m_performance.processingIntervalMid, 0.05f, 2.0f, "%.2f");
+                liveFloat("Far interval (s)", &config.m_performance.processingIntervalFar, 0.05f, 2.0f, "%.2f");
+                ImGuiMCP::EndTabItem();
+            }
+
+            if (ImGuiMCP::BeginTabItem("Parry")) {
+                ImGuiMCP::Text("Requires EldenParry. Applied live.");
+                ImGuiMCP::Checkbox("Enable parry", &config.m_parry.enableParry);
+                liveFloat("Window start (s)", &config.m_parry.parryWindowStart, 0.0f, 0.5f, "%.3f");
+                liveFloat("Window end (s)", &config.m_parry.parryWindowEnd, 0.0f, 0.5f, "%.3f");
+                liveFloat("Min distance", &config.m_parry.parryMinDistance, 0.0f, 300.0f, "%.0f");
+                liveFloat("Max distance", &config.m_parry.parryMaxDistance, 0.0f, 400.0f, "%.0f");
+                liveFloat("Base priority", &config.m_parry.parryBasePriority, 0.0f, 3.0f);
+                liveFloat("Timing bonus max", &config.m_parry.timingBonusMax, 0.0f, 1.0f);
+                liveFloat("Early bash penalty", &config.m_parry.earlyBashPenalty, 0.0f, 1.0f);
+                liveFloat("Late bash penalty", &config.m_parry.lateBashPenalty, 0.0f, 1.0f);
+                ImGuiMCP::EndTabItem();
+            }
+
+            if (ImGuiMCP::BeginTabItem("TimedBlock")) {
+                ImGuiMCP::Text("Requires Simple Timed Block. Applied live.");
+                ImGuiMCP::Checkbox("Enable timed block", &config.m_timedBlock.enableTimedBlock);
+                liveFloat("Window start (s)", &config.m_timedBlock.timedBlockWindowStart, 0.0f, 0.5f, "%.3f");
+                liveFloat("Window end (s)", &config.m_timedBlock.timedBlockWindowEnd, 0.0f, 0.5f, "%.3f");
+                liveFloat("Min distance", &config.m_timedBlock.timedBlockMinDistance, 0.0f, 300.0f, "%.0f");
+                liveFloat("Max distance", &config.m_timedBlock.timedBlockMaxDistance, 0.0f, 400.0f, "%.0f");
+                liveFloat("Base priority", &config.m_timedBlock.timedBlockBasePriority, 0.0f, 3.0f);
+                liveFloat("Timing bonus max", &config.m_timedBlock.timedBlockTimingBonusMax, 0.0f, 1.0f);
+                liveFloat("Early penalty", &config.m_timedBlock.timedBlockEarlyPenalty, 0.0f, 1.0f);
+                liveFloat("Late penalty", &config.m_timedBlock.timedBlockLatePenalty, 0.0f, 1.0f);
+                ImGuiMCP::EndTabItem();
+            }
+
             if (ImGuiMCP::BeginTabItem("Integrations")) {
                 ImGuiMCP::Text("Applied on game load - restart to re-detect mods.");
                 ImGuiMCP::Checkbox("CPR integration", &config.m_modIntegrations.enableCPRIntegration);

@@ -14,41 +14,14 @@ EnableDebugLog = false
 # Recommended: 0.1 (100ms)
 ProcessingInterval = 0.1
 
-# Adaptive Processing Interval (LOD)
-# System adjusts update rate based on distance to player
-# Improves performance by updating distant enemies less frequently
-
-# Distance threshold for "Near" range (game units)
-# Actors closer than this use ProcessingInterval (fastest)
-# Default: 1000.0 (approx 14 meters)
-DistanceNear = 1000.0
-
-# Distance threshold for "Mid" range (game units)
-# Actors between Near and Mid use ProcessingIntervalMid
-# Actors farther than this use ProcessingIntervalFar
-# Default: 3000.0 (approx 42 meters)
-DistanceMid = 3000.0
-
-# Processing interval for Mid range in seconds
-# Default: 0.2 (200ms)
-ProcessingIntervalMid = 0.2
-
-# Processing interval for Far range in seconds
-# Default: 0.5 (500ms)
-ProcessingIntervalFar = 0.5
-
 [Humanizer]
-# Base reaction delay in milliseconds
-# NPCs will wait this long before reacting to threats
-BaseReactionDelayMs = 150.0
+# Base reaction delay in milliseconds (delay at level 1, reduced per level)
+# NPCs wait this long before reacting to threats
+BaseReactionDelayMs = 200.0
 
 # Random variance added to reaction delay (0-100ms)
 # Makes reactions feel more organic
 ReactionVarianceMs = 100.0
-
-# Reaction delay at level 1 in milliseconds
-# This is the starting delay for level 1 NPCs
-BaseReactionDelayMs = 200.0
 
 # Reaction delay reduction per level in milliseconds
 # Delay reduced by this amount for each level above 1
@@ -267,6 +240,29 @@ CleanupInterval = 5.0
 # 0 = unlimited (process all)
 # Recommended: 0 (let processing interval handle throttling)
 MaxActorsPerFrame = 0
+
+# Adaptive Processing Interval (LOD)
+# System adjusts update rate based on distance to player
+# Improves performance by updating distant enemies less frequently
+
+# Distance threshold for "Near" range (game units)
+# Actors closer than this use ProcessingInterval (fastest)
+# Default: 1000.0 (approx 14 meters)
+DistanceNear = 1000.0
+
+# Distance threshold for "Mid" range (game units)
+# Actors between Near and Mid use ProcessingIntervalMid
+# Actors farther than this use ProcessingIntervalFar
+# Default: 3000.0 (approx 42 meters)
+DistanceMid = 3000.0
+
+# Processing interval for Mid range in seconds
+# Default: 0.2 (200ms)
+ProcessingIntervalMid = 0.2
+
+# Processing interval for Far range in seconds
+# Default: 0.5 (500ms)
+ProcessingIntervalFar = 0.5
 
 [ModIntegrations]
 # Note: Mod integrations are auto-detected at runtime

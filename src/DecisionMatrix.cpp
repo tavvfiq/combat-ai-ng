@@ -16,13 +16,11 @@ namespace CombatAI
         return (std::max)(minVal, (std::min)(maxVal, value));
     }
 
-    // Effective melee reach in game units. target.distance is center-to-center, so
-    // pad the weapon reach with the target's physical body radius to connect
-    // reliably regardless of the target's size. a_multiplier applies the relevant
-    // reach multiplier (offense/interrupt) from config.
+    // Effective melee reach in game units. Delegates to the shared StateHelpers
+    // formula so the decision matrix and the observer's range categories agree.
     static float EffectiveAttackRange(const ActorStateData &a_state, float a_weaponReach, float a_multiplier)
     {
-        return a_weaponReach * a_multiplier + a_state.target.boundRadius;
+        return StateHelpers::EffectiveAttackRange(a_weaponReach, a_state.target.boundRadius, a_multiplier);
     }
     DecisionResult DecisionMatrix::Evaluate(RE::Actor *a_actor, const ActorStateData &a_state)
     {
@@ -1178,13 +1176,9 @@ namespace CombatAI
 
             // Stamina check
             if (shouldSprintAttack && config.GetDecisionMatrix().enableSprintAttackStaminaCheck) {
-                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-                if (actorOwner) {
-                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
-                    float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
-                    if (currentStamina < sprintAttackCost) {
-                        shouldSprintAttack = false; // Not enough stamina
-                    }
+                float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
+                if (a_state.self.currentStamina < sprintAttackCost) {
+                    shouldSprintAttack = false; // Not enough stamina
                 }
             }
 
@@ -1196,14 +1190,11 @@ namespace CombatAI
                 // Stamina modifier
                 float staminaModifier = 0.0f;
                 if (config.GetDecisionMatrix().enableSprintAttackStaminaCheck) {
-                    auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-                    if (actorOwner) {
-                        float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
-                        float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
-                        if (currentStamina < sprintAttackCost * 1.2f) {
-                            float staminaRatio = currentStamina / (sprintAttackCost * 1.2f);
-                            staminaModifier = -0.3f * (1.0f - staminaRatio);
-                        }
+                    float currentStamina = a_state.self.currentStamina;
+                    float sprintAttackCost = config.GetDecisionMatrix().sprintAttackStaminaCost;
+                    if (currentStamina < sprintAttackCost * 1.2f) {
+                        float staminaRatio = currentStamina / (sprintAttackCost * 1.2f);
+                        staminaModifier = -0.3f * (1.0f - staminaRatio);
                     }
                 }
 
@@ -1776,17 +1767,13 @@ namespace CombatAI
             // Power attacks require stamina - check actual stamina value against cost
             // (only if stamina check is enabled)
             if (config.GetDecisionMatrix().enablePowerAttackStaminaCheck) {
-                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-                if (actorOwner) {
-                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
-                    float powerAttackCost = config.GetDecisionMatrix().powerAttackStaminaCost;
-                    if (currentStamina < powerAttackCost) {
-                        // Not enough stamina for power attack - use normal attack instead
-                        result.action = ActionType::Attack;
-                        result.priority = finalPriority;
-                        result.intensity = 0.6f; // Moderate intensity for normal attack
-                        return result;
-                    }
+                float powerAttackCost = config.GetDecisionMatrix().powerAttackStaminaCost;
+                if (a_state.self.currentStamina < powerAttackCost) {
+                    // Not enough stamina for power attack - use normal attack instead
+                    result.action = ActionType::Attack;
+                    result.priority = finalPriority;
+                    result.intensity = 0.6f; // Moderate intensity for normal attack
+                    return result;
                 }
             }
 
@@ -1826,18 +1813,15 @@ namespace CombatAI
             // need to consider if we have enough left
             float powerAttackStaminaModifier = 0.0f;
             if (config.GetDecisionMatrix().enablePowerAttackStaminaCheck) {
-                auto actorOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
-                if (actorOwner) {
-                    float currentStamina = actorOwner->GetActorValue(RE::ActorValue::kStamina);
-                    float powerAttackCost = config.GetDecisionMatrix().powerAttackStaminaCost;
+                float currentStamina = a_state.self.currentStamina;
+                float powerAttackCost = config.GetDecisionMatrix().powerAttackStaminaCost;
 
-                    // Reduce priority if stamina is critically low relative to cost
-                    if (currentStamina < powerAttackCost * 1.2f) {
-                        // Stamina is barely enough - reduce priority
-                        float staminaRatio = currentStamina / (powerAttackCost * 1.2f); // 0.0 to 1.0
-                        powerAttackStaminaModifier =
-                            -0.2f * (1.0f - staminaRatio); // Reduce by up to 20% when low stamina
-                    }
+                // Reduce priority if stamina is critically low relative to cost
+                if (currentStamina < powerAttackCost * 1.2f) {
+                    // Stamina is barely enough - reduce priority
+                    float staminaRatio = currentStamina / (powerAttackCost * 1.2f); // 0.0 to 1.0
+                    powerAttackStaminaModifier =
+                        -0.2f * (1.0f - staminaRatio); // Reduce by up to 20% when low stamina
                 }
             }
 

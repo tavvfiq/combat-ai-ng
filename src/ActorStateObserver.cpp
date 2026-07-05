@@ -98,6 +98,12 @@ namespace CombatAI
         // Stamina percentage
         state.staminaPercent = GetActorValuePercent(a_actor, RE::ActorValue::kStamina);
 
+        // Raw current stamina (cached once so the decision matrix doesn't re-fetch it repeatedly)
+        {
+            auto avOwner = ActorUtils::SafeAsActorValueOwner(a_actor);
+            state.currentStamina = avOwner ? avOwner->GetActorValue(RE::ActorValue::kStamina) : 0.0f;
+        }
+
         // Health percentage
         state.healthPercent = GetActorValuePercent(a_actor, RE::ActorValue::kHealth);
 
@@ -474,22 +480,10 @@ namespace CombatAI
             return 150.0f; // Default reach in game units
         }
 
-        // Use Precision integration if available and enabled
-        auto &config = Config::GetInstance();
-        if (config.GetModIntegrations().enablePrecisionIntegration) {
-            return PrecisionIntegration::GetInstance().GetWeaponReach(a_actor);
-        }
-
-        // Fallback: use weapon stat or default - use safe wrapper
-        auto weapon = ActorUtils::SafeGetEquippedObject(a_actor, false);
-        if (weapon && weapon->IsWeapon()) {
-            auto weaponForm = weapon->As<RE::TESObjectWEAP>();
-            if (weaponForm) {
-                return weaponForm->GetReach() * 100.0f; // Convert to game units
-            }
-        }
-
-        return 150.0f; // Default fallback
+        // Single source of truth: PrecisionIntegration returns the Precision capsule
+        // length when the mod is available, otherwise its vanilla weapon-reach
+        // fallback (m_precisionAPI is only set when Precision integration is enabled).
+        return PrecisionIntegration::GetInstance().GetWeaponReach(a_actor);
     }
 
     CombatContext ActorStateObserver::GatherCombatContext(RE::Actor *a_actor, float a_currentTime)
@@ -567,14 +561,15 @@ namespace CombatAI
                     weaponReach = 150.0f; // Fallback
                 }
 
-                // Pad reach with the target's physical radius: target.distance is
-                // center-to-center, so the gap to actually connect includes the
-                // target's body size (important for large creatures).
-                float effectiveReach = weaponReach + ActorUtils::GetBodyRadius(target.get());
-
-                float maxAttackRange = effectiveReach * 1.5f;     // Max attack range (with multiplier)
-                float optimalAttackRange = effectiveReach * 0.9f; // Optimal attack range
-                float closeRange = optimalAttackRange * 0.6f;     // Close range threshold
+                // "In attack range" uses the same formula as the decision matrix's
+                // offense check (weapon reach * offense multiplier + target body
+                // radius) so isInAttackRange never disagrees with whether an attack
+                // will actually be attempted. Optimal/close are tiers of that range.
+                float targetRadius = ActorUtils::GetBodyRadius(target.get());
+                float offenseMult = Config::GetInstance().GetDecisionMatrix().offenseReachMultiplier;
+                float maxAttackRange = StateHelpers::EffectiveAttackRange(weaponReach, targetRadius, offenseMult);
+                float optimalAttackRange = maxAttackRange * 0.9f; // Optimal attack range (90% of max)
+                float closeRange = maxAttackRange * 0.54f;        // Close range threshold (~54% of max)
 
                 float targetDistance = context.closestEnemyDistance;
 

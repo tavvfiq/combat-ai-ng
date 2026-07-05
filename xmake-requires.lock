@@ -9,8 +9,8 @@
         ["ninja#f56260b5"] = {
             version = "1.12.1"
         },
-        ["rapidcsv#f56260b5"] = {
-            version = "v8.90"
+        ["rsm-binary-io#f56260b5"] = {
+            version = "2.0.6"
         },
         ["simpleini#f56260b5"] = {
             version = "v4.25"

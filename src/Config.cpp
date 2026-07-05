@@ -78,6 +78,17 @@ namespace CombatAI
         D("Humanizer", "BashCooldownSeconds", m_humanizer.bashCooldownSeconds);
         D("Humanizer", "DodgeCooldownSeconds", m_humanizer.dodgeCooldownSeconds);
         D("Humanizer", "JumpCooldownSeconds", m_humanizer.jumpCooldownSeconds);
+        D("Humanizer", "BashMistakeMultiplier", m_humanizer.bashMistakeMultiplier);
+        D("Humanizer", "DodgeMistakeMultiplier", m_humanizer.dodgeMistakeMultiplier);
+        D("Humanizer", "JumpMistakeMultiplier", m_humanizer.jumpMistakeMultiplier);
+        D("Humanizer", "StrafeMistakeMultiplier", m_humanizer.strafeMistakeMultiplier);
+        D("Humanizer", "PowerAttackMistakeMultiplier", m_humanizer.powerAttackMistakeMultiplier);
+        D("Humanizer", "AttackMistakeMultiplier", m_humanizer.attackMistakeMultiplier);
+        D("Humanizer", "SprintAttackMistakeMultiplier", m_humanizer.sprintAttackMistakeMultiplier);
+        D("Humanizer", "RetreatMistakeMultiplier", m_humanizer.retreatMistakeMultiplier);
+        D("Humanizer", "BackoffMistakeMultiplier", m_humanizer.backoffMistakeMultiplier);
+        D("Humanizer", "AdvancingMistakeMultiplier", m_humanizer.advancingMistakeMultiplier);
+        D("Humanizer", "FlankingMistakeMultiplier", m_humanizer.flankingMistakeMultiplier);
 
         // Dodge system
         D("DodgeSystem", "DodgeStaminaCost", m_dodgeSystem.dodgeStaminaCost);
@@ -91,6 +102,9 @@ namespace CombatAI
         B("DecisionMatrix", "EnableEvasionDodge", m_decisionMatrix.enableEvasionDodge);
         D("DecisionMatrix", "EvasionMinDistance", m_decisionMatrix.evasionMinDistance);
         B("DecisionMatrix", "EnableJumpEvasion", m_decisionMatrix.enableJumpEvasion);
+        D("DecisionMatrix", "JumpEvasionDistanceMin", m_decisionMatrix.jumpEvasionDistanceMin);
+        D("DecisionMatrix", "JumpEvasionDistanceMax", m_decisionMatrix.jumpEvasionDistanceMax);
+        D("DecisionMatrix", "EvasionJumpChance", m_decisionMatrix.evasionJumpChance);
         D("DecisionMatrix", "StaminaThreshold", m_decisionMatrix.staminaThreshold);
         D("DecisionMatrix", "HealthThreshold", m_decisionMatrix.healthThreshold);
         B("DecisionMatrix", "EnableSurvivalRetreat", m_decisionMatrix.enableSurvivalRetreat);
@@ -99,6 +113,7 @@ namespace CombatAI
         B("DecisionMatrix", "EnableSprintAttack", m_decisionMatrix.enableSprintAttack);
         D("DecisionMatrix", "SprintAttackMinDistance", m_decisionMatrix.sprintAttackMinDistance);
         D("DecisionMatrix", "SprintAttackMaxDistance", m_decisionMatrix.sprintAttackMaxDistance);
+        D("DecisionMatrix", "AttackStaminaCost", m_decisionMatrix.attackStaminaCost);
         D("DecisionMatrix", "PowerAttackStaminaCost", m_decisionMatrix.powerAttackStaminaCost);
         D("DecisionMatrix", "SprintAttackStaminaCost", m_decisionMatrix.sprintAttackStaminaCost);
         B("DecisionMatrix", "EnablePowerAttackStaminaCheck", m_decisionMatrix.enablePowerAttackStaminaCheck);
@@ -127,6 +142,37 @@ namespace CombatAI
         B("ModIntegrations", "EnableBFCOIntegration", m_modIntegrations.enableBFCOIntegration);
         B("ModIntegrations", "EnablePrecisionIntegration", m_modIntegrations.enablePrecisionIntegration);
         B("ModIntegrations", "EnableTKDodgeIntegration", m_modIntegrations.enableTKDodgeIntegration);
+
+        // Performance
+        B("Performance", "OnlyProcessCombatActors", m_performance.onlyProcessCombatActors);
+        D("Performance", "CleanupInterval", m_performance.cleanupInterval);
+        ini.SetLongValue("Performance", "MaxActorsPerFrame", static_cast<long>(m_performance.maxActorsPerFrame));
+        D("Performance", "DistanceNear", m_performance.distanceNear);
+        D("Performance", "DistanceMid", m_performance.distanceMid);
+        D("Performance", "ProcessingIntervalMid", m_performance.processingIntervalMid);
+        D("Performance", "ProcessingIntervalFar", m_performance.processingIntervalFar);
+
+        // Parry
+        B("Parry", "EnableParry", m_parry.enableParry);
+        D("Parry", "ParryWindowStart", m_parry.parryWindowStart);
+        D("Parry", "ParryWindowEnd", m_parry.parryWindowEnd);
+        D("Parry", "ParryMinDistance", m_parry.parryMinDistance);
+        D("Parry", "ParryMaxDistance", m_parry.parryMaxDistance);
+        D("Parry", "ParryBasePriority", m_parry.parryBasePriority);
+        D("Parry", "TimingBonusMax", m_parry.timingBonusMax);
+        D("Parry", "EarlyBashPenalty", m_parry.earlyBashPenalty);
+        D("Parry", "LateBashPenalty", m_parry.lateBashPenalty);
+
+        // Timed block
+        B("TimedBlock", "EnableTimedBlock", m_timedBlock.enableTimedBlock);
+        D("TimedBlock", "TimedBlockWindowStart", m_timedBlock.timedBlockWindowStart);
+        D("TimedBlock", "TimedBlockWindowEnd", m_timedBlock.timedBlockWindowEnd);
+        D("TimedBlock", "TimedBlockMinDistance", m_timedBlock.timedBlockMinDistance);
+        D("TimedBlock", "TimedBlockMaxDistance", m_timedBlock.timedBlockMaxDistance);
+        D("TimedBlock", "TimedBlockBasePriority", m_timedBlock.timedBlockBasePriority);
+        D("TimedBlock", "TimedBlockTimingBonusMax", m_timedBlock.timedBlockTimingBonusMax);
+        D("TimedBlock", "TimedBlockEarlyPenalty", m_timedBlock.timedBlockEarlyPenalty);
+        D("TimedBlock", "TimedBlockLatePenalty", m_timedBlock.timedBlockLatePenalty);
 
         SI_Error rc = ini.SaveFile(a_filePath.c_str());
         if (rc < 0) {

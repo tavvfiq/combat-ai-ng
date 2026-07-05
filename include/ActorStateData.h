@@ -26,6 +26,7 @@ namespace CombatAI
     struct SelfState
     {
         float staminaPercent = 0.0f;
+        float currentStamina = 0.0f; // Raw current stamina value (game units), cached once per gather
         float healthPercent = 0.0f;
         RE::ATTACK_STATE_ENUM attackState = RE::ATTACK_STATE_ENUM::kNone;
         bool isBlocking = false;
@@ -221,6 +222,15 @@ namespace CombatAI
     {
         // Calculate distance between two positions
         inline float CalculateDistance(const RE::NiPoint3 &a, const RE::NiPoint3 &b) { return a.GetDistance(b); }
+
+        // Effective melee reach in game units. target.distance is center-to-center,
+        // so pad the (multiplier-scaled) weapon reach with the target's physical body
+        // radius. Single source of truth shared by the observer's range categories and
+        // the decision matrix's attack checks so they never disagree.
+        inline float EffectiveAttackRange(float a_weaponReach, float a_targetBoundRadius, float a_multiplier)
+        {
+            return a_weaponReach * a_multiplier + a_targetBoundRadius;
+        }
 
         // Calculate dot product for orientation check
         // Returns 1.0 if target is directly facing self, -1.0 if facing away

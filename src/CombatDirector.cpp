@@ -1,6 +1,7 @@
 #include "CombatDirector.h"
 #include "APIManager.h"
 #include "ActorUtils.h"
+#include "AttackCoordinator.h"
 #include "AttackDefenseFeedbackTracker.h"
 #include "Config.h"
 #include "GuardCounterFeedbackTracker.h"
@@ -160,6 +161,39 @@ namespace CombatAI
         ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
         DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
 
+        // Combat pacing ("Wait Your Turn"): limit concurrent attackers on a target. An
+        // actor must hold an attack slot to commit; otherwise it's rerouted to circle
+        // and wait its turn.
+        const auto &pacing = config.GetCombatPacing();
+        if (pacing.enableCombatPacing && state.target.isValid && state.target.targetFormID != 0) {
+            auto selfIDOpt = ActorUtils::SafeGetFormID(a_actor);
+            RE::FormID selfID = selfIDOpt.has_value() ? selfIDOpt.value() : 0;
+            auto &coordinator = AttackCoordinator::GetSingleton();
+
+            bool isCommit = decision.action == ActionType::Attack || decision.action == ActionType::PowerAttack ||
+                            decision.action == ActionType::SprintAttack;
+            bool paced = isCommit && (!pacing.paceTargetPlayerOnly || state.target.isPlayer);
+
+            if (paced && selfID != 0) {
+                if (!coordinator.TryAcquire(state.target.targetFormID, selfID, pacing.maxSimultaneousAttackers,
+                                            pacing.slotWindowMinSeconds, pacing.slotWindowMaxSeconds)) {
+                    // No slot - hold back and circle instead of attacking
+                    decision = m_decisionMatrix.EvaluateHeldBack(a_actor, state);
+                    if (debugEnabled) {
+                        LOG_DEBUG("Pacing: attack slot full - holding back (action now {})",
+                                  static_cast<int>(decision.action));
+                    }
+                }
+            } else if (selfID != 0) {
+                // Not committing to an attack on this target - free any slot we held
+                coordinator.Release(state.target.targetFormID, selfID);
+            }
+        }
+
+        if (debugEnabled) {
+            LOG_DEBUG("Decision: action={} priority={:.2f}", static_cast<int>(decision.action), decision.priority);
+        }
+
         // Check if should make mistake (humanizer)
         if (decision.action != ActionType::None && m_humanizer.ShouldMakeMistake(a_actor, decision.action)) {
             // Make a mistake - don't execute the action
@@ -198,6 +232,7 @@ namespace CombatAI
         // Update per-frame systems (must be called once per frame, not per actor)
         m_humanizer.Update(a_deltaTime);
         m_observer.Update(a_deltaTime);
+        AttackCoordinator::GetSingleton().Update(a_deltaTime);
 
         auto &config = Config::GetInstance();
 
@@ -264,6 +299,9 @@ namespace CombatAI
 
         // Clean up Humanizer state (it also uses lazy cleanup)
         m_humanizer.Cleanup();
+
+        // Drop empty attack-slot buckets (slots themselves expire by their window)
+        AttackCoordinator::GetSingleton().Cleanup();
 
         // Clean up spawn times for actors no longer in combat
         // This is done lazily in Update(), but we can also clean up here if needed

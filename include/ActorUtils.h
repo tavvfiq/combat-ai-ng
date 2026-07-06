@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pch.h"
+#include <excpt.h> // SEH (__try/__except, EXCEPTION_EXECUTE_HANDLER)
 #include <optional>
 
 namespace CombatAI
@@ -314,16 +315,27 @@ namespace CombatAI
             }
         }
 
+        // RequestDetectionLevel runs the game's detection calc, which walks actor/process
+        // data and can access transient/freed pointers under heavy load - a hardware
+        // access violation that a C++ try/catch does NOT catch. Guard it with SEH so a
+        // fault returns a safe default instead of crashing. Kept in its own function with
+        // no C++ objects (required to mix __try/__except with the rest of the codebase).
+        inline std::int32_t SEHRequestDetectionLevel(RE::Actor *a_observer, RE::Actor *a_target)
+        {
+            __try {
+                return a_observer->RequestDetectionLevel(a_target);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {
+                return -1; // sentinel: detection calc faulted
+            }
+        }
+
         inline std::int32_t SafeRequestDetectionLevel(RE::Actor *a_observer, RE::Actor *a_target)
         {
             if (!a_observer || !a_target) {
                 return 0;
             }
-            try {
-                return a_observer->RequestDetectionLevel(a_target);
-            } catch (...) {
-                return 0;
-            }
+            std::int32_t result = SEHRequestDetectionLevel(a_observer, a_target);
+            return (result < 0) ? 0 : result;
         }
 
         // Safe GetLevel

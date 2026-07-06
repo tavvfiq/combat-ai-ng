@@ -159,6 +159,16 @@ namespace CombatAI
             float timedBlockLatePenalty = 0.5f;    // Penalty if block too late
         };
 
+        // Attack-slot pacing ("Wait Your Turn"): cap concurrent attackers per target.
+        struct CombatPacingSettings
+        {
+            bool enableCombatPacing = true;      // Master toggle
+            int maxSimultaneousAttackers = 2;    // How many may attack a target at once
+            float slotWindowMinSeconds = 2.0f;   // Min time a slot is held before rotating
+            float slotWindowMaxSeconds = 4.0f;   // Max time a slot is held before rotating
+            bool paceTargetPlayerOnly = true;    // Only pace attacks against the player
+        };
+
         static Config &GetInstance()
         {
             static Config instance;
@@ -190,6 +200,7 @@ namespace CombatAI
         const ModIntegrationSettings &GetModIntegrations() const { return m_modIntegrations; }
         const ParrySettings &GetParry() const { return m_parry; }
         const TimedBlockSettings &GetTimedBlock() const { return m_timedBlock; }
+        const CombatPacingSettings &GetCombatPacing() const { return m_combatPacing; }
 
         // Check if plugin is enabled
         bool IsEnabled() const { return m_general.enablePlugin; }
@@ -208,6 +219,7 @@ namespace CombatAI
         void ReadModIntegrationSettings(CSimpleIniA &a_ini);
         void ReadParrySettings(CSimpleIniA &a_ini);
         void ReadTimedBlockSettings(CSimpleIniA &a_ini);
+        void ReadCombatPacingSettings(CSimpleIniA &a_ini);
 
         GeneralSettings m_general;
         HumanizerSettings m_humanizer;
@@ -218,6 +230,7 @@ namespace CombatAI
         ModIntegrationSettings m_modIntegrations;
         ParrySettings m_parry;
         TimedBlockSettings m_timedBlock;
+        CombatPacingSettings m_combatPacing;
 
         std::atomic<bool> m_humanizerDirty{false};
     };

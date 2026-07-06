@@ -185,6 +185,16 @@ namespace CombatAI
                 ImGuiMCP::EndTabItem();
             }
 
+            if (ImGuiMCP::BeginTabItem("Pacing")) {
+                ImGuiMCP::Text("Combat Pacing - cap concurrent attackers.");
+                ImGuiMCP::Checkbox("Enable combat pacing", &config.m_combatPacing.enableCombatPacing);
+                ImGuiMCP::SliderInt("Max simultaneous attackers", &config.m_combatPacing.maxSimultaneousAttackers, 1, 6);
+                liveFloat("Slot window min (s)", &config.m_combatPacing.slotWindowMinSeconds, 0.5f, 10.0f, "%.1f");
+                liveFloat("Slot window max (s)", &config.m_combatPacing.slotWindowMaxSeconds, 0.5f, 12.0f, "%.1f");
+                ImGuiMCP::Checkbox("Pace player target only", &config.m_combatPacing.paceTargetPlayerOnly);
+                ImGuiMCP::EndTabItem();
+            }
+
             if (ImGuiMCP::BeginTabItem("Integrations")) {
                 ImGuiMCP::Text("Applied on game load - restart to re-detect mods.");
                 ImGuiMCP::Checkbox("CPR integration", &config.m_modIntegrations.enableCPRIntegration);

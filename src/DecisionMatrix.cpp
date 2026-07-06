@@ -120,6 +120,21 @@ namespace CombatAI
         return bestDecision;
     }
 
+    DecisionResult DecisionMatrix::EvaluateHeldBack([[maybe_unused]] RE::Actor *a_actor, const ActorStateData &a_state)
+    {
+        DecisionResult result;
+        if (!a_state.target.isValid) {
+            return result; // nothing to circle
+        }
+        // Circle/flank the target while waiting for an attack slot. ExecuteFlanking uses
+        // CPR circling when available and falls back to strafe movement otherwise.
+        result.action = ActionType::Flanking;
+        result.direction = CalculateFlankingDirection(a_state);
+        result.priority = 1.0f;
+        result.intensity = 0.6f;
+        return result;
+    }
+
     DecisionResult DecisionMatrix::EvaluateInterrupt(RE::Actor *a_actor, const ActorStateData &a_state)
     {
         DecisionResult result;
@@ -854,35 +869,20 @@ namespace CombatAI
                 shouldStrafe = true;
                 strafePriority = 1.5f; // Just finished attack, reposition
             } else {
-                // Weaker reasons - only strafe if in melee range or outnumbered
-                float reachDistance = a_state.weaponReach;
-                if (reachDistance <= 0.0f) {
-                    reachDistance = 150.0f;
-                }
-
-                float maxAttackDistance = reachDistance * config.GetDecisionMatrix().offenseReachMultiplier;
-
-                // Use maxAttackDistance with a buffer to ensure we cover the gap where
-                // Advancing stops Advancing stops when distance <= maxAttackDistance, so
-                // we must strafe/engage if we are within that range Using 1.1f buffer
-                // ensures slightly larger range than advancing cutoff (overlap)
-                bool inMeleeRange = (a_state.target.distance <= maxAttackDistance * 1.1f);
-                // More accurate outnumbered check: enemies > allies + 1
+                // Weaker reason: only reposition defensively when actually outnumbered.
+                // Being in melee range must NOT by itself trigger a strafe - an idle,
+                // attackable target should be ATTACKED, not circled. Previously the
+                // in-melee-range strafe (priority ~1.4) outranked the offense attack, so
+                // NPCs danced around a point-blank idle target forever.
                 bool outnumbered = (a_state.combatContext.enemyCount > a_state.combatContext.allyCount + 1);
-                // Significantly outnumbered: enemies >= allies * 2
                 bool significantlyOutnumbered =
                     (a_state.combatContext.enemyCount >= (a_state.combatContext.allyCount + 1) * 2);
 
-                if (inMeleeRange || outnumbered) {
+                if (outnumbered) {
                     shouldStrafe = true;
-                    if (inMeleeRange) {
-                        strafePriority += 0.1f; // Slight boost in melee range
-                    }
-                    if (outnumbered) {
-                        strafePriority += 0.3f; // Increased from 0.2f - more defensive when outnumbered
-                    }
+                    strafePriority += 0.3f; // More defensive when outnumbered
                     if (significantlyOutnumbered) {
-                        strafePriority += 0.4f; // Even higher priority when significantly outnumbered
+                        strafePriority += 0.4f; // Even higher when significantly outnumbered
                     }
                 }
             }

@@ -32,7 +32,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
     spdlog::set_default_logger(std::move(loggerPtr));
 
     // Initialize logger
-    LOG_INFO("EnhancedCombatAI v{} loading...", "1.8.0");
+    LOG_INFO("EnhancedCombatAI v{} loading...", "1.9.0");
 
     // Load configuration
     auto &config = CombatAI::Config::GetInstance();

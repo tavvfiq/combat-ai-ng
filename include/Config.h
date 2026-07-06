@@ -169,6 +169,18 @@ namespace CombatAI
             bool paceTargetPlayerOnly = true;    // Only pace attacks against the player
         };
 
+        // Damage momentum: NPC aggression scales with how hard its recent hits landed.
+        struct DamageMomentumSettings
+        {
+            bool enableDamageMomentum = true;   // Master toggle
+            float bigHitThreshold = 0.08f;      // >= this fraction of target max health = full aggression
+            float chipThreshold = 0.03f;        // <= this = full defensive
+            float offensiveBonusMax = 0.4f;     // Max attack-priority bonus at full aggression
+            float defensivePenaltyMax = 0.3f;   // Max attack-priority penalty at full chip (anti-turtle cap)
+            float momentumDecaySeconds = 5.0f;  // Momentum fades to 0 over this long with no hits
+            float ewmaAlpha = 0.5f;             // Smoothing of per-hit damage fraction (0-1)
+        };
+
         static Config &GetInstance()
         {
             static Config instance;
@@ -201,6 +213,7 @@ namespace CombatAI
         const ParrySettings &GetParry() const { return m_parry; }
         const TimedBlockSettings &GetTimedBlock() const { return m_timedBlock; }
         const CombatPacingSettings &GetCombatPacing() const { return m_combatPacing; }
+        const DamageMomentumSettings &GetDamageMomentum() const { return m_damageMomentum; }
 
         // Check if plugin is enabled
         bool IsEnabled() const { return m_general.enablePlugin; }
@@ -220,6 +233,7 @@ namespace CombatAI
         void ReadParrySettings(CSimpleIniA &a_ini);
         void ReadTimedBlockSettings(CSimpleIniA &a_ini);
         void ReadCombatPacingSettings(CSimpleIniA &a_ini);
+        void ReadDamageMomentumSettings(CSimpleIniA &a_ini);
 
         GeneralSettings m_general;
         HumanizerSettings m_humanizer;
@@ -231,6 +245,7 @@ namespace CombatAI
         ParrySettings m_parry;
         TimedBlockSettings m_timedBlock;
         CombatPacingSettings m_combatPacing;
+        DamageMomentumSettings m_damageMomentum;
 
         std::atomic<bool> m_humanizerDirty{false};
     };

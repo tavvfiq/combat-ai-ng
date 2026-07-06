@@ -195,6 +195,19 @@ namespace CombatAI
                 ImGuiMCP::EndTabItem();
             }
 
+            if (ImGuiMCP::BeginTabItem("Momentum")) {
+                ImGuiMCP::Text("Aggression scales with how hard recent hits land.");
+                ImGuiMCP::Checkbox("Enable damage momentum", &config.m_damageMomentum.enableDamageMomentum);
+                liveFloat("Big-hit threshold (frac maxHP)", &config.m_damageMomentum.bigHitThreshold, 0.01f, 0.5f,
+                          "%.3f");
+                liveFloat("Chip threshold (frac maxHP)", &config.m_damageMomentum.chipThreshold, 0.0f, 0.3f, "%.3f");
+                liveFloat("Offensive bonus max", &config.m_damageMomentum.offensiveBonusMax, 0.0f, 2.0f);
+                liveFloat("Defensive penalty max", &config.m_damageMomentum.defensivePenaltyMax, 0.0f, 2.0f);
+                liveFloat("Momentum decay (s)", &config.m_damageMomentum.momentumDecaySeconds, 0.5f, 20.0f, "%.1f");
+                liveFloat("EWMA alpha", &config.m_damageMomentum.ewmaAlpha, 0.05f, 1.0f);
+                ImGuiMCP::EndTabItem();
+            }
+
             if (ImGuiMCP::BeginTabItem("Integrations")) {
                 ImGuiMCP::Text("Applied on game load - restart to re-detect mods.");
                 ImGuiMCP::Checkbox("CPR integration", &config.m_modIntegrations.enableCPRIntegration);

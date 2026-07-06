@@ -30,6 +30,10 @@ namespace CombatAI
         // Cleanup cached data for an actor
         void Cleanup(RE::Actor *a_actor);
 
+        // Evict all per-actor caches by FormID. Called when an actor leaves combat / is
+        // torn down so a recycled temporary FormID (0xFF...) does not inherit stale state.
+        void EvictActor(RE::FormID a_formID);
+
         // Notify that an action was executed (for temporal tracking)
         void NotifyActionExecuted(RE::Actor *a_actor, ActionType a_action);
 
@@ -146,6 +150,10 @@ namespace CombatAI
             float missRate = 0.0f;
             float totalDefenseRate = 0.0f; // Combined parry + timed block rate
 
+            // Damage momentum
+            float recentDamageFraction = 0.0f;
+            bool hasMomentumData = false;
+
             // Previous states for duration tracking
             bool wasBlocking = false;
             bool wasAttacking = false;
@@ -191,5 +199,13 @@ namespace CombatAI
 
         // Monotonic time counter — advanced exactly once per frame by Update()
         float m_currentTime = 0.0f;
+
+        // Backstop sweep for the timestamped caches (detection, combat context): drops
+        // entries for actors that unloaded without passing through the combat-reject
+        // eviction path (e.g. whole-cell unload). Lazy EvictActor covers the common case.
+        void PruneStaleCaches();
+        float m_cacheSweepTimer = 0.0f;
+        static constexpr float CACHE_SWEEP_INTERVAL = 10.0f; // how often to sweep
+        static constexpr float CACHE_STALE_THRESHOLD = 15.0f; // evict entries older than this
     };
 } // namespace CombatAI

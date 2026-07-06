@@ -401,3 +401,30 @@ SlotWindowMaxSeconds = 4.0
 # Only pace attacks against the player (recommended). If false, pacing also applies
 # to NPC-vs-NPC fights.
 PaceTargetPlayerOnly = true
+
+[DamageMomentum]
+# NPC aggression scales with how hard its recent hits land. Big hits (large chunk of
+# the target's health) -> press the advantage (offensive). Chip damage -> cautious and
+# tactical (space, wait for openings). Measured from target health lost per hit.
+
+# Enable damage momentum
+EnableDamageMomentum = true
+
+# Fraction of the target's MAX health removed per hit for FULL aggression (e.g. 0.08 = 8%)
+BigHitThreshold = 0.08
+
+# Fraction at/below which the NPC turns fully defensive
+ChipThreshold = 0.03
+
+# Max attack-priority bonus added at full aggression
+OffensiveBonusMax = 0.4
+
+# Max attack-priority penalty at full chip. Kept small so a chipping NPC still attacks
+# periodically instead of turtling (matters vs tanky/high-armor players).
+DefensivePenaltyMax = 0.3
+
+# How long (seconds) momentum takes to fade to 0 with no hits
+MomentumDecaySeconds = 5.0
+
+# Smoothing of the per-hit damage fraction (0.0-1.0; higher = reacts faster)
+EwmaAlpha = 0.5

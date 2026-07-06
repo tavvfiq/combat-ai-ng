@@ -50,6 +50,12 @@ namespace CombatAI
         // Check if actor should be processed
         bool ShouldProcessActor(RE::Actor *a_actor, float a_deltaTime);
 
+        // Evict all per-actor bookkeeping (timers, spawn time, processed flag, observer
+        // caches) for a FormID. Called when an actor leaves combat / dies / is torn down
+        // so a recycled temporary FormID (0xFF...) starts fresh (spawn warmup re-applies)
+        // and the maps do not grow unbounded.
+        void EvictActor(RE::FormID a_formID);
+
         // Components
         ActorStateObserver m_observer;
         DecisionMatrix m_decisionMatrix;

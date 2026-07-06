@@ -1720,6 +1720,30 @@ namespace CombatAI
             }
             finalPriority += hitMissFeedback;
 
+            // Damage momentum: press the advantage when our recent hits chunk the target,
+            // turn cautious (let evasion/backoff win) when we only chip. Neutral until we
+            // have real data so combat never opens defensively. Penalty is capped so a
+            // chipping NPC still attacks periodically (anti-turtle for tanky targets).
+            const auto &dm = config.GetDamageMomentum();
+            if (dm.enableDamageMomentum && a_state.temporal.self.hasMomentumData) {
+                float frac = a_state.temporal.self.recentDamageFraction;
+                float momentum; // -1 (chip) .. +1 (big hits)
+                if (frac >= dm.bigHitThreshold) {
+                    momentum = 1.0f;
+                } else if (frac <= dm.chipThreshold) {
+                    momentum = -1.0f;
+                } else {
+                    // linear map [chip, big] -> [-1, +1]
+                    float t = (frac - dm.chipThreshold) / (dm.bigHitThreshold - dm.chipThreshold);
+                    momentum = t * 2.0f - 1.0f;
+                }
+                if (momentum >= 0.0f) {
+                    finalPriority += momentum * dm.offensiveBonusMax;
+                } else {
+                    finalPriority -= (-momentum) * dm.defensivePenaltyMax;
+                }
+            }
+
             // Additional weapon type considerations for attack priority
             // Two-handed weapons are slower but hit harder - prefer when target is
             // vulnerable One-handed weapons are faster - prefer when target is ready
@@ -2787,6 +2811,8 @@ namespace CombatAI
                   a_state.temporal.self.parryRate * 100.0f, a_state.temporal.self.timedBlockRate * 100.0f,
                   a_state.temporal.self.hitRate * 100.0f, a_state.temporal.self.missRate * 100.0f,
                   a_state.temporal.self.totalDefenseRate * 100.0f);
+        LOG_DEBUG("Momentum: RecentDamageFrac={:.3f} HasData={}", a_state.temporal.self.recentDamageFraction,
+                  a_state.temporal.self.hasMomentumData);
         LOG_DEBUG("AtkDefFeedback: TimeSince: LastParriedAtk={:.2f}s "
                   "LastTBlockedAtk={:.2f}s LastHitAtk={:.2f}s LastMissedAtk={:.2f}s",
                   a_state.temporal.self.timeSinceLastParriedAttack,

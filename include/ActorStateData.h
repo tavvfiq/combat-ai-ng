@@ -183,6 +183,11 @@ namespace CombatAI
         float hitRate = 0.0f;                           // Percentage of attacks that hit (0.0-1.0)
         float missRate = 0.0f;                          // Percentage of attacks that missed (0.0-1.0)
         float totalDefenseRate = 0.0f;                  // Combined parry + timed block rate
+
+        // Damage momentum: smoothed fraction of target max health removed per hit, and
+        // whether enough data exists to trust it. Drives aggression scaling.
+        float recentDamageFraction = 0.0f;
+        bool hasMomentumData = false;
     };
 
     struct TargetTemporalState

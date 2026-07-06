@@ -311,6 +311,17 @@ namespace CombatAI
         // oldest entries But for now, lazy cleanup is safer and more efficient
     }
 
+    void CombatDirector::EvictActor(RE::FormID a_formID)
+    {
+        if (a_formID == 0) {
+            return;
+        }
+        m_actorProcessTimers.Erase(a_formID);
+        m_actorSpawnTimes.Erase(a_formID);
+        m_processedActors.Erase(a_formID);
+        m_observer.EvictActor(a_formID);
+    }
+
     bool CombatDirector::ShouldProcessActor(RE::Actor *a_actor, float a_deltaTime)
     {
         if (!a_actor) {
@@ -324,14 +335,27 @@ namespace CombatAI
         if (!formIDOpt.has_value() || formIDOpt.value() == RE::FormID(0)) {
             return false; // Actor not fully initialized yet
         }
+        RE::FormID formID = formIDOpt.value();
 
         // Validate actor using safe wrappers - protects against transitional states
         // Actor is passed directly from hook, but could become invalid at any time
 
-        // Quick validation - if actor is dead or not in combat, skip early
+        // Quick validation - if actor is dead or not in combat, skip early. Evict any
+        // per-actor state so a recycled temporary FormID (0xFF...) starts fresh and the
+        // bookkeeping maps stay bounded.
         bool isDead = ActorUtils::SafeIsDead(a_actor);
         bool inCombat = ActorUtils::SafeIsInCombat(a_actor);
         if (isDead || !inCombat) {
+            EvictActor(formID);
+            return false;
+        }
+
+        // Liveness guard: an actor can be in combat yet mid-teardown (3D unloaded,
+        // deleted, or disabled). Processing it walks transient/freed game state in the
+        // heavier gather path. Skip and evict so recycled FormIDs don't inherit state.
+        if (!ActorUtils::SafeIs3DLoaded(a_actor) || ActorUtils::SafeIsDeleted(a_actor) ||
+            ActorUtils::SafeIsDisabled(a_actor)) {
+            EvictActor(formID);
             return false;
         }
 
@@ -372,8 +396,6 @@ namespace CombatAI
         if (!ActorUtils::SafeIsAIEnabled(a_actor)) {
             return false;
         }
-
-        RE::FormID formID = formIDOpt.value();
 
         // Check spawn warmup delay for newly spawned actors
         // This prevents processing actors before they're fully initialized

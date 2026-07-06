@@ -56,6 +56,14 @@ namespace CombatAI
             float hitRate = 0.0f;                           // Percentage of attacks that hit (0.0-1.0)
             float missRate = 0.0f;                          // Percentage of attacks that missed (0.0-1.0)
             float totalDefenseRate = 0.0f;                  // Combined parry + timed block rate
+
+            // Damage momentum: how much of the target's health this NPC's recent hits
+            // have been removing (EWMA fraction of target max health), used to scale
+            // aggression. Health-delta measured at each hit.
+            float recentDamageFraction = 0.0f;   // Smoothed fraction of target max health per hit
+            bool hasMomentumData = false;         // True once at least one hit-to-hit delta measured
+            float lastTargetHealthPercent = 1.0f; // Target health% at our previous hit
+            RE::FormID lastTargetFormID = 0;      // Target of our previous hit (reset delta on change)
         };
         AttackDefenseFeedback GetFeedback(RE::Actor *a_actor);
 

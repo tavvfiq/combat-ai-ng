@@ -46,6 +46,7 @@ namespace CombatAI
         ReadParrySettings(ini);
         ReadTimedBlockSettings(ini);
         ReadCombatPacingSettings(ini);
+        ReadDamageMomentumSettings(ini);
 
         LOG_INFO("Configuration loaded successfully");
         return true;
@@ -183,6 +184,15 @@ namespace CombatAI
         D("CombatPacing", "SlotWindowMinSeconds", m_combatPacing.slotWindowMinSeconds);
         D("CombatPacing", "SlotWindowMaxSeconds", m_combatPacing.slotWindowMaxSeconds);
         B("CombatPacing", "PaceTargetPlayerOnly", m_combatPacing.paceTargetPlayerOnly);
+
+        // Damage momentum
+        B("DamageMomentum", "EnableDamageMomentum", m_damageMomentum.enableDamageMomentum);
+        D("DamageMomentum", "BigHitThreshold", m_damageMomentum.bigHitThreshold);
+        D("DamageMomentum", "ChipThreshold", m_damageMomentum.chipThreshold);
+        D("DamageMomentum", "OffensiveBonusMax", m_damageMomentum.offensiveBonusMax);
+        D("DamageMomentum", "DefensivePenaltyMax", m_damageMomentum.defensivePenaltyMax);
+        D("DamageMomentum", "MomentumDecaySeconds", m_damageMomentum.momentumDecaySeconds);
+        D("DamageMomentum", "EwmaAlpha", m_damageMomentum.ewmaAlpha);
 
         SI_Error rc = ini.SaveFile(a_filePath.c_str());
         if (rc < 0) {
@@ -520,5 +530,31 @@ namespace CombatAI
         m_combatPacing.slotWindowMinSeconds = (std::max)(0.1f, m_combatPacing.slotWindowMinSeconds);
         m_combatPacing.slotWindowMaxSeconds =
             (std::max)(m_combatPacing.slotWindowMinSeconds, m_combatPacing.slotWindowMaxSeconds);
+    }
+
+    void Config::ReadDamageMomentumSettings(CSimpleIniA &a_ini)
+    {
+        m_damageMomentum.enableDamageMomentum =
+            a_ini.GetBoolValue("DamageMomentum", "EnableDamageMomentum", m_damageMomentum.enableDamageMomentum);
+        m_damageMomentum.bigHitThreshold = static_cast<float>(
+            a_ini.GetDoubleValue("DamageMomentum", "BigHitThreshold", m_damageMomentum.bigHitThreshold));
+        m_damageMomentum.chipThreshold = static_cast<float>(
+            a_ini.GetDoubleValue("DamageMomentum", "ChipThreshold", m_damageMomentum.chipThreshold));
+        m_damageMomentum.offensiveBonusMax = static_cast<float>(
+            a_ini.GetDoubleValue("DamageMomentum", "OffensiveBonusMax", m_damageMomentum.offensiveBonusMax));
+        m_damageMomentum.defensivePenaltyMax = static_cast<float>(
+            a_ini.GetDoubleValue("DamageMomentum", "DefensivePenaltyMax", m_damageMomentum.defensivePenaltyMax));
+        m_damageMomentum.momentumDecaySeconds = static_cast<float>(
+            a_ini.GetDoubleValue("DamageMomentum", "MomentumDecaySeconds", m_damageMomentum.momentumDecaySeconds));
+        m_damageMomentum.ewmaAlpha =
+            static_cast<float>(a_ini.GetDoubleValue("DamageMomentum", "EwmaAlpha", m_damageMomentum.ewmaAlpha));
+
+        // Clamp
+        m_damageMomentum.chipThreshold = (std::max)(0.0f, m_damageMomentum.chipThreshold);
+        m_damageMomentum.bigHitThreshold = (std::max)(m_damageMomentum.chipThreshold + 0.001f, m_damageMomentum.bigHitThreshold);
+        m_damageMomentum.offensiveBonusMax = ClampValue(m_damageMomentum.offensiveBonusMax, 0.0f, 2.0f);
+        m_damageMomentum.defensivePenaltyMax = ClampValue(m_damageMomentum.defensivePenaltyMax, 0.0f, 2.0f);
+        m_damageMomentum.momentumDecaySeconds = (std::max)(0.5f, m_damageMomentum.momentumDecaySeconds);
+        m_damageMomentum.ewmaAlpha = ClampValue(m_damageMomentum.ewmaAlpha, 0.05f, 1.0f);
     }
 } // namespace CombatAI

@@ -1,8 +1,18 @@
 #include "AttackDefenseFeedbackTracker.h"
 #include "ActorUtils.h"
+#include "Config.h"
 #include "Logger.h"
 #include "pch.h"
 #include <algorithm>
+
+// Config.h -> SimpleIni.h pulls in <Windows.h>, which defines min/max macros that
+// break std::max/std::min below. Undo them.
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
 
 namespace CombatAI
 {
@@ -216,6 +226,48 @@ namespace CombatAI
         RE::FormID attackerFormID = attackerFormIDOpt.value();
         RE::FormID targetFormID = targetFormIDOpt.value();
 
+        // Sample the target's current health fraction (for damage-momentum). -1 = unknown.
+        float currentHealthPct = -1.0f;
+        try {
+            auto avo = ActorUtils::SafeAsActorValueOwner(a_target);
+            if (avo) {
+                float mx = a_target->GetActorValueMax(RE::ActorValue::kHealth);
+                float cur = avo->GetActorValue(RE::ActorValue::kHealth);
+                if (mx > 0.0f) {
+                    currentHealthPct = cur / mx;
+                }
+            }
+        } catch (...) {
+            currentHealthPct = -1.0f;
+        }
+
+        // Damage momentum: sample on EVERY confirmed hit (the TESHitEvent already proved
+        // the hit landed), independent of the attempt-matching machinery below. That
+        // matching frequently fails to resolve for sprint/power attacks, which would
+        // starve the momentum signal (observed: max Hit count = 1 across a whole fight).
+        // Fold health removed since our previous hit on THIS target into an EWMA; the
+        // first hit on a target just primes the baseline (no delta yet).
+        if (currentHealthPct >= 0.0f) {
+            const auto &dm = Config::GetInstance().GetDamageMomentum();
+            m_feedbackData.WithWriteLock([&](auto &feedbackMap) {
+                auto &feedback = feedbackMap[attackerFormID];
+                if (feedback.lastTargetFormID == targetFormID) {
+                    float delta = feedback.lastTargetHealthPercent - currentHealthPct;
+                    if (delta < 0.0f) {
+                        delta = 0.0f; // regen / heal
+                    }
+                    if (delta > 0.5f) {
+                        delta = 0.5f; // cap outliers (group-fight overcount)
+                    }
+                    feedback.recentDamageFraction =
+                        dm.ewmaAlpha * delta + (1.0f - dm.ewmaAlpha) * feedback.recentDamageFraction;
+                    feedback.hasMomentumData = true;
+                }
+                feedback.lastTargetFormID = targetFormID;
+                feedback.lastTargetHealthPercent = currentHealthPct;
+            });
+        }
+
         // Find the most recent unmatched attack attempt for this attacker-target pair
         bool foundMatch = false;
         m_recentAttempts.WithWriteLock([&](auto &attemptsMap) {
@@ -343,12 +395,22 @@ namespace CombatAI
         });
 
         // Update feedback timers
+        const float decaySeconds = Config::GetInstance().GetDamageMomentum().momentumDecaySeconds;
         m_feedbackData.WithWriteLock([&](auto &feedbackMap) {
             for (auto it = feedbackMap.begin(); it != feedbackMap.end(); ++it) {
-                it->second.timeSinceLastParriedAttack += a_deltaTime;
-                it->second.timeSinceLastTimedBlockedAttack += a_deltaTime;
-                it->second.timeSinceLastHitAttack += a_deltaTime;
-                it->second.timeSinceLastMissedAttack += a_deltaTime;
+                auto &fb = it->second;
+                fb.timeSinceLastParriedAttack += a_deltaTime;
+                fb.timeSinceLastTimedBlockedAttack += a_deltaTime;
+                fb.timeSinceLastHitAttack += a_deltaTime;
+                fb.timeSinceLastMissedAttack += a_deltaTime;
+
+                // Momentum fades toward 0 with no hits (linear over decaySeconds).
+                if (fb.recentDamageFraction > 0.0f && decaySeconds > 0.0f) {
+                    fb.recentDamageFraction -= (a_deltaTime / decaySeconds) * fb.recentDamageFraction;
+                    if (fb.recentDamageFraction < 0.0001f) {
+                        fb.recentDamageFraction = 0.0f;
+                    }
+                }
             }
         });
     }

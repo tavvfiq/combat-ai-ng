@@ -364,6 +364,46 @@ namespace CombatAI
             }
         }
 
+        // Liveness guards. An actor can be in combat yet mid-teardown (3D unloaded,
+        // deleted, or disabled), in which case touching its process/knowledge data in the
+        // heavier gather path can hit transient/freed pointers. Treat null / faulted as
+        // "not safe to process" (deleted/disabled default true, 3D-loaded default false).
+        inline bool SafeIs3DLoaded(RE::Actor *a_actor)
+        {
+            if (!a_actor) {
+                return false;
+            }
+            try {
+                return a_actor->Is3DLoaded();
+            } catch (...) {
+                return false;
+            }
+        }
+
+        inline bool SafeIsDeleted(RE::Actor *a_actor)
+        {
+            if (!a_actor) {
+                return true;
+            }
+            try {
+                return a_actor->IsDeleted();
+            } catch (...) {
+                return true;
+            }
+        }
+
+        inline bool SafeIsDisabled(RE::Actor *a_actor)
+        {
+            if (!a_actor) {
+                return true;
+            }
+            try {
+                return a_actor->IsDisabled();
+            } catch (...) {
+                return true;
+            }
+        }
+
         // Safe HasKeywordString
         inline bool SafeHasKeywordString(RE::Actor *a_actor, const char *a_keyword)
         {

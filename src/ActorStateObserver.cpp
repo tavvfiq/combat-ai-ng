@@ -85,7 +85,39 @@ namespace CombatAI
         return data;
     }
 
-    void ActorStateObserver::Update(float a_deltaTime) { m_currentTime += a_deltaTime; }
+    void ActorStateObserver::Update(float a_deltaTime)
+    {
+        m_currentTime += a_deltaTime;
+
+        m_cacheSweepTimer += a_deltaTime;
+        if (m_cacheSweepTimer >= CACHE_SWEEP_INTERVAL) {
+            m_cacheSweepTimer = 0.0f;
+            PruneStaleCaches();
+        }
+    }
+
+    void ActorStateObserver::PruneStaleCaches()
+    {
+        const float now = m_currentTime;
+        m_detectionCache.WithWriteLock([&](auto &map) {
+            for (auto it = map.begin(); it != map.end();) {
+                if (now - it->second.lastUpdateTime > CACHE_STALE_THRESHOLD) {
+                    it = map.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        });
+        m_combatContextCache.WithWriteLock([&](auto &map) {
+            for (auto it = map.begin(); it != map.end();) {
+                if (now - it->second.lastUpdateTime > CACHE_STALE_THRESHOLD) {
+                    it = map.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        });
+    }
 
     SelfState ActorStateObserver::GatherSelfState(RE::Actor *a_actor)
     {
@@ -1034,6 +1066,8 @@ namespace CombatAI
             temporal.self.hitRate = actorTemporal.hitRate;
             temporal.self.missRate = actorTemporal.missRate;
             temporal.self.totalDefenseRate = actorTemporal.totalDefenseRate;
+            temporal.self.recentDamageFraction = actorTemporal.recentDamageFraction;
+            temporal.self.hasMomentumData = actorTemporal.hasMomentumData;
 
             // Update parry feedback from ParryFeedbackTracker
             auto parryFeedback = ParryFeedbackTracker::GetInstance().GetFeedback(a_actor);
@@ -1081,6 +1115,8 @@ namespace CombatAI
             actorTemporal.hitRate = attackDefenseFeedback.hitRate;
             actorTemporal.missRate = attackDefenseFeedback.missRate;
             actorTemporal.totalDefenseRate = attackDefenseFeedback.totalDefenseRate;
+            actorTemporal.recentDamageFraction = attackDefenseFeedback.recentDamageFraction;
+            actorTemporal.hasMomentumData = attackDefenseFeedback.hasMomentumData;
         });
 
         // Track target temporal state
@@ -1314,5 +1350,16 @@ namespace CombatAI
         // Remove temporal data for this actor
         m_actorTemporalData.Erase(formID);
         m_targetTemporalData.Erase(formID);
+    }
+
+    void ActorStateObserver::EvictActor(RE::FormID a_formID)
+    {
+        if (a_formID == 0) {
+            return;
+        }
+        m_combatContextCache.Erase(a_formID);
+        m_actorTemporalData.Erase(a_formID);
+        m_targetTemporalData.Erase(a_formID);
+        m_detectionCache.Erase(a_formID);
     }
 } // namespace CombatAI

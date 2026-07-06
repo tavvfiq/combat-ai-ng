@@ -20,15 +20,14 @@ namespace CombatAI
 
                 CombatDirector::GetInstance().ProcessActor(a_actor, RE::GetSecondsSinceLastFrame());
 
-                // Accumulate delta time and call Update when threshold is reached
-                // This hook is called for EVERY actor, so we accumulate delta across all actors
-                // and call Update() once per frame (approximately every 0.016s = 60 FPS)
-                static float accumulatedDelta = 0.0f;
-                accumulatedDelta += a_delta;
-                // Call Update approximately once per frame (~60 FPS = 0.016s)
-                if (accumulatedDelta >= 0.016f) {
-                    CombatDirector::GetInstance().Update(accumulatedDelta);
-                    accumulatedDelta = 0.0f;
+                // Global systems must tick exactly once per frame, not once per actor.
+                // This hook fires for EVERY actor each frame, so gate the global tick on
+                // the player (whose Character::Update runs exactly once per frame) and use
+                // the true frame delta. No accumulator, no per-actor multiplication - the
+                // old accumulator ran Update() ~N times per frame (N = actor count),
+                // advancing all timers/decay N times too fast.
+                if (ActorUtils::SafeIsPlayerRef(a_actor)) {
+                    CombatDirector::GetInstance().Update(RE::GetSecondsSinceLastFrame());
                 }
             }
 

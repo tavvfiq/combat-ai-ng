@@ -16,6 +16,11 @@ namespace CombatAI
         // Evaluate state and return decision
         DecisionResult Evaluate(RE::Actor *a_actor, const ActorStateData &a_state);
 
+        // Held-back action for combat pacing: when an actor is denied an attack slot it
+        // should stay engaged (circle/flank the target) instead of committing. Returns a
+        // ready Flanking decision (execution falls back to strafe if CPR is unavailable).
+        DecisionResult EvaluateHeldBack(RE::Actor *a_actor, const ActorStateData &a_state);
+
       private:
         // Interrupt (Counter-Play)
         DecisionResult EvaluateInterrupt(RE::Actor *a_actor, const ActorStateData &a_state);

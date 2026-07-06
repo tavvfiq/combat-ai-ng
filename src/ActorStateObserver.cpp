@@ -163,9 +163,36 @@ namespace CombatAI
 
         state.isValid = true;
         state.isPlayer = ActorUtils::SafeIsPlayerRef(a_target);
+        {
+            auto tgtFormIDOpt = ActorUtils::SafeGetFormID(a_target);
+            state.targetFormID = tgtFormIDOpt.has_value() ? tgtFormIDOpt.value() : 0;
+        }
         if (state.isPlayer) {
-            state.detectionLevel = ActorUtils::SafeRequestDetectionLevel(a_self, a_target);
-            state.isDetected = state.detectionLevel > 0;
+            // Detection is throttled per observer: RequestDetectionLevel is expensive and
+            // crash-prone, and stealth state doesn't change meaningfully within 0.5s.
+            auto selfIDOpt = ActorUtils::SafeGetFormID(a_self);
+            RE::FormID selfID = selfIDOpt.has_value() ? selfIDOpt.value() : 0;
+
+            std::int32_t detection = 0;
+            bool haveFresh = false;
+            if (selfID != 0) {
+                auto cached = m_detectionCache.Find(selfID);
+                if (cached.has_value() && (m_currentTime - cached->lastUpdateTime) < DETECTION_UPDATE_INTERVAL) {
+                    detection = cached->level;
+                    haveFresh = true;
+                }
+            }
+            if (!haveFresh) {
+                detection = ActorUtils::SafeRequestDetectionLevel(a_self, a_target);
+                if (selfID != 0) {
+                    m_detectionCache.ModifyOrCreate(selfID, [&](CachedDetection &c) {
+                        c.level = detection;
+                        c.lastUpdateTime = m_currentTime;
+                    });
+                }
+            }
+            state.detectionLevel = detection;
+            state.isDetected = detection > 0;
         }
 
         // Use safe wrappers for all target property access - target can be knocked

@@ -381,3 +381,23 @@ TimedBlockEarlyPenalty = 0.5
 # Penalty for block too late (0.0 to 1.0)
 # Reduces priority if block happens too late in the window
 TimedBlockLatePenalty = 0.5
+
+[CombatPacing]
+# "Wait Your Turn" - cap how many attackers hit a target at once; the rest circle
+# and wait their turn (rotated in as slots free). Reduces the vanilla group swarm.
+
+# Enable combat pacing
+EnableCombatPacing = true
+
+# Maximum attackers allowed to attack the same target simultaneously
+# 1 = strict one-at-a-time duel feel; 2-3 = group but not a swarm
+MaxSimultaneousAttackers = 2
+
+# How long (seconds) an attacker holds its slot before it rotates out so others get
+# a turn. A random value between min and max is chosen each time a slot is taken.
+SlotWindowMinSeconds = 2.0
+SlotWindowMaxSeconds = 4.0
+
+# Only pace attacks against the player (recommended). If false, pacing also applies
+# to NPC-vs-NPC fights.
+PaceTargetPlayerOnly = true

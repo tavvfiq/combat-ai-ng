@@ -49,6 +49,7 @@ namespace CombatAI
     {
         bool isValid = false;
         bool isPlayer = false;
+        RE::FormID targetFormID = 0; // FormID of the target actor (0 if unknown)
         bool isDetected = true;
         std::int32_t detectionLevel = 0;
         bool isBlocking = false;

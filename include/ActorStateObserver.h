@@ -77,6 +77,16 @@ namespace CombatAI
         // is cached. Range/distance is refreshed every gather via UpdateRangeCategory.
         static constexpr float COMBAT_CONTEXT_UPDATE_INTERVAL = 5.0f;
 
+        // RequestDetectionLevel (player stealth detection) is expensive and crash-prone,
+        // so cache it per observer and refresh at most every DETECTION_UPDATE_INTERVAL.
+        struct CachedDetection
+        {
+            std::int32_t level = 0;
+            float lastUpdateTime = -999.0f;
+        };
+        ThreadSafeMap<RE::FormID, CachedDetection> m_detectionCache;
+        static constexpr float DETECTION_UPDATE_INTERVAL = 0.5f;
+
         // Temporal state tracking per actor
         struct ActorTemporalData
         {

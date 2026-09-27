@@ -12,36 +12,23 @@ namespace CombatAI
         thread_local std::mt19937 g_gen(g_rd());
     } // namespace
 
-    bool Humanizer::CanReact(RE::Actor *a_actor, float a_deltaTime)
+    bool Humanizer::CanReact(RE::Actor *a_actor, RE::FormID a_formID, float a_deltaTime)
     {
-        if (!a_actor) {
+        if (!a_actor || a_formID == RE::FormID(0)) {
             return false;
-        }
-
-        // Get FormID safely - use FormID as key instead of raw pointer
-        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-        if (!formIDOpt.has_value()) {
-            return false; // Can't get FormID, actor is invalid
-        }
-        RE::FormID formID = formIDOpt.value();
-
-        // Validate FormID before using it (should not be 0 or invalid)
-        // IMPORTANT: Check FormID BEFORE any map operations to prevent crashes
-        if (formID == RE::FormID(0)) {
-            return false; // Invalid FormID
         }
 
         // Only process actors in combat - clean up if not in combat
         if (!ActorUtils::SafeIsInCombat(a_actor)) {
             // Remove reaction state if actor left combat
-            m_reactionStates.Erase(formID);
+            m_reactionStates.Erase(a_formID);
             return false;
         }
 
         // Ensure a reaction state exists and check whether the delay still needs to be
         // initialized. The read-modify-write is done atomically under the map's lock.
         bool needsInit = false;
-        m_reactionStates.ModifyOrCreate(formID,
+        m_reactionStates.ModifyOrCreate(a_formID,
                                         [&](ActorReactionState &state) { needsInit = (state.reactionDelay == 0.0f); });
 
         // Initialize delay if not set. InitializeReactionDelay locks the same map, so it
@@ -53,7 +40,7 @@ namespace CombatAI
         // Advance the reaction timer and evaluate readiness atomically under the lock.
         // If the entry was removed in the meantime, treat the actor as unable to react.
         bool canReact = false;
-        m_reactionStates.Modify(formID, [&](ActorReactionState &state) {
+        m_reactionStates.Modify(a_formID, [&](ActorReactionState &state) {
             // If already able to react, keep it (reset happens after the action executes).
             if (state.canReact) {
                 canReact = true;
@@ -115,21 +102,10 @@ namespace CombatAI
         return dist(g_gen) < mistakeChance;
     }
 
-    bool Humanizer::IsOnCooldown(RE::Actor *a_actor, ActionType a_action)
+    bool Humanizer::IsOnCooldown(RE::FormID a_formID, ActionType a_action)
     {
-        if (!a_actor) {
-            return true; // Safe default
-        }
-
-        // Get FormID safely - use FormID as key instead of raw pointer
-        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-        if (!formIDOpt.has_value()) {
-            return true; // Can't get FormID, actor is invalid - safe default
-        }
-        RE::FormID formID = formIDOpt.value();
-
         // Validate FormID before using it
-        if (formID == RE::FormID(0)) {
+        if (a_formID == RE::FormID(0)) {
             return true; // Invalid FormID - safe default (on cooldown)
         }
 
@@ -137,7 +113,7 @@ namespace CombatAI
         // prevents another thread from erasing the actor entry (and thus the nested
         // cooldown map) while we are reading from it.
         bool onCooldown = false;
-        m_cooldownStates.Modify(formID, [&](ActorCooldownState &cooldownState) {
+        m_cooldownStates.Modify(a_formID, [&](ActorCooldownState &cooldownState) {
             auto cooldownOpt = cooldownState.cooldowns.Find(a_action);
             onCooldown = cooldownOpt.has_value() && cooldownOpt.value() > 0.0f;
         });
@@ -155,32 +131,24 @@ namespace CombatAI
             return m_config.dodgeCooldownSeconds;
         case ActionType::Jump:
             return m_config.jumpCooldownSeconds;
+        case ActionType::TimedBlock:
+            // Briefly preserve the block animation before a movement decision can release it.
+            return 0.15f;
         default:
             // Actions without cooldown return 0
             return 0.0f;
         }
     }
 
-    void Humanizer::MarkActionUsed(RE::Actor *a_actor, ActionType a_action)
+    void Humanizer::MarkActionUsed(RE::FormID a_formID, ActionType a_action)
     {
-        if (!a_actor) {
-            return;
-        }
-
-        // Get FormID safely - use FormID as key instead of raw pointer
-        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-        if (!formIDOpt.has_value()) {
-            return; // Can't get FormID, actor is invalid
-        }
-        RE::FormID formID = formIDOpt.value();
-
         float cooldown = GetCooldownForAction(a_action);
         if (cooldown <= 0.0f) {
             return; // No cooldown for this action
         }
 
         // Validate FormID before using it
-        if (formID == RE::FormID(0)) {
+        if (a_formID == RE::FormID(0)) {
             return; // Invalid FormID
         }
 
@@ -189,7 +157,7 @@ namespace CombatAI
 
         // Get-or-create the actor's cooldown state and record the cooldown atomically.
         m_cooldownStates.ModifyOrCreate(
-            formID, [&](ActorCooldownState &cooldownState) { cooldownState.cooldowns.Emplace(cooldownKey, cooldown); });
+            a_formID, [&](ActorCooldownState &cooldownState) { cooldownState.cooldowns.Emplace(cooldownKey, cooldown); });
     }
 
     void Humanizer::RecoverFromCorruption()

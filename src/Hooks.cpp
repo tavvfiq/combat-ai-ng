@@ -17,7 +17,8 @@ namespace CombatAI
                 // Call original function first
                 func(a_actor, a_delta);
 
-                CombatDirector::GetInstance().ProcessActor(a_actor, RE::GetSecondsSinceLastFrame());
+                const float frameDelta = RE::GetSecondsSinceLastFrame();
+                CombatDirector::GetInstance().ProcessActor(a_actor, frameDelta);
 
                 // Global systems must tick exactly once per frame, not once per actor.
                 // This hook fires for EVERY actor each frame, so gate the global tick on
@@ -26,7 +27,7 @@ namespace CombatAI
                 // old accumulator ran Update() ~N times per frame (N = actor count),
                 // advancing all timers/decay N times too fast.
                 if (ActorUtils::SafeIsPlayerRef(a_actor)) {
-                    CombatDirector::GetInstance().Update(RE::GetSecondsSinceLastFrame());
+                    CombatDirector::GetInstance().Update(frameDelta);
                 }
             }
 

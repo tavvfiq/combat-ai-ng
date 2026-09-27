@@ -48,7 +48,11 @@ namespace CombatAI
         ~CombatDirector() = default;
 
         // Check if actor should be processed
-        bool ShouldProcessActor(RE::Actor *a_actor, float a_deltaTime);
+        bool ShouldProcessActor(RE::Actor *a_actor, RE::FormID a_formID, float a_deltaTime);
+        DecisionResult ApplyCombatPacing(RE::Actor *a_actor, RE::FormID a_formID, const ActorStateData &a_state,
+                                         DecisionResult a_decision);
+        void ExecuteDecision(RE::Actor *a_actor, RE::FormID a_formID, const DecisionResult &a_decision,
+                             const ActorStateData &a_state);
 
         // Evict all per-actor bookkeeping (timers, spawn time, processed flag, observer
         // caches) for a FormID. Called when an actor leaves combat / dies / is torn down

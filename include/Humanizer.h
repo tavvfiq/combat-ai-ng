@@ -43,16 +43,16 @@ namespace CombatAI
         ~Humanizer() = default;
 
         // Check if actor can react (reaction delay)
-        bool CanReact(RE::Actor *a_actor, float a_deltaTime);
+        bool CanReact(RE::Actor *a_actor, RE::FormID a_formID, float a_deltaTime);
 
         // Check if actor should make a mistake (based on level and action type)
         bool ShouldMakeMistake(RE::Actor *a_actor, ActionType a_action);
 
         // Check if action is on cooldown
-        bool IsOnCooldown(RE::Actor *a_actor, ActionType a_action);
+        bool IsOnCooldown(RE::FormID a_formID, ActionType a_action);
 
         // Mark action as used (start cooldown)
-        void MarkActionUsed(RE::Actor *a_actor, ActionType a_action);
+        void MarkActionUsed(RE::FormID a_formID, ActionType a_action);
 
         // Reset reaction state (call after action is executed)
         void ResetReactionState(RE::Actor *a_actor);

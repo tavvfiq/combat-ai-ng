@@ -12,10 +12,28 @@
 #include "TimedBlockFeedbackTracker.h"
 #include "TimedBlockIntegration.h"
 #include "pch.h"
+#include <atomic>
 #include <sstream>
 
 namespace CombatAI
 {
+    namespace
+    {
+        bool IsMovementAction(ActionType a_action)
+        {
+            switch (a_action) {
+            case ActionType::Retreat:
+            case ActionType::Strafe:
+            case ActionType::Backoff:
+            case ActionType::Advancing:
+            case ActionType::Flanking:
+                return true;
+            default:
+                return false;
+            }
+        }
+    } // namespace
+
     // Track if mod callback events are being received
     // These flags are accessed by ModEventSinks.cpp
     bool s_receivedParryModEvent = false;
@@ -126,9 +144,19 @@ namespace CombatAI
 
     void CombatDirector::ProcessActor(RE::Actor *a_actor, float a_deltaTime)
     {
-        // Debug logging - log ProcessActor calls occasionally
-        static std::uint32_t processActorCallCount = 0;
-        processActorCallCount++;
+        if (!a_actor) {
+            return;
+        }
+
+        const auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
+        if (!formIDOpt || formIDOpt.value() == RE::FormID(0)) {
+            return;
+        }
+        const RE::FormID formID = formIDOpt.value();
+
+        // Actor_Update may execute concurrently for different actors.
+        static std::atomic_uint32_t processActorCallCount{ 0 };
+        const std::uint32_t callCount = processActorCallCount.fetch_add(1, std::memory_order_relaxed) + 1;
 
         auto &config = Config::GetInstance();
         bool debugEnabled = config.GetGeneral().enableDebugLog;
@@ -138,22 +166,18 @@ namespace CombatAI
             ApplyConfig();
         }
 
-        if (!ShouldProcessActor(a_actor, a_deltaTime)) {
+        if (!ShouldProcessActor(a_actor, formID, a_deltaTime)) {
             return;
         }
 
-        if (debugEnabled && processActorCallCount % 100 == 0) { // Log every 100 calls
-            auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-            if (formIDOpt.has_value()) {
-                std::uint32_t formID = static_cast<std::uint32_t>(formIDOpt.value());
-                LOG_DEBUG("ProcessActor called for actor FormID: 0x{:08X}", formID);
-            }
+        if (debugEnabled && callCount % 100 == 0) {
+            LOG_DEBUG("ProcessActor called for actor FormID: 0x{:08X}", static_cast<std::uint32_t>(formID));
         }
 
         // Check if actor can react (reaction delay). Bail out before the expensive
         // state gathering and decision evaluation when the actor is still within its
         // reaction latency window - there is nothing we could act on this frame anyway.
-        if (!m_humanizer.CanReact(a_actor, a_deltaTime)) {
+        if (!m_humanizer.CanReact(a_actor, formID, a_deltaTime)) {
             return; // can't react yet
         }
 
@@ -161,37 +185,21 @@ namespace CombatAI
         ActorStateData state = m_observer.GatherState(a_actor, a_deltaTime);
         DecisionResult decision = m_decisionMatrix.Evaluate(a_actor, state);
 
-        // Combat pacing ("Wait Your Turn"): limit concurrent attackers on a target. An
-        // actor must hold an attack slot to commit; otherwise it's rerouted to circle
-        // and wait its turn.
-        const auto &pacing = config.GetCombatPacing();
-        if (pacing.enableCombatPacing && state.target.isValid && state.target.targetFormID != 0) {
-            auto selfIDOpt = ActorUtils::SafeGetFormID(a_actor);
-            RE::FormID selfID = selfIDOpt.has_value() ? selfIDOpt.value() : 0;
-            auto &coordinator = AttackCoordinator::GetSingleton();
-
-            bool isCommit = decision.action == ActionType::Attack || decision.action == ActionType::PowerAttack ||
-                            decision.action == ActionType::SprintAttack;
-            bool paced = isCommit && (!pacing.paceTargetPlayerOnly || state.target.isPlayer);
-
-            if (paced && selfID != 0) {
-                if (!coordinator.TryAcquire(state.target.targetFormID, selfID, pacing.maxSimultaneousAttackers,
-                                            pacing.slotWindowMinSeconds, pacing.slotWindowMaxSeconds)) {
-                    // No slot - hold back and circle instead of attacking
-                    decision = m_decisionMatrix.EvaluateHeldBack(a_actor, state);
-                    if (debugEnabled) {
-                        LOG_DEBUG("Pacing: attack slot full - holding back (action now {})",
-                                  static_cast<int>(decision.action));
-                    }
-                }
-            } else if (selfID != 0) {
-                // Not committing to an attack on this target - free any slot we held
-                coordinator.Release(state.target.targetFormID, selfID);
-            }
-        }
+        decision = ApplyCombatPacing(a_actor, formID, state, decision);
 
         if (debugEnabled) {
-            LOG_DEBUG("Decision: action={} priority={:.2f}", static_cast<int>(decision.action), decision.priority);
+            LOG_DEBUG("Decision: actor=0x{:08X} action={} priority={:.2f}", static_cast<std::uint32_t>(formID),
+                      static_cast<int>(decision.action), decision.priority);
+        }
+
+        // Briefly let a successful timed block settle before locomotion can release it.
+        if (state.self.isBlocking && IsMovementAction(decision.action) &&
+            m_humanizer.IsOnCooldown(formID, ActionType::TimedBlock)) {
+            if (debugEnabled) {
+                LOG_DEBUG("Holding movement transition for actor 0x{:08X}: timed block is still settling",
+                          static_cast<std::uint32_t>(formID));
+            }
+            return;
         }
 
         // Check if should make mistake (humanizer)
@@ -201,30 +209,53 @@ namespace CombatAI
         }
 
         // Check cooldowns (only actions with cooldowns will return true)
-        if (m_humanizer.IsOnCooldown(a_actor, decision.action)) {
+        if (m_humanizer.IsOnCooldown(formID, decision.action)) {
             return; // On cooldown
         }
 
-        // Execute decision
         if (decision.action != ActionType::None) {
-            bool success = m_executor.Execute(a_actor, decision, state);
-
-            if (success) {
-                auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-                if (formIDOpt.has_value()) {
-                    m_processedActors.Insert(formIDOpt.value());
-                }
-
-                // Mark action as used (start cooldown)
-                m_humanizer.MarkActionUsed(a_actor, decision.action);
-
-                // Notify temporal state tracker that action was executed
-                m_observer.NotifyActionExecuted(a_actor, decision.action);
-
-                // Notify Public API listeners
-                APIManager::GetSingleton()->NotifyDecision(a_actor, decision);
-            }
+            ExecuteDecision(a_actor, formID, decision, state);
         }
+    }
+
+    DecisionResult CombatDirector::ApplyCombatPacing(RE::Actor *a_actor, RE::FormID a_formID,
+                                                      const ActorStateData &a_state, DecisionResult a_decision)
+    {
+        const auto &pacing = Config::GetInstance().GetCombatPacing();
+        if (!pacing.enableCombatPacing || !a_state.target.isValid || a_state.target.targetFormID == 0) {
+            return a_decision;
+        }
+
+        auto &coordinator = AttackCoordinator::GetSingleton();
+        const bool isCommit = a_decision.action == ActionType::Attack || a_decision.action == ActionType::PowerAttack ||
+                              a_decision.action == ActionType::SprintAttack;
+        const bool paced = isCommit && (!pacing.paceTargetPlayerOnly || a_state.target.isPlayer);
+        if (paced) {
+            if (!coordinator.TryAcquire(a_state.target.targetFormID, a_formID, pacing.maxSimultaneousAttackers,
+                                        pacing.slotWindowMinSeconds, pacing.slotWindowMaxSeconds)) {
+                a_decision = m_decisionMatrix.EvaluateHeldBack(a_actor, a_state);
+                if (Config::GetInstance().GetGeneral().enableDebugLog) {
+                    LOG_DEBUG("Pacing: attack slot full - holding back (action now {})",
+                              static_cast<int>(a_decision.action));
+                }
+            }
+        } else {
+            coordinator.Release(a_state.target.targetFormID, a_formID);
+        }
+        return a_decision;
+    }
+
+    void CombatDirector::ExecuteDecision(RE::Actor *a_actor, RE::FormID a_formID, const DecisionResult &a_decision,
+                                         const ActorStateData &a_state)
+    {
+        if (!m_executor.Execute(a_actor, a_decision, a_state)) {
+            return;
+        }
+
+        m_processedActors.Insert(a_formID);
+        m_humanizer.MarkActionUsed(a_formID, a_decision.action);
+        m_observer.NotifyActionExecuted(a_actor, a_decision.action);
+        APIManager::GetSingleton()->NotifyDecision(a_actor, a_decision);
     }
 
     void CombatDirector::Update(float a_deltaTime)
@@ -322,20 +353,11 @@ namespace CombatAI
         m_observer.EvictActor(a_formID);
     }
 
-    bool CombatDirector::ShouldProcessActor(RE::Actor *a_actor, float a_deltaTime)
+    bool CombatDirector::ShouldProcessActor(RE::Actor *a_actor, RE::FormID a_formID, float a_deltaTime)
     {
-        if (!a_actor) {
+        if (!a_actor || a_formID == RE::FormID(0)) {
             return false;
         }
-
-        // Additional validation for newly spawned actors:
-        // Check if actor has a valid FormID before processing
-        // Newly spawned actors might not have FormID initialized yet
-        auto formIDOpt = ActorUtils::SafeGetFormID(a_actor);
-        if (!formIDOpt.has_value() || formIDOpt.value() == RE::FormID(0)) {
-            return false; // Actor not fully initialized yet
-        }
-        RE::FormID formID = formIDOpt.value();
 
         // Validate actor using safe wrappers - protects against transitional states
         // Actor is passed directly from hook, but could become invalid at any time
@@ -346,7 +368,7 @@ namespace CombatAI
         bool isDead = ActorUtils::SafeIsDead(a_actor);
         bool inCombat = ActorUtils::SafeIsInCombat(a_actor);
         if (isDead || !inCombat) {
-            EvictActor(formID);
+            EvictActor(a_formID);
             return false;
         }
 
@@ -355,7 +377,7 @@ namespace CombatAI
         // heavier gather path. Skip and evict so recycled FormIDs don't inherit state.
         if (!ActorUtils::SafeIs3DLoaded(a_actor) || ActorUtils::SafeIsDeleted(a_actor) ||
             ActorUtils::SafeIsDisabled(a_actor)) {
-            EvictActor(formID);
+            EvictActor(a_formID);
             return false;
         }
 
@@ -399,11 +421,11 @@ namespace CombatAI
 
         // Check spawn warmup delay for newly spawned actors
         // This prevents processing actors before they're fully initialized
-        auto spawnTimeOpt = m_actorSpawnTimes.Find(formID);
+        auto spawnTimeOpt = m_actorSpawnTimes.Find(a_formID);
         if (!spawnTimeOpt.has_value()) {
             // First time seeing this actor - record spawn time
             // Start at 0.0f, we'll increment it each frame
-            m_actorSpawnTimes.Emplace(formID, 0.0f);
+            m_actorSpawnTimes.Emplace(a_formID, 0.0f);
             // Don't process newly spawned actors immediately
             return false;
         }
@@ -412,7 +434,7 @@ namespace CombatAI
         // This ensures spawn times are updated even if Update() hasn't been called
         // yet. The read-modify-write is done atomically under the map's lock.
         float currentSpawnTime = 0.0f;
-        m_actorSpawnTimes.Modify(formID, [&](float &spawnTime) {
+        m_actorSpawnTimes.Modify(a_formID, [&](float &spawnTime) {
             spawnTime += a_deltaTime;
             currentSpawnTime = spawnTime;
         });
@@ -450,7 +472,7 @@ namespace CombatAI
         // Update the per-actor throttle timer atomically under the map's lock and
         // decide whether enough time has elapsed to process this actor this frame.
         bool shouldProcess = false;
-        bool existed = m_actorProcessTimers.Modify(formID, [&](float &timer) {
+        bool existed = m_actorProcessTimers.Modify(a_formID, [&](float &timer) {
             timer += a_deltaTime;
             if (timer >= targetInterval) {
                 timer = 0.0f; // Reset timer for next interval
@@ -460,7 +482,7 @@ namespace CombatAI
 
         if (!existed) {
             // First time processing this actor, initialize timer and allow processing
-            m_actorProcessTimers.Emplace(formID, 0.0f);
+            m_actorProcessTimers.Emplace(a_formID, 0.0f);
             return true;
         }
 

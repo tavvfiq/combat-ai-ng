@@ -7,7 +7,7 @@
 #include "Logger.h"
 #include "pch.h"
 
-extern "C" DLLEXPORT void *SKSEAPI RequestPluginAPI(ECA_API::InterfaceVersion a_interfaceVersion)
+extern "C" __declspec(dllexport) void *__cdecl RequestPluginAPI(ECA_API::InterfaceVersion a_interfaceVersion)
 {
     auto api = CombatAI::APIManager::GetSingleton();
     switch (a_interfaceVersion) {
@@ -18,7 +18,7 @@ extern "C" DLLEXPORT void *SKSEAPI RequestPluginAPI(ECA_API::InterfaceVersion a_
     return nullptr;
 }
 
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_skse)
+extern "C" __declspec(dllexport) bool __cdecl SKSEPlugin_Load(const SKSE::LoadInterface *a_skse)
 {
     // Initialize SKSE
     SKSE::Init(a_skse);
@@ -59,9 +59,7 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface *a_s
             case SKSE::MessagingInterface::kDataLoaded:
                 // Initialize CombatDirector with config after data is loaded
                 // kDataLoaded fires after TESDataHandler is available, which is required for mod detection
-                // This is the earliest safe point for CommonLibSSE (non-NG) where TESDataHandler is guaranteed to be
-                // available Initialize BEFORE installing hooks so CombatDirector is ready when hooks start calling
-                // ProcessActor
+                // Initialize BEFORE installing hooks so CombatDirector is ready when hooks start calling ProcessActor.
                 CombatAI::CombatDirector::GetInstance().Initialize();
 
                 // Install hooks after initialization

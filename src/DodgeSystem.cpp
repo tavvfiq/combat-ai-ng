@@ -1,6 +1,7 @@
 #include "DodgeSystem.h"
 #include "ActorUtils.h"
 #include "Config.h"
+#include "EnvSensor.h"
 #include "pch.h"
 #include <cmath>
 
@@ -80,6 +81,20 @@ namespace CombatAI
             return false;
         }
 
+        // Cliff-safe dodge: never carry the actor over a ledge. Probe for ground at the
+        // spot this dodge would land on; if there's a lethal drop, abort so the actor
+        // picks another action instead of leaping off a cliff. Final guard for every
+        // ExecuteDodge caller (evasion pre-checks and may flip sides before this).
+        const auto &envCfg = ::CombatAI::Config::GetInstance().GetEnvSensor();
+        if (envCfg.enableCliffSafeDodge) {
+            RE::NiPoint3 flatDir = a_dodgeDirection;
+            flatDir.z = 0.0f;
+            flatDir.Unitize();
+            if (!EnvSensor::HasGroundAhead(a_actor, flatDir, envCfg.dodgeLedgeProbeDistance, envCfg.dodgeMaxDrop)) {
+                return false; // would dodge off a ledge
+            }
+        }
+
         // Determine dodge direction string
         std::string dodgeEvent = DetermineDodgeDirection(a_actor, a_dodgeDirection);
 
@@ -134,6 +149,22 @@ namespace CombatAI
         }
 
         dodgeDir.Unitize();
+
+        // Cliff-safe evasion: if the chosen side is a ledge, try the mirror side before
+        // committing. A sideways evasion is equally valid left or right, so prefer the
+        // one with ground. If both sides drop off, ExecuteDodge's guard aborts.
+        const auto &envCfg = ::CombatAI::Config::GetInstance().GetEnvSensor();
+        if (envCfg.enableCliffSafeDodge) {
+            RE::NiPoint3 flat = dodgeDir;
+            flat.z = 0.0f;
+            flat.Unitize();
+            if (!EnvSensor::HasGroundAhead(a_actor, flat, envCfg.dodgeLedgeProbeDistance, envCfg.dodgeMaxDrop)) {
+                RE::NiPoint3 mirror(-flat.x, -flat.y, 0.0f);
+                if (EnvSensor::HasGroundAhead(a_actor, mirror, envCfg.dodgeLedgeProbeDistance, envCfg.dodgeMaxDrop)) {
+                    dodgeDir = mirror;
+                }
+            }
+        }
 
         return ExecuteDodge(a_actor, dodgeDir);
     }

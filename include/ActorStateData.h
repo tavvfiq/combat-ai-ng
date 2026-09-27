@@ -212,6 +212,14 @@ namespace CombatAI
         TargetTemporalState target;
     };
 
+    // Environmental sensing (raycast-derived spatial awareness). Defaults are
+    // optimistic so an actor behaves normally when sensing is disabled or hasn't run.
+    struct EnvState
+    {
+        bool losChecked = false;  // whether line-of-sight sensing ran this gather
+        bool losToTarget = true;  // clear line of sight to the primary target (no wall between)
+    };
+
     // Combined state data for decision making
     struct ActorStateData
     {
@@ -219,6 +227,7 @@ namespace CombatAI
         TargetState target;
         CombatContext combatContext; // Combat context (multiple enemies, etc.)
         TemporalState temporal;      // Temporal state (time-based tracking)
+        EnvState env;                // Environmental sensing (line-of-sight, etc.)
         float deltaTime = 0.0f;
         float weaponReach = 150.0f; // Weapon reach (from Precision or fallback)
     };

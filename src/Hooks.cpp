@@ -2,7 +2,6 @@
 #include "ActorUtils.h"
 #include "CombatDirector.h"
 #include "Logger.h"
-#include "RE/Offsets.h"
 #include "pch.h"
 
 namespace CombatAI

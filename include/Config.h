@@ -181,6 +181,16 @@ namespace CombatAI
             float ewmaAlpha = 0.5f;             // Smoothing of per-hit damage fraction (0-1)
         };
 
+        // Environmental sensing (raycast-driven spatial awareness).
+        struct EnvSensorSettings
+        {
+            bool enableLosGate = true;              // Suppress attacks at a target behind a wall/railing
+            float losEyeHeight = 96.0f;             // Torso offset (game units) for line-of-sight rays
+            bool enableCliffSafeDodge = true;       // Never dodge off a ledge/cliff
+            float dodgeLedgeProbeDistance = 180.0f; // How far ahead a dodge is assumed to land (game units)
+            float dodgeMaxDrop = 200.0f;            // Drop beyond this below the landing spot = treat as cliff
+        };
+
         static Config &GetInstance()
         {
             static Config instance;
@@ -214,6 +224,7 @@ namespace CombatAI
         const TimedBlockSettings &GetTimedBlock() const { return m_timedBlock; }
         const CombatPacingSettings &GetCombatPacing() const { return m_combatPacing; }
         const DamageMomentumSettings &GetDamageMomentum() const { return m_damageMomentum; }
+        const EnvSensorSettings &GetEnvSensor() const { return m_envSensor; }
 
         // Check if plugin is enabled
         bool IsEnabled() const { return m_general.enablePlugin; }
@@ -234,6 +245,7 @@ namespace CombatAI
         void ReadTimedBlockSettings(CSimpleIniA &a_ini);
         void ReadCombatPacingSettings(CSimpleIniA &a_ini);
         void ReadDamageMomentumSettings(CSimpleIniA &a_ini);
+        void ReadEnvSensorSettings(CSimpleIniA &a_ini);
 
         GeneralSettings m_general;
         HumanizerSettings m_humanizer;
@@ -246,6 +258,7 @@ namespace CombatAI
         TimedBlockSettings m_timedBlock;
         CombatPacingSettings m_combatPacing;
         DamageMomentumSettings m_damageMomentum;
+        EnvSensorSettings m_envSensor;
 
         std::atomic<bool> m_humanizerDirty{false};
     };

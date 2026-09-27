@@ -208,6 +208,17 @@ namespace CombatAI
                 ImGuiMCP::EndTabItem();
             }
 
+            if (ImGuiMCP::BeginTabItem("EnvSense")) {
+                ImGuiMCP::Text("Raycast spatial awareness. Applied live.");
+                ImGuiMCP::Checkbox("Enable LoS attack gate", &config.m_envSensor.enableLosGate);
+                liveFloat("LoS eye height", &config.m_envSensor.losEyeHeight, 0.0f, 300.0f, "%.0f");
+                ImGuiMCP::Separator();
+                ImGuiMCP::Checkbox("Enable cliff-safe dodge", &config.m_envSensor.enableCliffSafeDodge);
+                liveFloat("Dodge ledge probe dist", &config.m_envSensor.dodgeLedgeProbeDistance, 0.0f, 500.0f, "%.0f");
+                liveFloat("Dodge max drop (cliff)", &config.m_envSensor.dodgeMaxDrop, 0.0f, 800.0f, "%.0f");
+                ImGuiMCP::EndTabItem();
+            }
+
             if (ImGuiMCP::BeginTabItem("Integrations")) {
                 ImGuiMCP::Text("Applied on game load - restart to re-detect mods.");
                 ImGuiMCP::Checkbox("CPR integration", &config.m_modIntegrations.enableCPRIntegration);

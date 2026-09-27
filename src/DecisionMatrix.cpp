@@ -1345,6 +1345,13 @@ namespace CombatAI
         // Only consider attacks when in attack range (use range category for more
         // precise check)
         if (a_state.combatContext.isInAttackRange || a_state.target.distance <= maxAttackDistance) {
+            // Line-of-sight gate: don't swing at a target on the far side of a wall,
+            // railing, or pillar even when they're within reach. Skip the strike and
+            // let flanking/evasion (evaluated in parallel) reposition to a clear angle.
+            if (config.GetEnvSensor().enableLosGate && a_state.env.losChecked && !a_state.env.losToTarget) {
+                return result;
+            }
+
             // TACTICAL CONSIDERATIONS: Don't attack blindly - need good opening
 
             // Don't attack if target is actively attacking (too risky - prefer

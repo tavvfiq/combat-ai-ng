@@ -47,6 +47,7 @@ namespace CombatAI
         ReadTimedBlockSettings(ini);
         ReadCombatPacingSettings(ini);
         ReadDamageMomentumSettings(ini);
+        ReadEnvSensorSettings(ini);
 
         LOG_INFO("Configuration loaded successfully");
         return true;
@@ -193,6 +194,12 @@ namespace CombatAI
         D("DamageMomentum", "DefensivePenaltyMax", m_damageMomentum.defensivePenaltyMax);
         D("DamageMomentum", "MomentumDecaySeconds", m_damageMomentum.momentumDecaySeconds);
         D("DamageMomentum", "EwmaAlpha", m_damageMomentum.ewmaAlpha);
+
+        B("EnvSensor", "EnableLosGate", m_envSensor.enableLosGate);
+        D("EnvSensor", "LosEyeHeight", m_envSensor.losEyeHeight);
+        B("EnvSensor", "EnableCliffSafeDodge", m_envSensor.enableCliffSafeDodge);
+        D("EnvSensor", "DodgeLedgeProbeDistance", m_envSensor.dodgeLedgeProbeDistance);
+        D("EnvSensor", "DodgeMaxDrop", m_envSensor.dodgeMaxDrop);
 
         SI_Error rc = ini.SaveFile(a_filePath.c_str());
         if (rc < 0) {
@@ -556,5 +563,23 @@ namespace CombatAI
         m_damageMomentum.defensivePenaltyMax = ClampValue(m_damageMomentum.defensivePenaltyMax, 0.0f, 2.0f);
         m_damageMomentum.momentumDecaySeconds = (std::max)(0.5f, m_damageMomentum.momentumDecaySeconds);
         m_damageMomentum.ewmaAlpha = ClampValue(m_damageMomentum.ewmaAlpha, 0.05f, 1.0f);
+    }
+
+    void Config::ReadEnvSensorSettings(CSimpleIniA &a_ini)
+    {
+        m_envSensor.enableLosGate = a_ini.GetBoolValue("EnvSensor", "EnableLosGate", m_envSensor.enableLosGate);
+        m_envSensor.losEyeHeight =
+            static_cast<float>(a_ini.GetDoubleValue("EnvSensor", "LosEyeHeight", m_envSensor.losEyeHeight));
+        m_envSensor.enableCliffSafeDodge =
+            a_ini.GetBoolValue("EnvSensor", "EnableCliffSafeDodge", m_envSensor.enableCliffSafeDodge);
+        m_envSensor.dodgeLedgeProbeDistance = static_cast<float>(
+            a_ini.GetDoubleValue("EnvSensor", "DodgeLedgeProbeDistance", m_envSensor.dodgeLedgeProbeDistance));
+        m_envSensor.dodgeMaxDrop =
+            static_cast<float>(a_ini.GetDoubleValue("EnvSensor", "DodgeMaxDrop", m_envSensor.dodgeMaxDrop));
+
+        // Clamp
+        m_envSensor.losEyeHeight = ClampValue(m_envSensor.losEyeHeight, 0.0f, 300.0f);
+        m_envSensor.dodgeLedgeProbeDistance = (std::max)(0.0f, m_envSensor.dodgeLedgeProbeDistance);
+        m_envSensor.dodgeMaxDrop = (std::max)(0.0f, m_envSensor.dodgeMaxDrop);
     }
 } // namespace CombatAI

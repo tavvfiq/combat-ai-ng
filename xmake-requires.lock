@@ -6,16 +6,19 @@
         ["cmake#f56260b5"] = {
             version = "3.30.3"
         },
+        ["directxmath 2024.02#f56260b5"] = {
+            version = "2024.02"
+        },
+        ["directxtk 24.2.0#f56260b5"] = {
+            version = "24.2.0"
+        },
         ["ninja#f56260b5"] = {
             version = "1.12.1"
-        },
-        ["rsm-binary-io#f56260b5"] = {
-            version = "2.0.6"
         },
         ["simpleini#f56260b5"] = {
             version = "v4.25"
         },
-        ["spdlog#09c8c173"] = {
+        ["spdlog v1.16.0#09c8c173"] = {
             version = "v1.16.0"
         }
     }

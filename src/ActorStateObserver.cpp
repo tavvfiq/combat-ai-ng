@@ -17,6 +17,7 @@
 #include "ActorUtils.h"
 #include "AttackDefenseFeedbackTracker.h"
 #include "Config.h"
+#include "EnvSensor.h"
 #include "GuardCounterFeedbackTracker.h"
 #include "ParryFeedbackTracker.h"
 #include "PrecisionIntegration.h"
@@ -47,8 +48,7 @@ namespace CombatAI
         // Gather target state - wrap in try-catch to protect against invalid actor
         // access
         try {
-            // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController *combatController = a_actor->combatController;
+            RE::CombatController *combatController = ActorUtils::SafeGetCombatController(a_actor);
 
             if (combatController) {
                 RE::ActorHandle targetHandle = combatController->targetHandle;
@@ -68,8 +68,7 @@ namespace CombatAI
         // Gather temporal state (time-based tracking)
         RE::Actor *target = nullptr;
         try {
-            // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController *combatController = a_actor->combatController;
+            RE::CombatController *combatController = ActorUtils::SafeGetCombatController(a_actor);
             if (combatController) {
                 RE::ActorHandle targetHandle = combatController->targetHandle;
                 RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -81,6 +80,16 @@ namespace CombatAI
             // Target access failed
         }
         data.temporal = GatherTemporalState(a_actor, target, a_deltaTime);
+
+        // Environmental sensing: line of sight to the primary target. A single Havok
+        // LOS raycast, run only when we have a target and the gate is enabled. Gathered
+        // here (on the game thread, already throttled by the process/reaction cadence)
+        // so the decision matrix can veto swinging at a target behind cover.
+        const auto &envCfg = Config::GetInstance().GetEnvSensor();
+        if (envCfg.enableLosGate && target && data.target.isValid) {
+            data.env.losToTarget = EnvSensor::HasLineOfSight(a_actor, target, envCfg.losEyeHeight);
+            data.env.losChecked = true;
+        }
 
         return data;
     }
@@ -398,8 +407,7 @@ namespace CombatAI
         // Wrap in try-catch as process data access can crash when actor is in
         // transitional states
         try {
-            // In CommonLibSSE, currentProcess is a direct member of Actor
-            auto currentProcess = a_target->currentProcess;
+            auto currentProcess = a_target->GetActorRuntimeData().currentProcess;
             if (currentProcess) {
                 auto highProcess = currentProcess->high;
                 if (highProcess) {
@@ -555,7 +563,7 @@ namespace CombatAI
         RE::Actor *target = nullptr;
         RE::NiPointer<RE::Actor> targetPtr;
         try {
-            auto *combatController = a_actor->combatController;
+            auto *combatController = ActorUtils::SafeGetCombatController(a_actor);
             if (combatController) {
                 targetPtr = combatController->targetHandle.get();
                 target = targetPtr.get();
@@ -651,8 +659,7 @@ namespace CombatAI
 
         // Not in cache or expired, gather fresh data - wrap in try-catch
         try {
-            // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController *combatController = a_actor->combatController;
+            RE::CombatController *combatController = ActorUtils::SafeGetCombatController(a_actor);
 
             if (!combatController) {
                 return context;
@@ -771,8 +778,7 @@ namespace CombatAI
         // Scan actors in the current cell - single pass for both enemies and allies
         // Wrap entire scan in try-catch to handle iterator invalidation
         try {
-            // In CommonLibSSE, references is a direct member of TESObjectCELL
-            auto &references = currentCell->references;
+            auto &references = currentCell->GetRuntimeData().references;
 
             // Get size first to detect container modification during iteration
             size_t initialSize = references.size();
@@ -869,8 +875,8 @@ namespace CombatAI
                     // Check if this enemy is targeting us (has us as their combat target)
                     // This helps determine threat level
                     try {
-                        // In CommonLibSSE, combatController is a direct member of Actor
-                        RE::CombatController *enemyCombatController = nearbyActor->combatController;
+                        RE::CombatController *enemyCombatController =
+                            ActorUtils::SafeGetCombatController(nearbyActor);
                         if (enemyCombatController) {
                             RE::ActorHandle enemyTargetHandle = enemyCombatController->targetHandle;
                             RE::NiPointer<RE::Actor> enemyTarget = enemyTargetHandle.get();

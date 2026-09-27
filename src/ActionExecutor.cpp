@@ -46,17 +46,39 @@ namespace CombatAI
             ResetJumpVariable(a_actor);
         }
 
-        // Blocking locks the actor into a defensive shuffle - it can't advance/sprint or
-        // swing while the shield is up, so NPCs get stuck blocking and never close the
-        // gap. Release the block for any action that isn't inherently defensive.
-        if (a_state.self.isBlocking) {
+        // Don't interrupt a block for movement actions that have no movement backend.
+        // Their executors return false when CPR cannot handle the action, so stopping
+        // the block first only lets vanilla combat AI immediately start blocking again.
+        bool movementCanRun = true;
+        switch (a_decision.action) {
+        case ActionType::Strafe:
+        case ActionType::Flanking:
+            movementCanRun = a_state.target.isValid && IsCPRAvailable(a_actor) && IsMeleeOnlyActor(a_actor);
+            break;
+        case ActionType::Retreat:
+        case ActionType::Backoff:
+            movementCanRun = IsCPRAvailable(a_actor);
+            break;
+        case ActionType::Advancing: {
+            auto &config = Config::GetInstance();
+            const bool meleeWithTarget = IsMeleeOnlyActor(a_actor) && a_state.target.isValid;
+            movementCanRun = (IsCPRAvailable(a_actor) && meleeWithTarget) ||
+                             (config.GetDecisionMatrix().enableSprintCharge && meleeWithTarget);
+            break;
+        }
+        default:
+            break;
+        }
+
+        bool blockReleased = false;
+        if (a_state.self.isBlocking && movementCanRun) {
             switch (a_decision.action) {
             case ActionType::Bash:
             case ActionType::Parry:
             case ActionType::TimedBlock:
                 break; // these rely on the block state
             default:
-                NotifyAnimation(a_actor, "blockStop");
+                blockReleased = NotifyAnimation(a_actor, "blockStop");
                 break;
             }
         }
@@ -140,6 +162,14 @@ namespace CombatAI
             return false;
         }
 
+        // Some actions can still fail after their preconditions pass (for example,
+        // the actor can enter an attack state between the state snapshot and execute).
+        // Restore blocking when that happens so a failed action doesn't leave the NPC
+        // exposed until vanilla AI starts its block again.
+        if (!success && blockReleased) {
+            NotifyAnimation(a_actor, "blockStart");
+        }
+
         return success;
     }
 
@@ -189,8 +219,7 @@ namespace CombatAI
             // Get target actor
             RE::Actor *target = nullptr;
             try {
-                // In CommonLibSSE, combatController is a direct member of Actor
-                RE::CombatController *combatController = a_actor->combatController;
+                RE::CombatController *combatController = ActorUtils::SafeGetCombatController(a_actor);
                 if (combatController) {
                     RE::ActorHandle targetHandle = combatController->targetHandle;
                     RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -247,8 +276,7 @@ namespace CombatAI
             // Get target actor
             RE::Actor *target = nullptr;
             try {
-                // In CommonLibSSE, combatController is a direct member of Actor
-                RE::CombatController *combatController = a_actor->combatController;
+                RE::CombatController *combatController = ActorUtils::SafeGetCombatController(a_actor);
                 if (combatController) {
                     RE::ActorHandle targetHandle = combatController->targetHandle;
                     RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -331,9 +359,10 @@ namespace CombatAI
             return true;
         }
 
-        // Fallback to direct movement control (for ranged/magic users or when CPR unavailable)
-        // Use flanking direction if available, otherwise use decision direction
-        return SetMovementDirection(a_actor, movementDir, a_decision.intensity);
+        // No CPR available, or CPR only works for melee-only actors: the direct velocity
+        // nudge fights Skyrim's own combat AI and produces jittery, unpathed movement.
+        // Let the native combat AI handle positioning instead.
+        return false;
     }
 
     bool ActionExecutor::ExecuteFlanking(RE::Actor *a_actor, const DecisionResult &a_decision,
@@ -372,21 +401,12 @@ namespace CombatAI
             return true;
         }
 
-        // Fallback to direct movement control (for ranged/magic users or when CPR unavailable)
-        // Use flanking direction if provided, otherwise calculate default
-        if (flankDir.x == 0.0f && flankDir.y == 0.0f) {
-            // No direction provided, calculate default flanking direction
-            RE::NiPoint3 toTarget = a_state.target.position - a_state.self.position;
-            toTarget.z = 0.0f;
-            toTarget.Unitize();
-            flankDir = RE::NiPoint3(-toTarget.y, toTarget.x, 0.0f);
-            flankDir.Unitize();
-        }
-
-        return SetMovementDirection(a_actor, flankDir, a_decision.intensity);
+        // No CPR available, or CPR only works for melee-only actors: let the native
+        // combat AI handle positioning instead of nudging with raw velocity.
+        return false;
     }
 
-    bool ActionExecutor::ExecuteRetreat(RE::Actor *a_actor, const DecisionResult &a_decision,
+    bool ActionExecutor::ExecuteRetreat(RE::Actor *a_actor, [[maybe_unused]] const DecisionResult &a_decision,
                                         const ActorStateData &a_state)
     {
         if (!a_actor) {
@@ -408,8 +428,8 @@ namespace CombatAI
             return true;
         }
 
-        // Fallback to direct movement control
-        return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+        // No CPR: let the native combat AI handle retreat instead of nudging with raw velocity.
+        return false;
     }
 
     bool ActionExecutor::ExecuteSprintAttack(RE::Actor *a_actor)
@@ -687,7 +707,7 @@ namespace CombatAI
             // Get target actor
             RE::Actor *target = nullptr;
             try {
-                RE::CombatController *combatController = a_actor->combatController;
+                RE::CombatController *combatController = ActorUtils::SafeGetCombatController(a_actor);
                 if (combatController) {
                     RE::ActorHandle targetHandle = combatController->targetHandle;
                     RE::NiPointer<RE::Actor> targetPtr = targetHandle.get();
@@ -820,7 +840,7 @@ namespace CombatAI
         }
     }
 
-    bool ActionExecutor::ExecuteBackoff(RE::Actor *a_actor, const DecisionResult &a_decision,
+    bool ActionExecutor::ExecuteBackoff(RE::Actor *a_actor, [[maybe_unused]] const DecisionResult &a_decision,
                                         [[maybe_unused]] const ActorStateData &a_state)
     {
         if (!a_actor) {
@@ -835,8 +855,8 @@ namespace CombatAI
             return true;
         }
 
-        // Fallback to direct movement control
-        return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+        // No CPR: let the native combat AI handle backoff instead of nudging with raw velocity.
+        return false;
     }
 
     bool ActionExecutor::ExecuteFeint(RE::Actor *a_actor, const DecisionResult &a_decision,
@@ -975,7 +995,8 @@ namespace CombatAI
             return true;
         }
 
-        // Fallback to direct movement control (move towards target)
-        return SetMovementDirection(a_actor, a_decision.direction, a_decision.intensity);
+        // No CPR available, or CPR only works for melee-only actors: let the native combat
+        // AI handle advancing instead of nudging with raw velocity.
+        return false;
     }
 } // namespace CombatAI

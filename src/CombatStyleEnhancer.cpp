@@ -28,8 +28,7 @@ namespace CombatAI
 
         // Get from combat controller first (runtime)
         try {
-            // In CommonLibSSE, combatController is a direct member of Actor
-            RE::CombatController *controller = a_actor->combatController;
+            RE::CombatController *controller = ActorUtils::SafeGetCombatController(a_actor);
             if (controller && controller->combatStyle) {
                 return controller->combatStyle;
             }

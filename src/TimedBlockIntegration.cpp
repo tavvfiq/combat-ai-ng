@@ -2,7 +2,7 @@
 #include "ActorUtils.h"
 #include "Logger.h"
 #include "pch.h"
-#include <styyx-utils.h>
+#include <st-magic.h>
 
 namespace CombatAI
 {

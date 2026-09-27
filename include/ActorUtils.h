@@ -59,12 +59,8 @@ namespace CombatAI
             if (!a_actor) {
                 return nullptr;
             }
-            try {
-                // Actor inherits from ActorState, so this cast is valid
-                return static_cast<RE::ActorState *>(a_actor);
-            } catch (...) {
-                return nullptr;
-            }
+            // ActorState is at a runtime-dependent base offset in SE/AE.
+            return a_actor->AsActorState();
         }
 
         // Safe AsActorValueOwner
@@ -74,13 +70,8 @@ namespace CombatAI
             if (!a_actor) {
                 return nullptr;
             }
-            try {
-                // Actor inherits from ActorValueOwner, so this cast is valid
-                // GetActorOwner() may return nullptr, so use direct cast instead
-                return static_cast<RE::ActorValueOwner *>(a_actor);
-            } catch (...) {
-                return nullptr;
-            }
+            // ActorValueOwner is at a runtime-dependent base offset in SE/AE.
+            return a_actor->AsActorValueOwner();
         }
 
         // Safe GetActorBase
@@ -220,7 +211,7 @@ namespace CombatAI
                 return RE::ATTACK_STATE_ENUM::kNone;
             }
             try {
-                RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
+                RE::ActorState *state = SafeAsActorState(a_actor);
                 if (state) {
                     return state->GetAttackState();
                 }
@@ -237,7 +228,7 @@ namespace CombatAI
                 return false;
             }
             try {
-                RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
+                RE::ActorState *state = SafeAsActorState(a_actor);
                 if (state) {
                     return state->IsSprinting();
                 }
@@ -254,7 +245,7 @@ namespace CombatAI
                 return;
             }
             try {
-                RE::ActorState *state = static_cast<RE::ActorState *>(a_actor);
+                RE::ActorState *state = SafeAsActorState(a_actor);
                 if (state) {
                     state->actorState1.sprinting = a_sprinting ? 1 : 0;
                 }
@@ -520,15 +511,27 @@ namespace CombatAI
             return RE::KNOCK_STATE_ENUM::kNormal;
         }
 
+        // Safe GetCombatController (runtime data is version-dependent in NG)
+        inline RE::CombatController *SafeGetCombatController(RE::Actor *a_actor)
+        {
+            if (!a_actor) {
+                return nullptr;
+            }
+            try {
+                return a_actor->GetActorRuntimeData().combatController;
+            } catch (...) {
+                return nullptr;
+            }
+        }
+
         // Safe IsFleeing (from CombatController)
-        // In CommonLibSSE, combatController is a direct member of Actor
         inline bool SafeIsFleeing(RE::Actor *a_actor)
         {
             if (!a_actor) {
                 return false;
             }
             try {
-                RE::CombatController *combatController = a_actor->combatController;
+                RE::CombatController *combatController = SafeGetCombatController(a_actor);
                 if (combatController) {
                     return combatController->IsFleeing();
                 }
